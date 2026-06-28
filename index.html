@@ -1,0 +1,2831 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SCA Albi — Joueur</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #fff; min-height: 100vh; padding-bottom: 40px; }
+    .header { background: #1a1a1a; border-bottom: 2px solid #FECC00; padding: 14px 18px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 100; }
+    .header img { width: 32px; }
+    .header-title { font-size: 15px; font-weight: 700; color: #FECC00; flex: 1; }
+    .header-sub { font-size: 11px; color: #555; }
+    .container { padding: 16px; max-width: 480px; margin: 0 auto; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .screen-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; margin-top: 16px; }
+    .screen-sub { font-size: 13px; color: #555; margin-bottom: 16px; }
+    .search-box input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #2a2a2a; background: #1a1a1a; color: #fff; font-size: 15px; outline: none; margin-bottom: 10px; }
+    .search-box input:focus { border-color: #FECC00; }
+    .joueurs-list { display: flex; flex-direction: column; gap: 6px; }
+    .joueur-item { padding: 12px 14px; border-radius: 10px; border: 1px solid #2a2a2a; background: #1a1a1a; display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; }
+    .joueur-item:active { border-color: #FECC00; background: #1a1a00; }
+    .joueur-circle { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #FECC00; background: #111; display: flex; align-items: center; justify-content: center; position: relative; overflow: visible; flex-shrink: 0; }
+    .joueur-avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
+    .joueur-avatar-initiales { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; background: #333; }
+    .joueur-num { position: absolute; left: -10px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 700; color: #FECC00; background: #111; padding: 2px 5px; border-radius: 6px; border: 1px solid #FECC00; z-index: 10; }
+    .joueur-item-nom { font-size: 14px; font-weight: 600; }
+    .joueur-item-poste { font-size: 12px; color: #555; }
+    .player-header { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 14px; padding: 14px; margin: 14px 0; display: flex; align-items: center; gap: 12px; }
+    .player-big-avatar { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #FECC00; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; color: #FECC00; flex-shrink: 0; }
+    .player-big-nom { font-size: 16px; font-weight: 700; }
+    .player-big-poste { font-size: 12px; color: #555; }
+    .change-btn { margin-left: auto; padding: 6px 12px; border-radius: 8px; border: 1px solid #2a2a2a; background: none; color: #555; font-size: 12px; cursor: pointer; }
+    .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .menu-card { padding: 16px 12px; border-radius: 12px; border: 1px solid #2a2a2a; background: #1a1a1a; cursor: pointer; text-align: center; user-select: none; }
+    .menu-card:active { border-color: #FECC00; background: #1a1a00; }
+    .menu-card.done { border-color: #1D9E7544; background: #1D9E7508; }
+    .menu-icon { font-size: 26px; margin-bottom: 7px; }
+    .menu-label { font-size: 13px; font-weight: 600; }
+    .menu-sub { font-size: 11px; color: #555; margin-top: 3px; }
+    .done-badge { font-size: 10px; color: #1D9E75; font-weight: 600; margin-top: 4px; }
+    .section-header { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
+    .back-btn { padding: 6px 12px; border-radius: 8px; border: 1px solid #2a2a2a; background: none; color: #888; font-size: 12px; cursor: pointer; flex-shrink: 0; }
+    .section-title { font-size: 16px; font-weight: 700; color: #fff; }
+    .progress-wrap { height: 4px; background: #2a2a2a; border-radius: 2px; margin-bottom: 18px; }
+    .progress-bar { height: 4px; background: #FECC00; border-radius: 2px; transition: width .3s; }
+    .wellness-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+    .wellness-card-title { font-size: 11px; font-weight: 700; color: #FECC00; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+    .hooper-row { display: flex; align-items: center; margin-bottom: 11px; }
+    .hooper-label { font-size: 13px; color: #ccc; flex: 1; }
+    .hooper-scale { display: flex; gap: 4px; }
+    .scale-btn { width: 33px; height: 33px; border-radius: 7px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #888; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .1s; }
+    .scale-btn.sel { background: #FECC00; border-color: #FECC00; color: #0f0f0f; font-weight: 700; }
+    .sleep-row { display: flex; align-items: center; gap: 12px; }
+    .sleep-input { width: 80px; padding: 10px; border-radius: 8px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #FECC00; font-size: 18px; font-weight: 700; text-align: center; outline: none; }
+    .sleep-input:focus { border-color: #FECC00; }
+    .sleep-label { font-size: 13px; color: #ccc; }
+    .tap-zone { width: 100%; height: 140px; border-radius: 12px; border: 2px dashed #2a2a2a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+    .tap-zone.active { border-color: #FECC00; background: #FECC0006; }
+    .tap-zone.done { border-color: #1D9E75; background: #1D9E7506; cursor: default; }
+    .tap-count { font-size: 54px; font-weight: 700; color: #fff; line-height: 1; }
+    .tap-info { font-size: 12px; color: #555; }
+    .tap-chrono { font-size: 22px; font-weight: 600; color: #FECC00; }
+    .tap-chrono.urgent { color: #E24B4A; }
+    .tap-result { text-align: center; margin-top: 7px; }
+    .submit-btn { width: 100%; padding: 15px; border-radius: 12px; border: none; background: #FECC00; color: #0f0f0f; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+    .submit-btn:disabled { opacity: 0.3; cursor: default; }
+    .seance-bloc { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+    .seance-bloc-header { padding: 10px 14px; background: #222; border-bottom: 1px solid #2a2a2a; font-size: 12px; font-weight: 700; color: #FECC00; }
+    .seance-groupe-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #FECC0022; color: #FECC00; border: 1px solid #FECC0044; font-size: 10px; margin-left: 8px; }
+    .seance-exo { padding: 11px 14px; border-bottom: 1px solid #111; }
+    .seance-exo:last-child { border-bottom: none; }
+    .seance-exo-nom { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+    .seance-exo-params { font-size: 11px; color: #666; margin-bottom: 7px; }
+    .seance-charge { display: inline-block; padding: 3px 10px; border-radius: 7px; background: #FECC0022; color: #FECC00; font-size: 13px; font-weight: 700; border: 1px solid #FECC0044; margin-bottom: 8px; }
+    .series-grid { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .serie-box { background: #111; border: 1px solid #2a2a2a; border-radius: 7px; padding: 6px 8px; text-align: center; flex: 1; max-width: 72px; min-width: 52px; }
+    .serie-lbl { font-size: 9px; color: #555; margin-bottom: 3px; }
+    .serie-inp { width: 100%; background: none; border: none; color: #FECC00; font-size: 16px; font-weight: 700; text-align: center; outline: none; padding: 2px 0; }
+    .serie-pre { font-size: 9px; color: #333; margin-top: 2px; }
+    .serie-ok { font-size: 11px; color: #1D9E75; margin-top: 2px; }
+    .planning-jour { margin-bottom: 14px; }
+    .planning-jour-titre { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 7px; }
+    .planning-jour-titre.today { color: #FECC00; }
+    .event-pill { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 9px 12px; margin-bottom: 5px; }
+    .event-pill-title { font-size: 13px; font-weight: 600; color: #fff; }
+    .event-pill-meta { font-size: 11px; color: #555; margin-top: 2px; }
+    .event-pill-desc { font-size: 11px; color: #888; margin-top: 3px; }
+    .gps-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .gps-kpi { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 12px; }
+    .gps-kpi-label { font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+    .gps-kpi-val { font-size: 22px; font-weight: 700; line-height: 1; }
+    .gps-kpi-unit { font-size: 9px; color: #555; margin-top: 2px; }
+    .gps-hero { background: #1a1a1a; border: 1px solid #FECC0033; border-radius: 12px; padding: 14px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .gps-hero-item { text-align: center; }
+    .gps-hero-label { font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+    .gps-hero-val { font-size: 28px; font-weight: 700; line-height: 1; }
+    .gps-hero-sub { font-size: 10px; color: #555; margin-top: 3px; }
+    .gps-chart-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .gps-chart-title { font-size: 10px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+    .gps-chart { display: flex; align-items: flex-end; gap: 4px; height: 70px; }
+    .gps-bar-grp { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 2px; }
+    .gps-bar { border-radius: 3px 3px 0 0; width: 100%; min-height: 2px; }
+    .gps-bar-nom { font-size: 8px; color: #444; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+    .gps-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .gps-table th { padding: 5px 7px; text-align: left; font-size: 9px; color: #555; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #2a2a2a; }
+    .gps-table td { padding: 5px 7px; border-bottom: 1px solid #111; }
+    .gps-table tr:hover td { background: #1a1a1a; }
+    .empty-msg { text-align: center; padding: 40px 16px; color: #444; font-size: 13px; line-height: 1.7; }
+    .empty-icon { font-size: 36px; margin-bottom: 10px; }
+    
+    /* ====== PLANNING MOBILE ====== */
+    .planning-nav { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 8px; gap: 6px; }
+    .planning-week-label { font-size: 12px; font-weight: 600; color: #FECC00; text-align: center; flex: 1; }
+    .btn-nav-week { padding: 7px 11px; border-radius: 8px; border: 1px solid #2a2a2a; background: none; color: #888; font-size: 16px; cursor: pointer; line-height: 1; flex-shrink: 0; }
+    .btn-nav-week:active { border-color: #FECC00; color: #FECC00; }
+
+    /* View toggle */
+    .view-toggle { display: flex; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .view-toggle-btn { flex: 1; padding: 8px 0; font-size: 12px; font-weight: 600; color: #666; background: none; border: none; cursor: pointer; transition: all .15s; }
+    .view-toggle-btn.active { background: #FECC00; color: #0f0f0f; }
+
+    /* Days strip */
+    .days-strip { display: flex; gap: 5px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+    .days-strip::-webkit-scrollbar { display: none; }
+    .day-pill { flex-shrink: 0; width: 42px; text-align: center; padding: 7px 0; border-radius: 12px; cursor: pointer; border: 1px solid transparent; transition: all .15s; background: #1a1a1a; }
+    .day-pill:active { border-color: #FECC00; }
+    .day-pill.selected { background: #FECC00; }
+    .day-pill.today-pill { border-color: #FECC0066; }
+    .day-pill-name { font-size: 10px; font-weight: 600; text-transform: uppercase; color: #666; letter-spacing: .04em; }
+    .day-pill.selected .day-pill-name { color: #0f0f0f; }
+    .day-pill-num { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.2; }
+    .day-pill.selected .day-pill-num { color: #0f0f0f; }
+    .day-pill.today-pill .day-pill-num { color: #FECC00; }
+    .day-pill.selected.today-pill .day-pill-num { color: #0f0f0f; }
+    .day-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: #FECC00; margin: 3px auto 0; }
+    .day-pill.selected .day-pill-dot { background: #0f0f0f; }
+
+    /* ── VUE JOUR (swipe) ── */
+    .week-swipe-outer { overflow: hidden; border-radius: 12px; border: 1px solid #2a2a2a; background: #141414; }
+    .week-swipe-track { display: flex; transition: transform .28s cubic-bezier(.4,0,.2,1); will-change: transform; }
+    .week-slide { min-width: 100%; }
+
+    /* ── VUE SEMAINE (pan/zoom) ── */
+    .week-overview-outer { overflow: hidden; border-radius: 12px; border: 1px solid #2a2a2a; background: #141414; touch-action: none; position: relative; }
+    .week-overview-viewport { position: relative; overflow: hidden; width: 100%; }
+    .week-overview-canvas { position: relative; transform-origin: 0 0; will-change: transform; }
+    /* sticky time column inside overview */
+    .ov-time-col { position: sticky; left: 0; z-index: 10; background: #141414; }
+
+    /* ── TIMELINE COMMUNE ── */
+    .timeline-wrap { display: flex; }
+    .timeline-times { width: 40px; flex-shrink: 0; }
+    .timeline-hour-label { display: flex; align-items: flex-start; padding-top: 3px; padding-right: 5px; font-size: 10px; color: #444; justify-content: flex-end; }
+    .timeline-cols { flex: 1; position: relative; }
+    .timeline-grid-line { border-bottom: 1px solid #1e1e1e; }
+    .timeline-grid-line.half { border-bottom: 1px dashed #181818; }
+
+    /* ── EVENTS ── */
+    .tl-event { position: absolute; border-radius: 6px; padding: 4px 7px; overflow: hidden; cursor: pointer; border: 1px solid transparent; z-index: 2; }
+    .tl-event:active { filter: brightness(1.2); }
+    .tl-event-title { font-size: 11px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+    .tl-event-time { font-size: 9px; opacity: .75; margin-top: 2px; white-space: nowrap; }
+    .tl-event-lieu { font-size: 9px; opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── MODAL DÉTAIL JOUR ── */
+    .day-detail-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.82); z-index: 200; align-items: flex-end; }
+    .day-detail-modal.open { display: flex; }
+    .day-detail-sheet { background: #141414; border-radius: 20px 20px 0 0; width: 100%; max-height: 88vh; overflow-y: auto; padding: 0 0 44px; }
+    .day-detail-handle { width: 36px; height: 4px; background: #2a2a2a; border-radius: 2px; margin: 12px auto 0; }
+    .day-detail-header { padding: 14px 18px 12px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 10px; }
+    .day-detail-close { padding: 5px 10px; border-radius: 8px; border: 1px solid #2a2a2a; background: none; color: #666; font-size: 13px; cursor: pointer; flex-shrink: 0; }
+    .day-detail-title { font-size: 15px; font-weight: 700; color: #fff; flex: 1; }
+    .day-detail-body { padding: 14px 18px; }
+    .day-detail-empty { text-align: center; padding: 36px 0; color: #444; font-size: 13px; }
+    .day-event-card { background: #1e1e1e; border-radius: 12px; padding: 14px; margin-bottom: 10px; border-left: 3px solid #444; }
+    .day-event-type-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .day-event-title { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .day-event-time { font-size: 12px; color: #888; margin-bottom: 3px; }
+    .day-event-lieu { font-size: 12px; color: #666; }
+    .day-event-desc { font-size: 12px; color: #555; margin-top: 6px; line-height: 1.5; }
+    .day-event-badge { display: inline-block; padding: 3px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; margin-top: 8px; }
+    .day-event-intensity { font-size: 11px; margin-top: 5px; }
+
+    /* Now line */
+    .now-line { position: absolute; left: 0; right: 0; height: 2px; background: #FECC00; z-index: 5; pointer-events: none; }
+    .now-dot { position: absolute; left: -4px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #FECC00; }
+    
+    /* Day header in week overview */
+    .ov-day-header { font-size: 10px; font-weight: 700; text-align: center; padding: 4px 2px; color: #666; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #222; background: #141414; position: sticky; top: 0; z-index: 6; }
+    .ov-day-header.today { color: #FECC00; border-bottom-color: #FECC0066; }
+    
+    /* Pinch hint */
+    .pinch-hint { position: absolute; bottom: 8px; right: 8px; font-size: 10px; color: #333; pointer-events: none; z-index: 10; }
+    
+    /* Équipe view : event player tags */
+    .ev-player-tag { font-size: 8px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .8; margin-top: 1px; }
+    /* Groupe badge (events collectifs équipe) */
+    .ev-group-badge { display: inline-block; font-size: 8px; padding: 1px 4px; border-radius: 3px; opacity: .7; margin-top: 2px; }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .spinning {
+      animation: spin 1s linear infinite;
+      color: #FECC00 !important;
+    }
+    
+    /* Upcoming modules styling */
+    .menu-card.soon {
+      opacity: 0.65;
+      border-style: dashed;
+    }
+    .menu-card.soon:active {
+      background: #1a1a1a !important;
+      border-color: #2a2a2a !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <img src="https://www.sca-albi.fr/wp-content/uploads/2023/10/cropped-SCA-bis.png">
+    <div>
+      <div class="header-title" style="display: flex; align-items: center; gap: 8px;">
+        SCA Albi
+        <button onclick="synchroniserPlayerApp()" id="player-sync-btn" style="background:none; border:none; color:#555; font-size:18px; cursor:pointer; padding:4px; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; transition:all 0.2s; outline:none;" onmouseover="this.style.color='#fff'; this.style.background='#222'" onmouseout="this.style.color='#555'; this.style.background='none'" title="Synchroniser">↻</button>
+      </div>
+      <div class="header-sub" id="header-date"></div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- CONNEXION -->
+    <div class="screen active" id="screen-login">
+      <div style="text-align: center; margin: 32px 0 24px;">
+        <img src="https://www.sca-albi.fr/wp-content/uploads/2023/10/cropped-SCA-bis.png" style="width: 80px; margin-bottom: 12px;">
+        <div style="font-size: 24px; font-weight: 800; color: #FECC00; letter-spacing: -0.5px;">ESPACE JOUEURS</div>
+        <div style="font-size: 13px; color: #888; margin-top: 4px;">SCA Albi — Saison 2026</div>
+      </div>
+      
+      <div class="wellness-card" style="padding: 20px;">
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #2a2a2a; padding-bottom: 10px;">
+          <button id="tab-login" onclick="toggleLoginTab('login')" style="flex: 1; background: none; border: none; color: #FECC00; font-size: 15px; font-weight: 700; cursor: pointer; padding: 6px 0; border-bottom: 2px solid #FECC00;">Se connecter</button>
+          <button id="tab-signup" onclick="toggleLoginTab('signup')" style="flex: 1; background: none; border: none; color: #555; font-size: 15px; font-weight: 600; cursor: pointer; padding: 6px 0; border-bottom: 2px solid transparent;">Créer un compte</button>
+        </div>
+        
+        <div id="login-form">
+          <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 6px;">Adresse Email</label>
+            <input type="email" id="login-email" placeholder="joueur@scaalbi.fr" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; font-size: 15px; outline: none; border: 1px solid #222;" />
+          </div>
+          
+          <div style="margin-bottom: 18px;">
+            <label style="display: block; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 6px;">Mot de passe</label>
+            <input type="password" id="login-password" placeholder="••••••••" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; font-size: 15px; outline: none; border: 1px solid #222;" />
+          </div>
+          
+          <button class="submit-btn" id="btn-login-submit" onclick="handleEmailAuth()" style="margin-top: 0;">Se connecter</button>
+        </div>
+        
+        <div style="margin: 20px 0; display: flex; align-items: center; justify-content: center; gap: 10px;">
+          <div style="flex: 1; height: 1px; background: #2a2a2a;"></div>
+          <span style="font-size: 12px; color: #444; font-weight: 600; text-transform: uppercase;">ou</span>
+          <div style="flex: 1; height: 1px; background: #2a2a2a;"></div>
+        </div>
+        
+        <button onclick="handleGoogleAuth()" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; transition: all 0.2s;" onmouseover="this.style.background='#1a1a1a'; this.style.borderColor='#FECC00'" onmouseout="this.style.background='#0f0f0f'; this.style.borderColor='#2a2a2a'">
+          <svg viewBox="0 0 24 24" width="18" height="18" style="fill: currentColor;">
+            <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.516 5.516 0 0 1 8.5 13a5.516 5.516 0 0 1 5.491-5.514c2.217 0 4.163 1.22 5.143 3.036l3.35-3.326C20.425 5.2 17.512 3 14 3 6.92 3 2 7.029 2 12s4.92 9 12 9c6.335 0 11.514-4.5 11.514-10.286 0-.6-.058-1.18-.171-1.714H12.24z"/>
+          </svg>
+          Continuer avec Google
+        </button>
+      </div>
+      
+      <div id="login-error-msg" style="color: #E24B4A; font-size: 13px; text-align: center; margin-top: 14px; font-weight: 600;"></div>
+    </div>
+
+    <!-- SÉLECTION -->
+    <div class="screen" id="screen-select">
+      <div class="screen-title">Bonjour !</div>
+      <div class="screen-sub">Qui es-tu ?</div>
+      <div class="search-box">
+        <input type="text" id="search-joueur" placeholder="Rechercher ton nom..."
+               autocomplete="off" autocorrect="off" autocapitalize="off"
+               oninput="filtrerJoueurs(this.value)" />
+      </div>
+      <div class="joueurs-list" id="joueurs-list">
+        <div class="empty-msg"><div class="empty-icon">⏳</div>Chargement...</div>
+      </div>
+    </div>
+
+    <!-- MENU -->
+    <div class="screen" id="screen-menu">
+      <div class="player-header">
+        <div class="player-big-avatar" id="menu-avatar">??</div>
+        <div>
+          <div class="player-big-nom" id="menu-nom">—</div>
+          <div class="player-big-poste" id="menu-poste">—</div>
+        </div>
+        <button class="change-btn" onclick="seDeconnecter()">Déconnexion</button>
+      </div>
+      <div class="menu-grid" id="menu-grid">
+        <div class="menu-card" id="card-wellness" onclick="allerVers('wellness')">
+          <div class="menu-icon">💚</div>
+          <div class="menu-label">Wellness</div>
+          <div class="menu-sub">Du jour</div>
+          <div class="done-badge" id="wellness-done-badge" style="display:none">✓ Rempli</div>
+        </div>
+        <div class="menu-card" onclick="allerVers('seance')">
+          <div class="menu-icon">🏋️</div>
+          <div class="menu-label">Ma séance</div>
+          <div class="menu-sub">Programme muscu</div>
+        </div>
+        <div class="menu-card" onclick="allerVers('planning')">
+          <div class="menu-icon">📅</div>
+          <div class="menu-label">Mon planning</div>
+          <div class="menu-sub">Semaine en cours</div>
+        </div>
+        <div class="menu-card" onclick="allerVers('gps')">
+          <div class="menu-icon">📡</div>
+          <div class="menu-label">Stats GPS</div>
+          <div class="menu-sub">Mes données</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WELLNESS -->
+    <div class="screen" id="screen-wellness">
+      <div class="section-header">
+        <button class="back-btn" onclick="allerVers('menu')">← Retour</button>
+        <div class="section-title">Wellness du jour</div>
+      </div>
+      <div class="progress-wrap"><div class="progress-bar" id="wellness-progress" style="width:0%"></div></div>
+      <div class="wellness-card">
+        <div class="wellness-card-title">Questionnaire Hooper</div>
+        <div id="hooper-container"></div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#333;margin-top:3px;"><span>Très bas</span><span>Très haut</span></div>
+      </div>
+      <div class="wellness-card">
+        <div class="wellness-card-title">Sommeil</div>
+        <div class="sleep-row">
+          <input class="sleep-input" type="number" id="sleep-h" min="0" max="24" step="0.5" placeholder="7" oninput="majProgress()" />
+          <div class="sleep-label">heures de sommeil</div>
+        </div>
+      </div>
+      <div class="wellness-card">
+        <div class="wellness-card-title">Tap test — 10 secondes</div>
+        <div class="tap-zone" id="tap-zone" ontouchstart="handleTap(event)" onmousedown="handleTap(event)">
+          <div class="tap-count" id="tap-count">0</div>
+          <div class="tap-info" id="tap-info">Appuie pour commencer</div>
+          <div class="tap-chrono" id="tap-chrono" style="display:none">10.0s</div>
+        </div>
+        <div class="tap-result" id="tap-result"></div>
+        <div style="text-align:center;margin-top:6px;">
+          <button onclick="resetTap()" style="background:none;border:none;color:#555;font-size:12px;cursor:pointer;text-decoration:underline;">Recommencer</button>
+        </div>
+      </div>
+      <button class="submit-btn" id="submit-wellness" disabled onclick="soumettreWellness()">Valider mon wellness</button>
+    </div>
+
+    <!-- SÉANCE -->
+    <div class="screen" id="screen-seance">
+      <div class="section-header">
+        <button class="back-btn" onclick="allerVers('menu')">← Retour</button>
+        <div class="section-title">Ma séance</div>
+      </div>
+      
+      <!-- Navigation semaine -->
+      <div class="planning-nav" style="padding:8px 0;">
+        <button class="btn-nav-week" onclick="semainePrecedenteSeance()">‹</button>
+        <div class="planning-week-label" id="seance-week-label">Cette semaine</div>
+        <button class="btn-nav-week" onclick="semaineSuivanteSeance()">›</button>
+      </div>
+      
+      <div id="seance-content"><div class="empty-msg">Chargement...</div></div>
+    </div>
+
+    <!-- PLANNING -->
+    <div class="screen" id="screen-planning">
+      <div class="section-header">
+        <button class="back-btn" onclick="allerVers('menu')">← Retour</button>
+        <div class="section-title" id="planning-screen-title">Mon planning</div>
+      </div>
+
+      <!-- Ligne 1 : scope Moi / Équipe -->
+      <div class="view-toggle" style="margin-bottom:8px;">
+        <button class="view-toggle-btn active" id="vsb-moi"    onclick="setPlanningScope('moi')">👤 Moi</button>
+        <button class="view-toggle-btn"        id="vsb-equipe" onclick="setPlanningScope('equipe')">👥 Équipe</button>
+      </div>
+
+      <!-- Ligne 2 : Jour / Semaine + nav semaine -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div class="view-toggle" style="margin-bottom:0;flex-shrink:0;">
+          <button class="view-toggle-btn active" id="vtb-jour"    onclick="setViewMode('jour')">📅 Jour</button>
+          <button class="view-toggle-btn"        id="vtb-semaine" onclick="setViewMode('semaine')">🗓 Vue</button>
+        </div>
+        <div class="planning-nav" style="padding:0;flex:1;min-width:0;">
+          <button class="btn-nav-week" onclick="semainePrecedente()">‹</button>
+          <div class="planning-week-label" id="planning-week-label" style="font-size:11px;">Cette semaine</div>
+          <button class="btn-nav-week" onclick="semaineSuivante()">›</button>
+        </div>
+      </div>
+
+      <!-- Bandeau jours (vue jour seulement) -->
+      <div class="days-strip" id="days-strip"></div>
+
+      <!-- Vue jour : swipe -->
+      <div id="view-jour-container">
+        <div class="week-swipe-outer" id="week-swipe-outer">
+          <div class="week-swipe-track" id="week-swipe-track"></div>
+        </div>
+      </div>
+
+      <!-- Vue semaine : pan/zoom -->
+      <div id="view-semaine-container" style="display:none;">
+        <div class="week-overview-outer" id="week-overview-outer">
+          <div class="week-overview-viewport" id="week-overview-viewport">
+            <div class="week-overview-canvas" id="week-overview-canvas"></div>
+          </div>
+          <div class="pinch-hint">🤏 pinch = zoom · drag = déplacer</div>
+        </div>
+      </div>
+
+      <!-- Légende -->
+      <div id="planning-legend" style="display:flex;gap:10px;flex-wrap:wrap;padding:10px 4px 0;font-size:11px;color:#555;"></div>
+    </div>
+
+    <!-- MODAL JOUR DÉTAIL (bottom sheet) -->
+    <div class="day-detail-modal" id="day-detail-modal" onclick="closeDayModal(event)">
+      <div class="day-detail-sheet" id="day-detail-sheet">
+        <div class="day-detail-handle"></div>
+        <div class="day-detail-header">
+          <div class="day-detail-title" id="day-detail-title">—</div>
+          <button class="day-detail-close" onclick="closeDayModal()">✕</button>
+        </div>
+        <div class="day-detail-body" id="day-detail-body"></div>
+      </div>
+    </div>
+
+    <!-- GPS -->
+    <div class="screen" id="screen-gps">
+      <div class="section-header">
+        <button class="back-btn" onclick="allerVers('menu')">← Retour</button>
+        <div class="section-title">Mes stats GPS</div>
+      </div>
+      <div id="gps-content"><div class="empty-msg">Chargement...</div></div>
+    </div>
+
+  </div>
+
+  <script type="module">
+    import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js'
+    import{getFirestore,collection,doc,setDoc,getDoc,getDocs,serverTimestamp,onSnapshot}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js'
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js'
+    const app=initializeApp({apiKey:"AIzaSyCvMs-5LX9Ivk3OkzUR3iz9Kk1E5b9_7Vk",authDomain:"delta-rugby-app.firebaseapp.com",projectId:"delta-rugby-app",storageBucket:"delta-rugby-app.firebasestorage.app",messagingSenderId:"61187079762",appId:"1:61187079762:web:56cd1eaa8beb9e1a2ee98b"})
+    const db=getFirestore(app)
+    const auth=getAuth(app)
+
+    let unsubscribeMaintenance = null;
+    let unsubscribeModules = null;
+
+    function startConfigListeners() {
+      if (unsubscribeMaintenance) unsubscribeMaintenance();
+      if (unsubscribeModules) unsubscribeModules();
+
+      // Écoute en temps réel du mode maintenance
+      unsubscribeMaintenance = onSnapshot(doc(db, 'config', 'maintenance'), (docSnap) => {
+        const overlay = document.getElementById('maintenance-overlay')
+        if (overlay) {
+          if (docSnap.exists() && docSnap.data().active) {
+            overlay.style.display = 'flex'
+          } else {
+            overlay.style.display = 'none'
+          }
+        }
+      }, (error) => {
+        console.error('Erreur écoute maintenance:', error)
+      })
+
+      // Écoute en temps réel de l'activation des modules Player-App
+      unsubscribeModules = onSnapshot(doc(db, 'config', 'player_modules'), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data()
+          MODULES.forEach(m => {
+            if (data[m.id] !== undefined) {
+              m.active = data[m.id]
+            }
+          })
+          if (typeof window.renderMenuGrid === 'function') {
+            window.renderMenuGrid()
+          }
+        }
+      }, (error) => {
+        console.error('Erreur écoute configuration modules:', error)
+      })
+    }
+
+    function stopConfigListeners() {
+      if (unsubscribeMaintenance) { unsubscribeMaintenance(); unsubscribeMaintenance = null; }
+      if (unsubscribeModules) { unsubscribeModules(); unsubscribeModules = null; }
+    }
+
+    const HOOPER_Q=[{id:'fatigue',label:'Fatigue générale'},{id:'qualite_sommeil',label:'Qualité du sommeil'},{id:'stress',label:'Stress'},{id:'doms',label:'Douleurs musculaires'},{id:'humeur',label:'Humeur / motivation'}]
+    const COUL={'Pilier':'#8B3A3A','Talonneur':'#6B3A8B','2e Ligne':'#3A6B8B','3e Ligne':'#3A8B6B',"Demi de mêlée":'#8B6B3A',"Demi d'ouverture":'#6B8B3A','Centre':'#3A4A8B','Ailier':'#8B3A6B','Arrière':'#2A6B5B'}
+    
+    // Default colors - will be overridden by loaded types
+    let TCOL={match:'#E24B4A',entrainement:'#378ADD',muscu:'#FECC00',reunion:'#888',medical:'#1D9E75',deplacement:'#7F77DD',kine:'#378ADD',terrain:'#1D9E75',piscine:'#7F77DD',repos:'#444',autre:'#555'}
+    let TYPE_NAMES={match:'Match',entrainement:'Entraînement',muscu:'Muscu',reunion:'Réunion',medical:'Médical',deplacement:'Déplacement',kine:'Kiné',terrain:'Terrain',piscine:'Piscine',repos:'Repos',autre:'Autre'}
+    const COL={joueur:'Player Name',date:'Date',seance:'Activity Name',period:'Period Name',distHI:'Distance Haute Intensité',distTot:'Total Distance',vmax:'Maximum Velocity',vmaxPct:'Max Vel (% Max)',load:'Total Player Load',accB2:'Acceleration B2 Efforts (Gen 2)',accB3:'Acceleration B3 Efforts (Gen 2)',rhie:'RHIE Total Bouts',duree:'Total Duration'}
+    const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
+
+    let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[]
+    let tapCount=0,tapStarted=false,tapDone=false,tapRemaining=10,tapTimer=null
+    // Même logique que planning.html : midi local pour éviter décalage DST/UTC
+    function getLundi(date){
+      const d=new Date(date)
+      d.setHours(12,0,0,0)
+      const jour=d.getDay()
+      const diff=jour===0?-6:1-jour
+      d.setDate(d.getDate()+diff)
+      d.setHours(12,0,0,0)
+      return d
+    }
+    function dateStrLocal(d){
+      const year=d.getFullYear()
+      const month=String(d.getMonth()+1).padStart(2,'0')
+      const day=String(d.getDate()).padStart(2,'0')
+      return year+'-'+month+'-'+day
+    }
+    let currentWeekStart=getLundi(new Date())
+    const aujourdhui=dateStrLocal(new Date())
+    document.getElementById('header-date').textContent=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})
+
+    // Load custom event types from Firebase
+    async function loadEventTypesFromFirebase() {
+      try {
+        const docRef = doc(db, 'config', 'eventTypes')
+        const docSnap = await getDoc(docRef)
+        if (docSnap.exists() && docSnap.data().types) {
+          const loadedTypes = docSnap.data().types
+          // Update colors and names with loaded values
+          Object.keys(loadedTypes).forEach(key => {
+            const typeStyle = loadedTypes[key]
+            if (typeStyle.border) {
+              TCOL[key] = typeStyle.border
+            }
+            if (typeStyle.name) {
+              TYPE_NAMES[key] = typeStyle.name
+            }
+          })
+          console.log('Loaded custom event types:', loadedTypes)
+        }
+      } catch (error) {
+        console.log('No saved types found, using defaults')
+      }
+    }
+
+    // ===== SYSTEME DE MODULES EVOLUTIF =====
+    const MODULES = [
+      { id: 'wellness', label: 'Wellness', sub: 'Du jour', icon: '💚', active: true },
+      { id: 'seance', label: 'Ma séance', sub: 'Programme muscu', icon: '🏋️', active: true },
+      { id: 'planning', label: 'Mon planning', sub: 'Semaine en cours', icon: '📅', active: false, comingSoonText: 'Cette fonctionnalité arrive bientôt ! Nous la préparons pour l\'équipe.' },
+      { id: 'gps', label: 'Stats GPS', sub: 'Mes données', icon: '📡', active: true }
+    ]
+
+    window.renderMenuGrid = function() {
+      const grid = document.getElementById('menu-grid')
+      if (!grid) return
+      grid.innerHTML = MODULES.map(m => {
+        if (m.active) {
+          return `
+            <div class="menu-card" id="card-${m.id}" onclick="allerVers('${m.id}')">
+              <div class="menu-icon">${m.icon}</div>
+              <div class="menu-label">${m.label}</div>
+              <div class="menu-sub">${m.sub}</div>
+              ${m.id === 'wellness' ? `<div class="done-badge" id="wellness-done-badge" style="display:none">✓ Rempli</div>` : ''}
+            </div>
+          `
+        } else {
+          return `
+            <div class="menu-card soon" id="card-${m.id}" onclick="window.showComingSoon('${m.label.replace(/'/g, "\\'")}', '${(m.comingSoonText || 'Cette fonctionnalité arrive bientôt !').replace(/'/g, "\\'")}')">
+              <div class="menu-icon">${m.icon}</div>
+              <div class="menu-label">${m.label}</div>
+              <div class="menu-sub" style="color: #FECC00; font-weight: 500;">Bientôt</div>
+              <div class="done-badge" style="color: #666; font-size: 10px; margin-top: 4px;">En cours...</div>
+            </div>
+          `
+        }
+      }).join('')
+    }
+
+    window.showComingSoon = function(title, desc) {
+      document.getElementById('coming-soon-title').textContent = title
+      document.getElementById('coming-soon-desc').textContent = desc || 'Cette fonctionnalité arrive bientôt !'
+      document.getElementById('coming-soon-modal').classList.add('open')
+    }
+
+    window.closeComingSoonModal = function(e) {
+      if (e && e.target !== document.getElementById('coming-soon-modal')) return
+      document.getElementById('coming-soon-modal').classList.remove('open')
+    }
+
+    // ===== SECURE AUTHENTICATION FLOW & TABS =====
+    let loginTab = 'login';
+    window.toggleLoginTab = function(tab) {
+      loginTab = tab;
+      const loginBtn = document.getElementById('tab-login');
+      const signupBtn = document.getElementById('tab-signup');
+      const submitBtn = document.getElementById('btn-login-submit');
+      
+      if (tab === 'login') {
+        loginBtn.style.color = '#FECC00';
+        loginBtn.style.borderBottomColor = '#FECC00';
+        loginBtn.style.fontWeight = '700';
+        
+        signupBtn.style.color = '#555';
+        signupBtn.style.borderBottomColor = 'transparent';
+        signupBtn.style.fontWeight = '600';
+        
+        submitBtn.textContent = 'Se connecter';
+      } else {
+        signupBtn.style.color = '#FECC00';
+        signupBtn.style.borderBottomColor = '#FECC00';
+        signupBtn.style.fontWeight = '700';
+        
+        loginBtn.style.color = '#555';
+        loginBtn.style.borderBottomColor = 'transparent';
+        loginBtn.style.fontWeight = '600';
+        
+        submitBtn.textContent = 'Créer mon compte';
+      }
+      document.getElementById('login-error-msg').textContent = '';
+    }
+
+    window.handleEmailAuth = async function() {
+      const email = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+      const errorEl = document.getElementById('login-error-msg');
+      errorEl.textContent = '';
+      
+      if (!email || !password) {
+        errorEl.textContent = 'Veuillez remplir tous les champs.';
+        return;
+      }
+      
+      const submitBtn = document.getElementById('btn-login-submit');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Chargement...';
+      
+      try {
+        if (loginTab === 'login') {
+          await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          await createUserWithEmailAndPassword(auth, email, password);
+        }
+      } catch (e) {
+        console.error(e);
+        let errorMsg = 'Une erreur est survenue.';
+        if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+          errorMsg = 'Email ou mot de passe incorrect.';
+        } else if (e.code === 'auth/email-already-in-use') {
+          errorMsg = 'Cet email est déjà associé à un compte.';
+        } else if (e.code === 'auth/weak-password') {
+          errorMsg = 'Le mot de passe doit contenir au moins 6 caractères.';
+        } else if (e.code === 'auth/invalid-email') {
+          errorMsg = 'Adresse email invalide.';
+        }
+        errorEl.textContent = errorMsg;
+        submitBtn.disabled = false;
+        submitBtn.textContent = loginTab === 'login' ? 'Se connecter' : 'Créer mon compte';
+      }
+    }
+
+    window.handleGoogleAuth = async function() {
+      const errorEl = document.getElementById('login-error-msg');
+      errorEl.textContent = '';
+      
+      try {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+      } catch (e) {
+        console.error(e);
+        if (e.code !== 'auth/popup-closed-by-user') {
+          errorEl.textContent = 'Erreur lors de la connexion Google.';
+        }
+      }
+    }
+
+    // ===== INIT =====
+    async function init(){
+      try{
+        const[jSnap,rSnap,eSnap]=await Promise.all([getDocs(collection(db,'joueurs')),getDoc(doc(db,'config','ratios')),getDoc(doc(db,'config','exercices'))])
+        joueurs=jSnap.docs.map(d=>({id:d.id,...d.data()})).filter(j=>!j.archived)
+        ratios=rSnap.exists()?rSnap.data():{}
+        exercicesList=eSnap.exists()?(eSnap.data().liste||[]):[]
+        
+        // Load custom event types from Firebase
+        await loadEventTypesFromFirebase()
+        
+        renderMenuGrid()
+        buildHooper()
+      }catch(e){
+        console.error('Init:',e)
+        document.getElementById('joueurs-list').innerHTML='<div class="empty-msg"><div class="empty-icon">⚠️</div>Erreur de connexion.<br>Vérifie ta connexion internet.</div>'
+        return
+      }
+
+      // Check persistent connection via Auth State Observer
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          startConfigListeners();
+          try {
+            // Refresh players from Firestore to verify their association status
+            const jSnap = await getDocs(collection(db, 'joueurs'));
+            joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived);
+            
+            const associatedPlayer = joueurs.find(j => j.uid === user.uid);
+            if (associatedPlayer) {
+              await selectionnerJoueur(associatedPlayer);
+            } else {
+              // Unassociated user: show player list of only unlinked players to select their name
+              const unlinkedPlayers = joueurs.filter(j => !j.uid);
+              renderJoueurs(unlinkedPlayers);
+              allerVers('select');
+            }
+          } catch (e) {
+            console.error('Auth state check error:', e);
+          }
+        } else {
+          stopConfigListeners();
+          // Send to login page
+          allerVers('login');
+        }
+      });
+    }
+    init()
+
+    // ===== LISTE JOUEURS =====
+    function renderJoueurs(liste){
+      const c=document.getElementById('joueurs-list')
+      if(!liste.length){c.innerHTML='<div class="empty-msg">Aucun joueur trouvé.</div>';return}
+      c.innerHTML=''
+      // Tri alphabétique par nom
+      const triés=[...liste].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''))
+      triés.forEach(j=>{
+        const item=document.createElement('div')
+        item.className='joueur-item'
+        
+        // Créer le cercle avec photo ou initiales
+        const circle=document.createElement('div')
+        circle.className='joueur-circle'
+        
+        if(j.photo){
+          const img=document.createElement('img')
+          img.className='joueur-avatar'
+          img.src=j.photo
+          img.onerror=function(){this.replaceWith(createInitials(j))}
+          circle.appendChild(img)
+        }else{
+          circle.appendChild(createInitials(j))
+        }
+        
+        // Ajouter le numéro si présent
+        if(j.numero){
+          const num=document.createElement('div')
+          num.className='joueur-num'
+          num.textContent=j.numero
+          circle.appendChild(num)
+        }
+        
+        item.appendChild(circle)
+        
+        const info=document.createElement('div')
+        info.innerHTML=`
+          <div class="joueur-item-nom">${j.prenom||''} ${j.nom||''}</div>
+          <div class="joueur-item-poste">${j.poste||''}</div>
+        `
+        item.appendChild(info)
+        
+        item.addEventListener('click',()=>selectionnerJoueur(j))
+        c.appendChild(item)
+      })
+      
+      function createInitials(j){
+        const div=document.createElement('div')
+        div.className='joueur-avatar-initiales'
+        div.textContent=`${(j.prenom||'?')[0]}${(j.nom||'?')[0]}`
+        return div
+      }
+    }
+
+    window.filtrerJoueurs=function(q){
+      const ql=q.toLowerCase()
+      renderJoueurs(joueurs.filter(j=>((j.nom||'')+' '+(j.prenom||'')).toLowerCase().includes(ql)||((j.prenom||'')+' '+(j.nom||'')).toLowerCase().includes(ql)))
+    }
+
+    async function selectionnerJoueur(j){
+      // Check if they are authenticated and need linkage
+      const user = auth.currentUser;
+      if (user && !j.uid) {
+        if (!confirm(`Es-tu bien ${j.prenom} ${j.nom} ? Cette action liera définitivement ton compte de connexion à ce profil.`)) {
+          return;
+        }
+        try {
+          // Link player with user uid in Firestore
+          await setDoc(doc(db, 'joueurs', j.id), { uid: user.uid }, { merge: true });
+          j.uid = user.uid; // Update local memory representation
+        } catch (e) {
+          console.error('Linkage error:', e);
+          alert('Erreur lors de la liaison du profil. Demande à ton préparateur physique.');
+          return;
+        }
+      }
+
+      joueurActif=j
+      localStorage.setItem('sca_joueur_id',j.id)
+      const col=COUL[j.poste]||'#444'
+      try{const mx=await getDoc(doc(db,'maxTestes',j.id));maxTestes=mx.exists()?mx.data():{}}catch(e){maxTestes={}}
+      const av=document.getElementById('menu-avatar')
+      if (av) {
+        av.textContent=(j.prenom||'?')[0]+(j.nom||'?')[0]
+        av.style.background=col+'22';av.style.borderColor=col;av.style.color=col
+      }
+      const menuNom = document.getElementById('menu-nom')
+      if (menuNom) menuNom.textContent=(j.prenom||'')+' '+(j.nom||'')
+      const menuPoste = document.getElementById('menu-poste')
+      if (menuPoste) menuPoste.textContent=j.poste||''
+      try{
+        const wSnap=await getDoc(doc(db,'wellness',`${j.id}_${aujourdhui}`))
+        const cardWellness = document.getElementById('card-wellness')
+        if (cardWellness) cardWellness.classList.toggle('done',wSnap.exists())
+        const doneBadge = document.getElementById('wellness-done-badge')
+        if (doneBadge) doneBadge.style.display=wSnap.exists()?'block':'none'
+      }catch(e){}
+      allerVers('menu')
+    }
+
+    window.seDeconnecter = async function() {
+      if (confirm('Voulez-vous vous déconnecter de votre compte ?')) {
+        try {
+          await signOut(auth);
+          joueurActif = null;
+          localStorage.removeItem('sca_joueur_id');
+          allerVers('login');
+        } catch (e) {
+          console.error('Logout error:', e);
+        }
+      }
+    }
+
+    window.changerJoueur=function(){
+      window.seDeconnecter()
+    }
+
+    window.synchroniserPlayerApp = async function() {
+      const btn = document.getElementById('player-sync-btn')
+      if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
+      try {
+        console.log('Synchronisation Player App demandée...')
+        // 1. Recharger les snaps Firebase de base
+        const [jSnap, rSnap, eSnap] = await Promise.all([
+          getDocs(collection(db, 'joueurs')),
+          getDoc(doc(db, 'config', 'ratios')),
+          getDoc(doc(db, 'config', 'exercices'))
+        ])
+        joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived)
+        ratios = rSnap.exists() ? rSnap.data() : {}
+        exercicesList = eSnap.exists() ? (eSnap.data().liste || []) : []
+        
+        // 2. Recharger les types d'événements personnalisés
+        await loadEventTypesFromFirebase()
+        
+        // 3. Rafraîchir l'écran actif
+        const activeScreenEl = document.querySelector('.screen.active')
+        const activeScreenId = activeScreenEl ? activeScreenEl.id.replace('screen-', '') : 'select'
+        
+        if (activeScreenId === 'select') {
+          const q = document.getElementById('search-joueur').value || ''
+          filtrerJoueurs(q)
+        } else if (joueurActif) {
+          // Rafraîchir les maxes et profil du joueur actif
+          const mx = await getDoc(doc(db, 'maxTestes', joueurActif.id))
+          maxTestes = mx.exists() ? mx.data() : {}
+          
+          const col = COUL[joueurActif.poste] || '#444'
+          const av = document.getElementById('menu-avatar')
+          if (av) {
+            av.textContent = (joueurActif.prenom || '?')[0] + (joueurActif.nom || '?')[0]
+            av.style.background = col + '22'; av.style.borderColor = col; av.style.color = col
+          }
+          const nomEl = document.getElementById('menu-nom')
+          if (nomEl) nomEl.textContent = (joueurActif.prenom || '') + ' ' + (joueurActif.nom || '')
+          const posteEl = document.getElementById('menu-poste')
+          if (posteEl) posteEl.textContent = joueurActif.poste || ''
+          
+          try {
+            const wSnap = await getDoc(doc(db, 'wellness', `${joueurActif.id}_${aujourdhui}`))
+            const cardWellness = document.getElementById('card-wellness')
+            if (cardWellness) cardWellness.classList.toggle('done', wSnap.exists())
+            const badgeWellness = document.getElementById('wellness-done-badge')
+            if (badgeWellness) badgeWellness.style.display = wSnap.exists() ? 'block' : 'none'
+          } catch(e) {}
+          
+          // Recharger les données de l'écran actif s'il s'agit de seance, planning, etc.
+          if (activeScreenId === 'seance') chargerSeance()
+          if (activeScreenId === 'planning') chargerPlanning()
+          if (activeScreenId === 'gps') chargerGPS()
+        }
+        
+        console.log('Synchronisation Player App réussie !')
+      } catch (e) {
+        console.error('Erreur synchronisation Player App:', e)
+      }
+      if (btn) { btn.classList.remove('spinning'); btn.disabled = false; }
+    }
+
+    // ===== NAVIGATION — UNE SEULE DÉFINITION =====
+    window.allerVers=function(screen){
+      document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
+      const el=document.getElementById('screen-'+screen)
+      if(!el){console.error('Screen manquant: screen-'+screen);return}
+      el.classList.add('active');window.scrollTo(0,0)
+      if(screen==='seance')chargerSeance()
+      if(screen==='planning')chargerPlanning()
+      if(screen==='gps')chargerGPS()
+    }
+
+    // ===== HOOPER =====
+    function buildHooper(){
+      const c=document.getElementById('hooper-container');c.innerHTML=''
+      HOOPER_Q.forEach(q=>{
+        const row=document.createElement('div');row.className='hooper-row'
+        row.innerHTML=`<span class="hooper-label">${q.label}</span><div class="hooper-scale">${[1,2,3,4,5,6,7].map(v=>`<button class="scale-btn" onclick="setHooper('${q.id}',${v},this)">${v}</button>`).join('')}</div>`
+        c.appendChild(row)
+      })
+    }
+    window.setHooper=function(id,val,btn){
+      hooperScores[id]=val
+      btn.closest('.hooper-row').querySelectorAll('.scale-btn').forEach(b=>b.classList.remove('sel'))
+      btn.classList.add('sel');majProgress()
+    }
+    window.majProgress=function(){
+      const hOk=HOOPER_Q.every(q=>hooperScores[q.id])
+      const sOk=document.getElementById('sleep-h').value!==''
+      const done=[hOk,sOk,tapDone].filter(Boolean).length
+      document.getElementById('wellness-progress').style.width=Math.round(done/3*100)+'%'
+      document.getElementById('submit-wellness').disabled=!(hOk&&sOk&&tapDone)
+    }
+
+    // ===== TAP TEST =====
+    window.handleTap=function(e){
+      e.preventDefault();if(tapDone)return
+      if(!tapStarted){
+        tapStarted=true
+        document.getElementById('tap-zone').classList.add('active')
+        document.getElementById('tap-info').textContent='Continue !'
+        document.getElementById('tap-chrono').style.display='block'
+        tapTimer=setInterval(()=>{
+          tapRemaining=Math.max(0,tapRemaining-0.1)
+          const el=document.getElementById('tap-chrono')
+          el.textContent=tapRemaining.toFixed(1)+'s'
+          if(tapRemaining<=3)el.classList.add('urgent')
+          if(tapRemaining<=0.01)finishTap()
+        },100)
+      }
+      tapCount++;document.getElementById('tap-count').textContent=tapCount
+    }
+    function finishTap(){
+      clearInterval(tapTimer);tapDone=true
+      const zone=document.getElementById('tap-zone')
+      zone.classList.remove('active');zone.classList.add('done')
+      document.getElementById('tap-info').textContent='Terminé !'
+      document.getElementById('tap-chrono').style.display='none'
+      const col=tapCount>=70?'#1D9E75':tapCount>=55?'#EF9F27':'#E24B4A'
+      const lbl=tapCount>=70?'Excellent':tapCount>=55?'Correct':'Faible'
+      document.getElementById('tap-result').innerHTML=`<span style="display:inline-block;padding:5px 14px;border-radius:18px;font-size:13px;font-weight:700;background:${col}22;color:${col};border:1px solid ${col}44;">${lbl} · ${tapCount} taps</span>`
+      majProgress()
+    }
+    window.resetTap=function(){
+      clearInterval(tapTimer);tapCount=0;tapStarted=false;tapDone=false;tapRemaining=10
+      document.getElementById('tap-count').textContent='0'
+      document.getElementById('tap-info').textContent='Appuie pour commencer'
+      document.getElementById('tap-chrono').textContent='10.0s'
+      document.getElementById('tap-chrono').style.display='none'
+      document.getElementById('tap-chrono').classList.remove('urgent')
+      document.getElementById('tap-result').innerHTML=''
+      document.getElementById('tap-zone').classList.remove('active','done')
+      majProgress()
+    }
+
+    // ===== WELLNESS SOUMETTRE =====
+    window.soumettreWellness=async function(){
+      if(!joueurActif)return
+      const sommeil=parseFloat(document.getElementById('sleep-h').value)
+      const hooMoy=Object.values(hooperScores).reduce((a,b)=>a+b,0)/Object.values(hooperScores).length
+      const score=+((hooMoy*0.5+Math.min((sommeil/8)*7,7)*0.3+Math.min((tapCount/70)*7,7)*0.2).toFixed(2))
+      await setDoc(doc(db,'wellness',`${joueurActif.id}_${aujourdhui}`),{joueurId:joueurActif.id,date:aujourdhui,hooper:hooperScores,sommeil,tapCount,scoreGlobal:score,createdAt:serverTimestamp()})
+      const btn=document.getElementById('submit-wellness')
+      btn.textContent='✓ Wellness envoyé !';btn.style.background='#1D9E75';btn.disabled=true
+      document.getElementById('card-wellness').classList.add('done')
+      document.getElementById('wellness-done-badge').style.display='block'
+      setTimeout(()=>allerVers('menu'),1400)
+    }
+
+    // ===== SÉANCE =====
+    async function chargerSeance(){
+      const c=document.getElementById('seance-content');c.innerHTML='<div class="empty-msg">Chargement...</div>'
+      if(!joueurActif)return
+      
+      // Mettre à jour le label de semaine
+      const lundi = new Date(currentWeekStart)
+      const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
+      const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
+      document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
+      
+      try{
+        const snap=await getDocs(collection(db,'seances'))
+        const seances=snap.docs.map(d=>({id:d.id,...d.data()}))
+          .filter(s=>!s.estBlessé && s.statut === 'publie')
+          .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+        
+        // Filtrer pour la semaine sélectionnée
+        const lundiStr = dateStrLocal(lundi)
+        const dimancheStr = dateStrLocal(dimanche)
+        
+        const seancesSemaine = seances.filter(s => s.date && s.date >= lundiStr && s.date <= dimancheStr)
+        
+        if(!seancesSemaine.length){
+          c.innerHTML='<div class="empty-msg"><div class="empty-icon">🏖️</div>Aucune séance publiée cette semaine.</div>'
+          return
+        }
+        
+        // Afficher toutes les séances de la semaine où le joueur est assigné
+        c.innerHTML='<div style="font-size:11px;color:#555;margin-bottom:12px;">Séances de cette semaine</div>'
+        
+        let aUneSeance=false
+        for(const sa of seancesSemaine){
+          const estAssigne = sa.blocs?.some(b=>b.groupes?.some(g=>g.joueurs?.includes(joueurActif.id)))
+          if(!estAssigne) continue
+          
+          aUneSeance=true
+          try{const crSnap=await getDoc(doc(db,'chargesReelles',`${sa.id}_${joueurActif.id}`));chargesReelles=crSnap.exists()?crSnap.data():{}}catch(e){chargesReelles={}}
+          
+          const seanceId='seance-'+sa.id
+          const seanceCard=document.createElement('div')
+          seanceCard.className='seance-bloc'
+          seanceCard.style.marginBottom='16px'
+          seanceCard.style.cursor='pointer'
+          
+          const header=document.createElement('div')
+          header.className='seance-bloc-header'
+          header.style.background='#222'
+          header.style.display='flex'
+          header.style.alignItems='center'
+          header.style.justifyContent='space-between'
+          header.innerHTML=`<span>${sa.date?new Date(sa.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):''}${sa.theme?' · '+sa.theme:''}</span><span style="font-size:18px;color:#FECC00;">▼</span>`
+          
+          const body=document.createElement('div')
+          body.id=seanceId+'-body'
+          body.style.display='none'
+          
+          let aBlocPourMoi=false
+          sa.blocs?.forEach(bloc=>{
+            const gJ=bloc.groupes?.find(g=>g.joueurs?.includes(joueurActif.id))
+            if(!gJ)return;aBlocPourMoi=true
+            const bEl=document.createElement('div');bEl.className='seance-bloc'
+            bEl.style.border='none';bEl.style.borderRadius='0';bEl.style.marginBottom='0'
+            bEl.innerHTML=`<div class="seance-bloc-header">${bloc.nom}<span class="seance-groupe-badge">${gJ.nom}</span></div>`
+            gJ.exercices?.forEach(exo=>{
+              if(!exo.exercice)return
+              
+              // Chercher la photo de l'exercice
+              const exoData=exercicesList.find(e=>e.nom===exo.exercice)
+              const photoUrl=exoData?.photo||''
+              
+              let cp=null
+              const orm=maxTestes[exo.exercice]
+              if(orm>0)cp=Math.round((exo.rpe/10)*orm/2.5)*2.5
+              else if(ratios[exo.exercice]){const{ratio,mvtRoi}=ratios[exo.exercice];const or2=maxTestes[mvtRoi]||0;if(or2>0)cp=Math.round((exo.rpe/10)*ratio*or2/2.5)*2.5}
+              
+              const eEl=document.createElement('div');eEl.className='seance-exo'
+              eEl.style.display='flex'
+              eEl.style.gap='10px'
+              eEl.style.alignItems='flex-start'
+              
+              let photoHtml=''
+              if(photoUrl){
+                photoHtml=`<img src="${photoUrl}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'" />`
+              }
+              
+              eEl.innerHTML=`
+                ${photoHtml}
+                <div style="flex:1;">
+                  <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${exo.numExo||''}. ${exo.exercice}</div>
+                  <div class="seance-exo-params">${exo.nbSets} séries × ${exo.nbReps} reps · RPE ${exo.rpe}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
+                  <div class="seance-charge">${cp?cp+' kg préconisés':'RPE '+exo.rpe}</div>
+                </div>
+              `
+              
+              const gr=document.createElement('div');gr.className='series-grid'
+              gr.style.marginTop='8px'
+              for(let s=1;s<=(exo.nbSets||1);s++){
+                const clef=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}_s${s}`
+                const vs=chargesReelles[clef]||''
+                const ckId='ck_'+Math.random().toString(36).slice(2)
+                const box=document.createElement('div');box.className='serie-box'
+                box.innerHTML=`<div class="serie-lbl">Série ${s}</div><input class="serie-inp" type="number" step="0.5" placeholder="${cp||exo.rpe}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${cp?'Préco '+cp+'kg':''}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                gr.appendChild(box)
+              }
+              eEl.querySelector('div[style*="flex:1"]').appendChild(gr)
+              bEl.appendChild(eEl)
+            })
+            body.appendChild(bEl)
+          })
+          
+          seanceCard.appendChild(header)
+          seanceCard.appendChild(body)
+          
+          header.onclick=()=>{
+            const isHidden=body.style.display==='none'
+            body.style.display=isHidden?'block':'none'
+            header.querySelector('span:last-child').textContent=isHidden?'▲':'▼'
+          }
+          
+          if(aBlocPourMoi)c.appendChild(seanceCard)
+        }
+        
+        if(!aUneSeance)c.innerHTML+='<div class="empty-msg">Tu n\'es assigné à aucune séance cette semaine.</div>'
+      }catch(e){console.error(e);c.innerHTML='<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'}
+    }
+    
+    // Navigation semaine pour les séances
+    window.semainePrecedenteSeance=function(){ 
+      currentWeekStart=getLundi(new Date(currentWeekStart.getTime()-7*24*60*60*1000))
+      chargerSeance() 
+    }
+    window.semaineSuivanteSeance=function(){ 
+      currentWeekStart=getLundi(new Date(currentWeekStart.getTime()+7*24*60*60*1000))
+      chargerSeance() 
+    }
+
+    window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId){
+      if(!val)return
+      chargesReelles[clef]=val;inp.style.color='#1D9E75'
+      const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
+      try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[clef]:val,updatedAt:serverTimestamp()},{merge:true})}catch(e){console.error(e)}
+    }
+
+    // ===== PLANNING MOBILE =====
+    
+    let planningCache = null
+    let selectedDayIdx = 0
+    let currentViewMode = 'jour'   // 'jour' | 'semaine'
+    let planningScope   = 'moi'    // 'moi'  | 'equipe'
+
+    // ─── Scope toggle ───
+    window.setPlanningScope = function(scope){
+      planningScope = scope
+      document.getElementById('vsb-moi').classList.toggle('active', scope==='moi')
+      document.getElementById('vsb-equipe').classList.toggle('active', scope==='equipe')
+      const estBlesse = joueurActif?.statut === 'blesse'
+      if(scope==='moi'){
+        document.getElementById('planning-screen-title').textContent = estBlesse ? 'Mon programme rééducation' : 'Mon planning'
+      } else {
+        document.getElementById('planning-screen-title').textContent = 'Planning équipe'
+      }
+      if(planningCache){
+        const {planningAll, creneauxAll, lundi, nowStr} = planningCache
+        const filtered = filterByScope(planningAll, creneauxAll)
+        buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
+        buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
+        updateDotVisibility(lundi, filtered.planning, filtered.creneaux)
+        goToSlide(selectedDayIdx, false)
+      }
+    }
+
+    // ─── Filtre les données selon le scope et le statut du joueur ───
+    function filterByScope(planningAll, creneauxAll){
+      const estBlesse = joueurActif?.statut === 'blesse'
+      const jid = joueurActif?.id
+
+      if(planningScope === 'equipe'){
+        // Vue équipe : tout le planning collectif visible par au moins un joueur
+        // Exclure seulement visible:false (staff only)
+        // Les créneaux blessés individuels (creneauxBlesses) ne sont jamais affichés ici
+        return {
+          planning: planningAll.filter(e => e.visible !== false),
+          creneaux: []
+        }
+      } else {
+        // Vue "Moi"
+        if(estBlesse){
+          // Joueur blessé : uniquement ses créneaux blessés (pas le planning collectif)
+          return {
+            planning: [],
+            creneaux: creneauxAll.filter(cr =>
+              (cr.joueurIds && cr.joueurIds.includes(jid)) || cr.joueurId === jid
+            )
+          }
+        } else {
+          // Joueur valide : planning collectif filtré par visibilité
+          return {
+            planning: planningAll.filter(e => {
+              if(e.visible === false) return false         // masqué staff
+              if(e.visiblePlayers && e.visiblePlayers.length > 0){
+                return e.visiblePlayers.includes(jid)     // créneau pour joueurs sélectionnés
+              }
+              return true                                  // visible par tous
+            }),
+            creneaux: []  // pas de créneaux blessés pour un joueur valide
+          }
+        }
+      }
+    }
+
+    // ─── Nom court d'un joueur ───
+    function nomCourt(joueurId){
+      const j = joueurs.find(x => x.id === joueurId)
+      if(!j) return '?'
+      const parts = (j.nom||'').trim().split(' ')
+      if(parts.length >= 2) return parts[0][0]+'. '+parts[parts.length-1]
+      return j.nom || '?'
+    }
+    
+    // Heures affichées
+    const TL_START = 6, TL_END = 22
+    // px/heure pour chaque vue
+    const HOUR_H_DAY = 64    // vue jour : plus de hauteur
+    const HOUR_H_WEEK = 44   // vue semaine : compact
+    
+    // ───── Calcul couleur avec intensité (identique au coach) ─────
+    function getEventColors(ev) {
+      const baseCol = TCOL[ev.type] || (ev.source==='creneaux' ? '#E24B4A' : '#555')
+      const intensity = ev.intensity || 0
+      let bg, border, text
+      if (intensity === 3) {
+        // Fort : couleur pleine, texte blanc
+        bg = baseCol + 'DD'
+        border = baseCol
+        text = '#FFFFFF'
+      } else if (intensity === 2) {
+        // Moyen
+        bg = baseCol + '55'
+        border = baseCol + 'AA'
+        text = baseCol
+      } else {
+        // Léger ou pas défini
+        bg = baseCol + '28'
+        border = baseCol + '66'
+        text = baseCol
+      }
+      return { bg, border, text, base: baseCol }
+    }
+
+    // ───── Algorithme correct de détection des chevauchements ─────
+    // Retourne un tableau de colonnes, chaque colonne = liste d'events non-overlapping
+    function computeColumns(events) {
+      // Pour chaque event, calculer sa "colonne" et le nombre total de colonnes dans son groupe
+      const sorted = [...events].sort((a,b) => heureMin(a.heureDebut) - heureMin(b.heureDebut))
+      
+      // On assigne chaque event à une colonne
+      const cols = [] // cols[i] = liste d'events dans la colonne i
+      const evMeta = [] // evMeta[i] = { col, colSpan } (à remplir après)
+      
+      for (const ev of sorted) {
+        const s = heureMin(ev.heureDebut)
+        const e = heureMin(ev.heureFin) || s + 60
+        let placed = false
+        for (let ci = 0; ci < cols.length; ci++) {
+          // Peut-on placer dans cette colonne ? (pas de overlap avec dernier)
+          const lastInCol = cols[ci][cols[ci].length - 1]
+          const ls = heureMin(lastInCol.heureDebut)
+          const le = heureMin(lastInCol.heureFin) || ls + 60
+          if (s >= le) { // pas de chevauchement
+            cols[ci].push(ev)
+            ev._col = ci
+            placed = true
+            break
+          }
+        }
+        if (!placed) {
+          ev._col = cols.length
+          cols.push([ev])
+        }
+      }
+      
+      // Calcul du colSpan : combien de colonnes parallèles un event partage-t-il ?
+      // = nb max de colonnes actives simultanément dans son intervalle
+      for (const ev of sorted) {
+        const s = heureMin(ev.heureDebut)
+        const e = heureMin(ev.heureFin) || s + 60
+        let maxCol = ev._col
+        for (const other of sorted) {
+          const os = heureMin(other.heureDebut)
+          const oe = heureMin(other.heureFin) || os + 60
+          if (os < e && oe > s) { // overlap
+            maxCol = Math.max(maxCol, other._col)
+          }
+        }
+        ev._totalCols = maxCol + 1
+      }
+      
+      return sorted
+    }
+
+    // ───── Charge les données ─────
+    async function chargerPlanning(){
+      if(!joueurActif) return
+      planningCache = null
+      
+      const lundi = getLundi(new Date(currentWeekStart))
+      const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
+      const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
+      document.getElementById('planning-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
+      
+      const nowStr = dateStrLocal(new Date())
+      let defaultIdx = 0
+      for(let i=0;i<7;i++){
+        const d=new Date(lundi); d.setDate(lundi.getDate()+i)
+        if(dateStrLocal(d)===nowStr){ defaultIdx=i; break }
+      }
+      selectedDayIdx = defaultIdx
+      buildDaysStrip(lundi, nowStr)
+      
+      // Mettre à jour le titre selon statut
+      const _estBlesse = joueurActif?.statut === 'blesse'
+      if(planningScope==='moi'){
+        document.getElementById('planning-screen-title').textContent = _estBlesse ? 'Mon programme rééducation' : 'Mon planning'
+      } else {
+        document.getElementById('planning-screen-title').textContent = 'Planning équipe'
+      }
+      
+      try{
+        // Toujours tout charger (planning collectif + TOUS les creneaux blesses)
+        const [planSnap, bSnap] = await Promise.all([
+          getDocs(collection(db,'planning')),
+          getDocs(collection(db,'creneauxBlesses'))
+        ])
+        const planningAll = planSnap.docs.map(d=>({id:d.id,...d.data()}))
+        const creneauxAll = bSnap.docs.map(d=>({id:d.id,...d.data()}))
+        planningCache = { planningAll, creneauxAll, lundi, nowStr }
+        
+        const filtered = filterByScope(planningAll, creneauxAll)
+        buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
+        buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
+        buildLegend()
+        goToSlide(selectedDayIdx, false)
+        updateDaysPillSelection()
+        updateDotVisibility(lundi, filtered.planning, filtered.creneaux)
+        
+      }catch(e){ console.error(e) }
+    }
+    
+    function buildDaysStrip(lundi, todayStr){
+      const strip = document.getElementById('days-strip')
+      strip.innerHTML = ''
+      const NOMS = ['L','M','M','J','V','S','D']
+      for(let i=0;i<7;i++){
+        const d = new Date(lundi); d.setDate(lundi.getDate()+i)
+        const ds = dateStrLocal(d)
+        const isToday = ds===todayStr
+        const pill = document.createElement('div')
+        pill.className = 'day-pill'+(isToday?' today-pill':'')
+        pill.dataset.idx = i
+        pill.innerHTML = `
+          <div class="day-pill-name">${NOMS[i]}</div>
+          <div class="day-pill-num">${d.getDate()}</div>
+          <div class="day-pill-dot" style="visibility:hidden;"></div>
+        `
+        pill.onclick = () => { selectedDayIdx=i; goToSlide(i, true); updateDaysPillSelection() }
+        strip.appendChild(pill)
+      }
+    }
+    
+    function updateDaysPillSelection(){
+      document.querySelectorAll('.day-pill').forEach((p,i)=>{
+        p.classList.toggle('selected', i===selectedDayIdx)
+      })
+    }
+    
+    function updateDotVisibility(lundi, planning, creneaux){
+      for(let i=0;i<7;i++){
+        const d=new Date(lundi); d.setDate(lundi.getDate()+i)
+        const ds=dateStrLocal(d)
+        const hasEv = planning.some(e=>e.date===ds&&e.visible!==false)||creneaux.some(c=>c.date===ds)
+        const pill=document.querySelectorAll('.day-pill')[i]
+        if(pill){ const dot=pill.querySelector('.day-pill-dot'); if(dot) dot.style.visibility=hasEv?'visible':'hidden' }
+      }
+    }
+    
+    // ─────────────────────────────────────────────
+    // VUE JOUR : slides swipables
+    // ─────────────────────────────────────────────
+    function buildWeekSlides(lundi, planning, creneaux, todayStr){
+      const track = document.getElementById('week-swipe-track')
+      track.innerHTML = ''
+      for(let i=0;i<7;i++){
+        const d=new Date(lundi); d.setDate(lundi.getDate()+i)
+        const ds=dateStrLocal(d)
+        const slide = document.createElement('div')
+        slide.className = 'week-slide'
+        const evDay = [
+          ...planning.filter(e=>e.date===ds&&e.visible!==false).map(e=>({...e,source:'planning'})),
+          ...creneaux.filter(c=>c.date===ds).map(c=>({...c,source:'creneaux'}))
+        ]
+        slide.appendChild(buildTimeline(ds, evDay, todayStr, HOUR_H_DAY))
+        track.appendChild(slide)
+      }
+      initSwipeGestures()
+    }
+    
+    // ─────────────────────────────────────────────
+    // VUE SEMAINE : grille 7 colonnes pan/zoom
+    // ─────────────────────────────────────────────
+    function buildWeekOverview(lundi, planning, creneaux, todayStr){
+      const canvas = document.getElementById('week-overview-canvas')
+      if(!canvas) return
+      canvas.innerHTML = ''
+      
+      const JOURS_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
+      const HOUR_H = HOUR_H_WEEK
+      const totalH = (TL_END - TL_START + 1) * HOUR_H
+      const TIME_W = 32 // largeur colonne heures
+      
+      // Wrapper flex
+      const wrapper = document.createElement('div')
+      wrapper.style.cssText = `display:flex;flex-direction:column;`
+      
+      // Row 1 : header (heures vide + 7 jours)
+      const headerRow = document.createElement('div')
+      headerRow.style.cssText = `display:flex;border-bottom:1px solid #2a2a2a;background:#141414;position:sticky;top:0;z-index:8;`
+      headerRow.innerHTML = `<div style="width:${TIME_W}px;flex-shrink:0;"></div>`
+      for(let i=0;i<7;i++){
+        const d=new Date(lundi); d.setDate(lundi.getDate()+i)
+        const ds=dateStrLocal(d)
+        const isToday=ds===todayStr
+        const cell=document.createElement('div')
+        cell.style.cssText=`flex:1;min-width:0;text-align:center;padding:5px 1px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${isToday?'#FECC00':'#555'};border-left:1px solid #1e1e1e;cursor:pointer;`
+        cell.innerHTML=`${JOURS_SHORT[i]}<br><span style="font-size:13px;font-weight:700;color:${isToday?'#FECC00':'#fff'};">${d.getDate()}</span>`
+        cell.onclick = () => {
+          // Passer en vue jour sur ce jour
+          selectedDayIdx = i
+          setViewMode('jour')
+          goToSlide(i, false)
+          updateDaysPillSelection()
+        }
+        headerRow.appendChild(cell)
+      }
+      wrapper.appendChild(headerRow)
+      
+      // Row 2 : body (time col + 7 day cols)
+      const bodyRow = document.createElement('div')
+      bodyRow.style.cssText = `display:flex;position:relative;`
+      
+      // Time col
+      const timeCol = document.createElement('div')
+      timeCol.style.cssText = `width:${TIME_W}px;flex-shrink:0;`
+      for(let h=TL_START; h<=TL_END; h++){
+        const label=document.createElement('div')
+        label.style.cssText=`height:${HOUR_H}px;display:flex;align-items:flex-start;padding-top:3px;padding-right:4px;font-size:9px;color:#444;justify-content:flex-end;box-sizing:border-box;`
+        label.textContent = h===TL_START?'':h+':00'
+        timeCol.appendChild(label)
+      }
+      bodyRow.appendChild(timeCol)
+      
+      // Day columns
+      for(let i=0;i<7;i++){
+        const d=new Date(lundi); d.setDate(lundi.getDate()+i)
+        const ds=dateStrLocal(d)
+        const isToday=ds===todayStr
+        
+        const dayCol = document.createElement('div')
+        dayCol.style.cssText=`flex:1;min-width:0;position:relative;border-left:1px solid #1e1e1e;background:${isToday?'#FECC0006':'transparent'};`
+        
+        // Grid lines
+        for(let h=TL_START; h<=TL_END; h++){
+          const line=document.createElement('div')
+          line.style.cssText=`height:${HOUR_H}px;border-bottom:1px solid #1a1a1a;box-sizing:border-box;`
+          dayCol.appendChild(line)
+        }
+        
+        // Events
+        const evDay = [
+          ...planning.filter(e=>e.date===ds&&e.visible!==false).map(e=>({...e,source:'planning'})),
+          ...creneaux.filter(c=>c.date===ds).map(c=>({...c,source:'creneaux'}))
+        ]
+        const placed = computeColumns(evDay)
+        
+        placed.forEach(ev=>{
+          const startMin = heureMin(ev.heureDebut)
+          const endMin = heureMin(ev.heureFin) || startMin+60
+          if(endMin<=TL_START*60 || startMin>=(TL_END+1)*60) return
+          
+          const top = Math.max(0,(startMin/60 - TL_START)*HOUR_H)
+          const height = Math.max(14, ((endMin-startMin)/60)*HOUR_H - 2)
+          const colIdx = ev._col || 0
+          const totalCols = ev._totalCols || 1
+          const leftPct = colIdx/totalCols*100
+          const widthPct = 100/totalCols
+          
+          const {bg,border,text} = getEventColors(ev)
+          const typeName = TYPE_NAMES[ev.type]||ev.type||'—'
+          const title = ev.titre||typeName
+          
+          const block=document.createElement('div')
+          block.style.cssText=`position:absolute;top:${top}px;height:${height}px;left:calc(${leftPct}% + 1px);width:calc(${widthPct}% - 2px);background:${bg};border:1px solid ${border};color:${text};border-radius:4px;padding:2px 3px;overflow:hidden;cursor:pointer;box-sizing:border-box;z-index:3;`
+          let miniPlayer = ''
+          if(planningScope==='equipe' && ev.source==='creneaux' && height>28){
+            const ids = ev.joueurIds||(ev.joueurId?[ev.joueurId]:[])
+            if(ids.length) miniPlayer = `<div style="font-size:7px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ids.slice(0,2).map(nomCourt).join(', ')}${ids.length>2?' +'+( ids.length-2):''}</div>`
+          }
+          block.innerHTML=`<div style="font-size:9px;font-weight:700;line-height:1.2;overflow:hidden;">${title}</div>${height>22?`<div style="font-size:8px;opacity:.7;">${ev.heureDebut||''}</div>`:''}${miniPlayer}`
+          block.onclick = () => openDayModal(ds)
+          dayCol.appendChild(block)
+        })
+        
+        // Now line (today only)
+        if(isToday){
+          const now=new Date()
+          const nowH=now.getHours()+now.getMinutes()/60
+          if(nowH>=TL_START&&nowH<=TL_END){
+            const nl=document.createElement('div')
+            nl.style.cssText=`position:absolute;left:0;right:0;top:${(nowH-TL_START)*HOUR_H}px;height:2px;background:#FECC00;z-index:5;pointer-events:none;`
+            dayCol.appendChild(nl)
+          }
+        }
+        
+        bodyRow.appendChild(dayCol)
+      }
+      
+      wrapper.appendChild(bodyRow)
+      canvas.appendChild(wrapper)
+      canvas.style.cssText = `width:100%;transform-origin:0 0;will-change:transform;`
+      
+      // Set viewport height
+      const vp = document.getElementById('week-overview-viewport')
+      const targetH = Math.min(420, window.innerHeight*0.55)
+      vp.style.cssText = `position:relative;overflow:auto;width:100%;height:${targetH}px;`
+      
+      // Scroll to 8h par défaut
+      setTimeout(()=>{ vp.scrollTop = (8-TL_START)*HOUR_H_WEEK }, 50)
+      
+      // Pinch-to-zoom sur la vue semaine
+      initWeekOverviewZoom()
+    }
+    
+    // ─── Pinch-to-zoom pour la vue semaine ───
+    function initWeekOverviewZoom(){
+      const vp = document.getElementById('week-overview-viewport')
+      const canvas = document.getElementById('week-overview-canvas')
+      if(!vp||!canvas) return
+      
+      let scale = 1, lastScale = 1
+      let startDist = 0
+      let offsetX = 0, offsetY = 0
+      let dragStartX = 0, dragStartY = 0
+      let isDragging = false, isPinching = false
+      let lastScrollTop = 0, lastScrollLeft = 0
+      
+      function applyTransform(){
+        const s = Math.max(0.5, Math.min(3, scale))
+        scale = s
+        canvas.style.transform = `scale(${s})`
+        canvas.style.transformOrigin = '0 0'
+      }
+      
+      function dist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY) }
+      
+      vp.addEventListener('touchstart', e=>{
+        if(e.touches.length===2){
+          isPinching=true
+          isDragging=false
+          startDist=dist(e.touches)
+          lastScale=scale
+          e.preventDefault()
+        } else if(e.touches.length===1){
+          isDragging=true
+          isPinching=false
+          dragStartX=e.touches[0].clientX
+          dragStartY=e.touches[0].clientY
+          lastScrollLeft=vp.scrollLeft
+          lastScrollTop=vp.scrollTop
+        }
+      },{passive:false})
+      
+      vp.addEventListener('touchmove', e=>{
+        if(isPinching && e.touches.length===2){
+          const d=dist(e.touches)
+          scale = lastScale * (d/startDist)
+          applyTransform()
+          e.preventDefault()
+        }
+        // On laisse le scroll natif gérer le drag
+      },{passive:false})
+      
+      vp.addEventListener('touchend', e=>{
+        if(e.touches.length < 2) isPinching=false
+        if(e.touches.length===0) isDragging=false
+      },{passive:true})
+    }
+
+    // ─────────────────────────────────────────────
+    // TIMELINE (vue jour)
+    // ─────────────────────────────────────────────
+    function buildTimeline(dateStr, events, todayStr, HOUR_H){
+      const isToday = dateStr===todayStr
+      const wrap = document.createElement('div')
+      wrap.className = 'timeline-wrap'
+      wrap.style.cssText = 'padding:6px 0;'
+      
+      const timesCol = document.createElement('div')
+      timesCol.className = 'timeline-times'
+      
+      const colsWrap = document.createElement('div')
+      colsWrap.className = 'timeline-cols'
+      colsWrap.style.cssText = `position:relative;height:${(TL_END-TL_START+1)*HOUR_H}px;`
+      
+      for(let h=TL_START; h<=TL_END; h++){
+        const label = document.createElement('div')
+        label.className = 'timeline-hour-label'
+        label.style.height = HOUR_H+'px'
+        label.style.boxSizing = 'border-box'
+        label.textContent = h===TL_START ? '' : h+':00'
+        timesCol.appendChild(label)
+        
+        const line = document.createElement('div')
+        line.className = 'timeline-grid-line'
+        line.style.height = HOUR_H+'px'
+        colsWrap.appendChild(line)
+        
+        // Demi-heure
+        const half = document.createElement('div')
+        half.style.cssText = `position:absolute;left:0;right:0;top:${(h-TL_START)*HOUR_H + HOUR_H/2}px;height:0;border-bottom:1px dashed #191919;`
+        colsWrap.appendChild(half)
+      }
+      
+      // Now line
+      if(isToday){
+        const now=new Date()
+        const nowH=now.getHours()+now.getMinutes()/60
+        if(nowH>=TL_START&&nowH<=TL_END){
+          const nl=document.createElement('div')
+          nl.className='now-line'
+          nl.style.top=((nowH-TL_START)*HOUR_H)+'px'
+          nl.innerHTML='<div class="now-dot"></div>'
+          colsWrap.appendChild(nl)
+        }
+      }
+      
+      // Empty
+      if(!events.length){
+        const estBlesse = joueurActif?.statut === 'blesse'
+        const icon = planningScope==='equipe' ? '📋' : (estBlesse ? '🏥' : '—')
+        const label = planningScope==='equipe' ? 'Pas d\'entraînement collectif' : (estBlesse ? 'Pas de créneau prévu' : 'Repos')
+        const emp=document.createElement('div')
+        emp.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#2a2a2a;font-size:12px;pointer-events:none;white-space:nowrap;'
+        emp.innerHTML=(icon!=='—'?'<div style="font-size:28px;margin-bottom:6px;">'+icon+'</div>':'')+label
+        colsWrap.appendChild(emp)
+      }
+      
+      // Place events avec algo correct
+      const placed = computeColumns(events)
+      
+      placed.forEach(ev=>{
+        const startMin = heureMin(ev.heureDebut)
+        const endMin = heureMin(ev.heureFin) || startMin+60
+        if(endMin<=TL_START*60 || startMin>=(TL_END+1)*60) return
+        
+        const top = Math.max(0,(startMin/60 - TL_START)*HOUR_H)
+        const height = Math.max(24, ((endMin-startMin)/60)*HOUR_H - 2)
+        const colIdx = ev._col || 0
+        const totalCols = ev._totalCols || 1
+        const leftPct = colIdx/totalCols*100
+        const widthPct = 100/totalCols
+        
+        const {bg,border,text} = getEventColors(ev)
+        const typeName = TYPE_NAMES[ev.type]||ev.type||'—'
+        const title = ev.titre||typeName
+        const timeStr = (ev.heureDebut||'')+(ev.heureFin?' → '+ev.heureFin:'')
+        
+        const block=document.createElement('div')
+        block.className='tl-event'
+        block.style.cssText=`top:${top}px;height:${height}px;left:calc(${leftPct}% + 2px);width:calc(${widthPct}% - 4px);background:${bg};border-color:${border};color:${text};`
+        // Noms joueurs en mode équipe (créneaux individuels)
+        let playerLine = ''
+        if(planningScope==='equipe' && ev.source==='creneaux'){
+          const ids = ev.joueurIds||(ev.joueurId?[ev.joueurId]:[])
+          if(ids.length && height>28){
+            const noms = ids.slice(0,3).map(nomCourt).join(', ')+(ids.length>3?' +'+( ids.length-3):'')
+            playerLine = `<div class="ev-player-tag">👤 ${noms}</div>`
+          }
+        } else if(planningScope==='equipe' && ev.source==='planning' && height>28){
+          playerLine = `<div class="ev-player-tag" style="opacity:.5;">👥 Collectif</div>`
+        }
+        block.innerHTML=`
+          <div class="tl-event-title">${title}</div>
+          ${height>32?`<div class="tl-event-time">${timeStr}</div>`:''}
+          ${playerLine}
+          ${height>60&&ev.lieu?`<div class="tl-event-lieu">📍 ${ev.lieu}</div>`:''}
+        `
+        block.onclick = () => openDayModal(dateStr)
+        colsWrap.appendChild(block)
+      })
+      
+      wrap.appendChild(timesCol)
+      wrap.appendChild(colsWrap)
+      return wrap
+    }
+    
+    function heureMin(str){
+      if(!str) return 0
+      const parts=(str+'').split(':').map(Number)
+      return (parts[0]||0)*60+(parts[1]||0)
+    }
+    
+    // Slide navigation (vue jour)
+    function goToSlide(idx, animate){
+      const track = document.getElementById('week-swipe-track')
+      if(!track) return
+      track.style.transition = animate ? 'transform .28s cubic-bezier(.4,0,.2,1)' : 'none'
+      track.style.transform = `translateX(-${idx*100}%)`
+    }
+    
+    // ─── Swipe gestures vue jour ───
+    function initSwipeGestures(){
+      const outer = document.getElementById('week-swipe-outer')
+      if(!outer) return
+      const fresh=outer.cloneNode(false)
+      fresh.appendChild(document.getElementById('week-swipe-track'))
+      outer.parentNode.replaceChild(fresh,outer)
+      fresh.id='week-swipe-outer'
+      
+      let startX=0,startY=0,lockAxis=null,isDragging=false
+      fresh.addEventListener('touchstart',e=>{
+        startX=e.touches[0].clientX;startY=e.touches[0].clientY
+        isDragging=true;lockAxis=null
+      },{passive:true})
+      fresh.addEventListener('touchmove',e=>{
+        if(!isDragging)return
+        const dx=e.touches[0].clientX-startX
+        const dy=e.touches[0].clientY-startY
+        if(!lockAxis) lockAxis=Math.abs(dx)>Math.abs(dy)?'h':'v'
+        if(lockAxis==='h') e.preventDefault()
+      },{passive:false})
+      fresh.addEventListener('touchend',e=>{
+        if(!isDragging||lockAxis!=='h'){isDragging=false;return}
+        isDragging=false
+        const dx=e.changedTouches[0].clientX-startX
+        if(Math.abs(dx)>40){
+          if(dx<0&&selectedDayIdx<6) selectedDayIdx++
+          else if(dx>0&&selectedDayIdx>0) selectedDayIdx--
+          goToSlide(selectedDayIdx,true)
+          updateDaysPillSelection()
+        }
+      },{passive:true})
+    }
+    
+    // ─── Toggle vue ───
+    window.setViewMode=function(mode){
+      currentViewMode=mode
+      document.getElementById('view-jour-container').style.display = mode==='jour'?'':'none'
+      document.getElementById('view-semaine-container').style.display = mode==='semaine'?'':'none'
+      document.getElementById('days-strip').style.display = mode==='jour'?'flex':'none'
+      document.getElementById('vtb-jour').classList.toggle('active',mode==='jour')
+      document.getElementById('vtb-semaine').classList.toggle('active',mode==='semaine')
+    }
+    
+    // Légende
+    function buildLegend(){
+      const leg=document.getElementById('planning-legend')
+      if(!leg)return
+      leg.innerHTML=''
+      Object.keys(TCOL).forEach(k=>{
+        if(k==='autre')return
+        const item=document.createElement('div')
+        item.style.cssText='display:flex;align-items:center;gap:4px;'
+        item.innerHTML=`<div style="width:9px;height:9px;border-radius:3px;background:${TCOL[k]};flex-shrink:0;"></div><span>${TYPE_NAMES[k]||k}</span>`
+        leg.appendChild(item)
+      })
+    }
+    
+    // Navigation semaine
+    window.semainePrecedente=function(){ currentWeekStart=getLundi(new Date(currentWeekStart.getTime()-7*24*60*60*1000)); chargerPlanning() }
+    window.semaineSuivante=function(){ currentWeekStart=getLundi(new Date(currentWeekStart.getTime()+7*24*60*60*1000)); chargerPlanning() }
+    
+    // ───── MODAL JOUR DÉTAIL ─────
+    window.openDayModal=function(dateStr){
+      if(!planningCache)return
+      const {planningAll,creneauxAll}=planningCache
+      const filtered=filterByScope(planningAll,creneauxAll)
+      const date=new Date(dateStr+'T00:00:00')
+      const evDay=[
+        ...filtered.planning.filter(e=>e.date===dateStr).map(e=>({...e,source:'planning'})),
+        ...filtered.creneaux.filter(c=>c.date===dateStr).map(c=>({...c,source:'creneaux'}))
+      ]
+      const isEquipe = planningScope==='equipe'
+      document.getElementById('day-detail-title').textContent=date.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})
+      const body=document.getElementById('day-detail-body')
+      if(!evDay.length){
+        body.innerHTML='<div class="day-detail-empty"><div style="font-size:32px;margin-bottom:8px">'+( isEquipe?'📋':'🏖️')+'</div>'+( isEquipe?'Pas d\'événement collectif ce jour':'Pas d\'événement ce jour')+'</div>'
+      } else {
+        body.innerHTML=''
+        const sorted=[...evDay].sort((a,b)=>heureMin(a.heureDebut)-heureMin(b.heureDebut))
+        sorted.forEach(ev=>{
+          const {bg,border,text,base}=getEventColors(ev)
+          const typeName=TYPE_NAMES[ev.type]||ev.type||'—'
+          const title=ev.titre||typeName
+          const timeStr=[ev.heureDebut,ev.heureFin].filter(Boolean).join(' → ')
+          const intensityLabels={1:'🟢 Léger',2:'🟡 Moyen',3:'🔴 Intense'}
+          
+          // Équipe : afficher les joueurs concernés (créneaux individuels)
+          let joueursHtml=''
+          if(isEquipe && ev.source==='creneaux'){
+            const ids=ev.joueurIds||( ev.joueurId?[ev.joueurId]:[])
+            if(ids.length){
+              const noms=ids.slice(0,6).map(nomCourt).join(', ')+(ids.length>6?' +'+( ids.length-6):'')
+              joueursHtml='<div style="font-size:11px;opacity:.7;margin-top:4px;color:'+text+';">👤 '+noms+'</div>'
+            }
+          } else if(isEquipe && ev.source==='planning'){
+            joueursHtml='<div style="font-size:11px;opacity:.55;margin-top:4px;color:'+text+';">👥 Collectif</div>'
+          }
+          
+          const card=document.createElement('div')
+          card.className='day-event-card'
+          card.style.cssText='background:'+bg+';border-left:3px solid '+base+';border-color:'+border+';'
+          card.innerHTML=
+            '<div class="day-event-title" style="color:'+text+';"><span class="day-event-type-dot" style="background:'+base+'"></span>'+title+'</div>'+
+            (timeStr?'<div class="day-event-time" style="color:'+text+';opacity:.7;">🕐 '+timeStr+'</div>':'')+
+            (ev.lieu?'<div class="day-event-lieu" style="color:'+text+';opacity:.6;">📍 '+ev.lieu+'</div>':'')+
+            joueursHtml+
+            (ev.description?'<div class="day-event-desc" style="color:'+text+';opacity:.7;margin-top:6px;font-size:12px;line-height:1.5;">'+ev.description+'</div>':'')+
+            '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">'+
+              '<span class="day-event-badge" style="background:'+base+'33;color:'+text+';border:1px solid '+base+'66;">'+typeName+'</span>'+
+              (ev.intensity?'<span class="day-event-intensity" style="color:'+text+';opacity:.8;">'+(intensityLabels[ev.intensity]||'')+'</span>':'')+
+            '</div>'
+          body.appendChild(card)
+        })
+      }
+      document.getElementById('day-detail-modal').classList.add('open')
+    }
+    
+    window.closeDayModal=function(e){
+      if(e&&e.target!==document.getElementById('day-detail-modal'))return
+      document.getElementById('day-detail-modal').classList.remove('open')
+    }
+    
+    // Legacy compat
+    window.afficherJournee=function(dateStr){ openDayModal(dateStr) }
+    window.retourPlanningWeek=function(){ allerVers('planning') }
+
+    // ===== GPS — lit le cache localStorage (pas Firestore, CSV trop lourd) =====
+    async function chargerGPS() {
+  const c = document.getElementById('gps-content')
+  c.innerHTML = '<div class="empty-msg">⏳ Chargement...</div>'
+  if (!joueurActif) return
+  // Charger depuis Firestore (données pré-calculées par le staff)
+  try {
+    const [snap, collectifSnap] = await Promise.all([
+      getDoc(doc(db, 'statsGPS', joueurActif.id)),
+      getDoc(doc(db, 'statsGPS', '_collectif'))
+    ])
+    if (!snap.exists()) {
+      c.innerHTML = `<div class="empty-msg">
+        <div class="empty-icon">📡</div>
+        Stats GPS pas encore disponibles.<br>
+        <span style="font-size:11px;color:#333;display:block;margin-top:6px;">
+          Le staff doit cliquer synchroniser les données GPS.
+        </span>
+      </div>`
+      return
+    }
+    const allJoueursData = collectifSnap.exists() ? collectifSnap.data().joueurs || [] : []
+    
+    // Correction à la volée des données GPS corrompues (m/min, hi/min et durée stockées en jours au lieu de minutes)
+    function corrigerDonneesGPS(historique) {
+      if (!historique) return []
+      return historique.map(h => {
+        const hCorr = { ...h }
+        if (hCorr.mMin > 1000) {
+          hCorr.mMin = hCorr.mMin / 1440
+          hCorr.hiMin = hCorr.hiMin / 1440
+        }
+        if ((hCorr.duree == null || hCorr.duree <= 1) && hCorr.mMin > 0) {
+          hCorr.duree = Math.round((hCorr.distTot || 0) / hCorr.mMin)
+        }
+        return hCorr
+      })
+    }
+
+    const sData = snap.data()
+    if (sData) {
+      sData.historique = corrigerDonneesGPS(sData.historique)
+      if (sData.mMinMoy > 1000) {
+        sData.mMinMoy = sData.mMinMoy / 1440
+        sData.hiMinMoy = sData.hiMinMoy / 1440
+      }
+    }
+
+    allJoueursData.forEach(j => {
+      if (j.mMinMoy > 1000) {
+        j.mMinMoy = j.mMinMoy / 1440
+        j.hiMinMoy = j.hiMinMoy / 1440
+      }
+      j.historique = corrigerDonneesGPS(j.historique)
+    })
+
+    renderGPSStats(c, sData, joueurActif, allJoueursData)
+  } catch(e) {
+    console.error(e)
+    c.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur.</div>'
+  }
+}
+    // ===== RENDU GPS COMPLET =====
+    function renderGPSStats(c, s, joueur, allJoueursData = []) {
+      c.innerHTML = ''
+      let historiqueFiltre = s.historique || []
+      let vueMode = 'derniere' // 'derniere' ou 'periode'
+      let rangMode = 'equipe' // 'equipe' ou 'poste'
+
+      // ===== HERO =====
+      // Calculer vmax et %vmax sur la période filtrée
+      function calculerVmaxFiltre(hist) {
+        if (!hist || hist.length === 0) return { vmax: 0, pctVmax: 0 }
+        const vmaxPeriode = Math.max(...hist.map(h => h.vmax || 0), 0)
+        // Vmax de référence = vmax 6 mois stockée (ou vmax période si plus élevée)
+        const vmaxRef = Math.max(s.vmax6m || s.vmaxSaison || 0, vmaxPeriode)
+        const pctVmax = vmaxRef > 0 ? Math.round((vmaxPeriode / vmaxRef) * 100) : 0
+        return { vmax: vmaxPeriode, vmaxRef, pctVmax }
+      }
+
+      const hero = document.createElement('div')
+      hero.className = 'gps-hero'
+      const updatedStr = s.updatedAt?.toDate ? s.updatedAt.toDate().toLocaleDateString('fr-FR') : '—'
+      hero.innerHTML = `
+        <div class="gps-hero-item">
+          <div class="gps-hero-label">% Vmax sur la période</div>
+          <div class="gps-hero-val" id="hero-pctvmax" style="color:#FECC00;">—%</div>
+          <div class="gps-hero-sub" id="hero-vmax">— km/h</div>
+        </div>
+        <div class="gps-hero-item">
+          <div class="gps-hero-label">Vmax 6 mois</div>
+          <div class="gps-hero-val" style="color:#1D9E75;">${(s.vmax6m || s.vmaxSaison || 0).toFixed(2) || '—'}</div>
+          <div class="gps-hero-sub" id="hero-sub-nbseances">km/h · ${s.nbSeances} séances totales</div>
+        </div>
+      `
+      c.appendChild(hero)
+
+      // Mettre à jour les valeurs du hero selon le filtre
+      function updateHero(hist) {
+        const { vmax, pctVmax } = calculerVmaxFiltre(hist)
+        document.getElementById('hero-pctvmax').textContent = pctVmax + '%'
+        document.getElementById('hero-vmax').textContent = vmax.toFixed(2) + ' km/h'
+        if (vueMode === 'derniere') {
+          document.getElementById('hero-sub-nbseances').textContent = `km/h · dernière séance`
+        } else {
+          document.getElementById('hero-sub-nbseances').textContent = `km/h · ${hist.length} séance${hist.length > 1 ? 's' : ''}`
+        }
+      }
+
+      // ===== FILTRES DATE AVEC MODE VUE =====
+      if (s.historique?.length > 0) {
+        const dates = s.historique.map(h => parseDate(h.date)).filter(d => d).sort((a,b) => a-b)
+        const minDate = dates[0]
+        const maxDate = dates[dates.length-1]
+        // Dernière date avec données
+        const lastDate = dates[dates.length-1]
+
+        const filtresDiv = document.createElement('div')
+        filtresDiv.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:14px;'
+        filtresDiv.innerHTML = `
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <button id="btn-vue-derniere" class="vue-mode-btn active" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid #FECC00;background:#FECC00;color:#0f0f0f;font-size:11px;font-weight:600;cursor:pointer;">📅 Dernière séance</button>
+            <button id="btn-vue-periode" class="vue-mode-btn" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#888;font-size:11px;cursor:pointer;">📊 Toute la période</button>
+          </div>
+          <div id="periode-filtres" style="display:none;">
+            <div style="font-size:11px;color:#888;margin-bottom:8px;">Filtrer par période</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+              <input type="date" id="gps-date-debut" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:11px;"
+                     value="${minDate}">
+              <span style="color:#555;font-size:11px;">→</span>
+              <input type="date" id="gps-date-fin" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:11px;"
+                     value="${maxDate}">
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button onclick="resetGPSDates()" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#888;font-size:11px;cursor:pointer;">Réinitialiser</button>
+              <button onclick="appliquerGPSDates()" style="flex:1;padding:6px 10px;border-radius:6px;border:none;background:#FECC00;color:#0f0f0f;font-size:11px;font-weight:600;cursor:pointer;">Appliquer</button>
+            </div>
+          </div>
+          <div id="derniere-info" style="font-size:11px;color:#555;text-align:center;padding:8px;background:#0f0f0f;border-radius:6px;">
+            ${s.historique.length > 0 ? `Dernière séance : ${s.historique[s.historique.length-1].date}` : 'Aucune séance'}
+          </div>
+        `
+        c.appendChild(filtresDiv)
+
+        // Par défaut : filtrer sur la dernière date uniquement
+        historiqueFiltre = s.historique.filter(h => {
+          const dh = parseDate(h.date)
+          return dh && dh.toDateString() === lastDate.toDateString()
+        })
+
+        // Gestion des modes de vue
+        const btnDerniere = document.getElementById('btn-vue-derniere')
+        const btnPeriode = document.getElementById('btn-vue-periode')
+        const periodeFiltres = document.getElementById('periode-filtres')
+        const derniereInfo = document.getElementById('derniere-info')
+
+        btnDerniere.addEventListener('click', () => {
+          vueMode = 'derniere'
+          btnDerniere.classList.add('active')
+          btnDerniere.style.background = '#FECC00'
+          btnDerniere.style.color = '#0f0f0f'
+          btnDerniere.style.borderColor = '#FECC00'
+          btnPeriode.classList.remove('active')
+          btnPeriode.style.background = '#0f0f0f'
+          btnPeriode.style.color = '#888'
+          btnPeriode.style.borderColor = '#2a2a2a'
+          periodeFiltres.style.display = 'none'
+          derniereInfo.style.display = 'block'
+          // Filtrer sur la dernière date
+          historiqueFiltre = s.historique.filter(h => {
+            const dh = parseDate(h.date)
+            return dh && dh.toDateString() === lastDate.toDateString()
+          })
+          renderAll()
+        })
+
+        btnPeriode.addEventListener('click', () => {
+          vueMode = 'periode'
+          btnPeriode.classList.add('active')
+          btnPeriode.style.background = '#FECC00'
+          btnPeriode.style.color = '#0f0f0f'
+          btnPeriode.style.borderColor = '#FECC00'
+          btnDerniere.classList.remove('active')
+          btnDerniere.style.background = '#0f0f0f'
+          btnDerniere.style.color = '#888'
+          btnDerniere.style.borderColor = '#2a2a2a'
+          periodeFiltres.style.display = 'block'
+          derniereInfo.style.display = 'none'
+          // Toute la période par défaut
+          historiqueFiltre = s.historique
+          renderAll()
+        })
+
+        window.resetGPSDates = function() {
+          document.getElementById('gps-date-debut').value = minDate
+          document.getElementById('gps-date-fin').value = maxDate
+          historiqueFiltre = s.historique
+          renderAll()
+        }
+
+        window.appliquerGPSDates = function() {
+          const d1 = new Date(document.getElementById('gps-date-debut').value)
+          const d2 = new Date(document.getElementById('gps-date-fin').value)
+          historiqueFiltre = s.historique.filter(h => {
+            const dh = parseDate(h.date)
+            return dh && dh >= d1 && dh <= d2
+          })
+          renderAll()
+        }
+      }
+
+      // ===== TABS =====
+      const tabs = document.createElement('div')
+      tabs.className = 'gps-tabs'
+      tabs.style.cssText = 'display:flex;gap:3px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:3px;margin-bottom:14px;'
+      tabs.innerHTML = `
+        <button class="gps-tab-btn active" data-tab="stats" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:#FECC00;color:#0f0f0f;">📊 Stats</button>
+        <button class="gps-tab-btn" data-tab="seances" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:none;color:#555;">📋 Séances</button>
+        <button class="gps-tab-btn" data-tab="classement" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:none;color:#555;">🏆 Classement</button>
+      `
+      c.appendChild(tabs)
+
+      // Zones
+      const zoneStats = document.createElement('div'); zoneStats.id = 'gps-zone-stats'
+      const zoneSeances = document.createElement('div'); zoneSeances.id = 'gps-zone-seances'; zoneSeances.style.display = 'none'
+      const zoneClassement = document.createElement('div'); zoneClassement.id = 'gps-zone-classement'; zoneClassement.style.display = 'none'
+      c.appendChild(zoneStats)
+      c.appendChild(zoneSeances)
+      c.appendChild(zoneClassement)
+
+      // Gestion des tabs
+      tabs.querySelectorAll('.gps-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabs.querySelectorAll('.gps-tab-btn').forEach(b => {
+            b.style.background = 'none'
+            b.style.color = '#555'
+            b.classList.remove('active')
+          })
+          btn.style.background = '#FECC00'
+          btn.style.color = '#0f0f0f'
+          btn.classList.add('active')
+          const tab = btn.dataset.tab
+          zoneStats.style.display = tab === 'stats' ? 'block' : 'none'
+          zoneSeances.style.display = tab === 'seances' ? 'block' : 'none'
+          zoneClassement.style.display = tab === 'classement' ? 'block' : 'none'
+        })
+      })
+
+      // ===== FONCTIONS DE CALCUL DES STATS PAR PERIODE =====
+      function isValidPeriod(period) {
+        const validPeriods = ['Collectif', 'Extra', 'Rehab', 'Séparé', 'Vitesse', 'QT1', 'QT2', 'QT3', 'QT4']
+        return validPeriods.some(vp => period.toLowerCase().includes(vp.toLowerCase()))
+      }
+
+      function calculerStatsParPeriode(hist) {
+        const statsParPeriode = {}
+        hist.forEach(h => {
+          const period = h.period || 'Autre'
+          if (!statsParPeriode[period]) {
+            statsParPeriode[period] = { totalDist: 0, totalDur: 0, count: 0, mMinSum: 0 }
+          }
+          const durMin = (h.duree || 0)
+          const dist = h.distTot || 0
+          statsParPeriode[period].totalDist += dist
+          statsParPeriode[period].totalDur += durMin
+          statsParPeriode[period].count += 1
+          statsParPeriode[period].mMinSum += (h.mMin || 0)
+        })
+        // Calculer m/min moyen pour chaque période
+        Object.keys(statsParPeriode).forEach(period => {
+          const p = statsParPeriode[period]
+          p.mMinMoyen = p.count > 0 ? p.mMinSum / p.count : 0
+          p.mMinCalc = p.totalDur > 0 ? p.totalDist / p.totalDur : 0
+        })
+        return statsParPeriode
+      }
+
+      function calculerStatsParType(hist) {
+        const statsParType = {}
+        hist.forEach(h => {
+          // Extraire le type depuis le nom de séance (aaaammjj_Type_Theme)
+          const seance = h.seance || ''
+          const parts = seance.split('_')
+          const type = parts.length >= 2 ? parts[1] : 'Autre'
+          if (!statsParType[type]) {
+            statsParType[type] = { count: 0, distHI: 0, volHI: 0, mMin: 0, hiMin: 0, vmax: 0 }
+          }
+          statsParType[type].count += 1
+          statsParType[type].distHI += (h.distHI || 0)
+          statsParType[type].volHI += (h.volHI || 0)
+          statsParType[type].mMin += (h.mMin || 0)
+          statsParType[type].hiMin += (h.hiMin || 0)
+          statsParType[type].vmax = Math.max(statsParType[type].vmax, h.vmax || 0)
+        })
+        // Calculer moyennes
+        Object.keys(statsParType).forEach(type => {
+          const t = statsParType[type]
+          if (t.count > 0) {
+            t.distHIMoy = t.distHI / t.count
+            t.volHIMoy = t.volHI / t.count
+            t.mMinMoy = t.mMin / t.count
+            t.hiMinMoy = t.hiMin / t.count
+          }
+        })
+        return statsParType
+      }
+
+      // ===== RENDU STATS =====
+      function renderStats() {
+        zoneStats.innerHTML = ''
+        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+
+        // Utiliser calculerStatsFiltre pour obtenir les stats sur la période
+        const statsFiltre = calculerStatsFiltre(hist)
+
+        // KPI Grid - valeurs calculées sur la période filtrée
+        const kpiDiv = document.createElement('div')
+        kpiDiv.className = 'gps-kpi-grid'
+        
+        if (vueMode === 'derniere' && hist.length === 1) {
+          // Mode dernière séance : afficher les valeurs brutes de la séance
+          const seance = hist[0]
+          const kpis = [
+            {l:'Dist HI',v:seance.distHI || 0,u:'m',c:'#E24B4A', d:0},
+            {l:'m / min',v:seance.mMin || 0,u:'',c:'#FECC00', d:1},
+            {l:'HI / min',v:seance.hiMin || 0,u:'',c:'#EF9F27', d:2},
+            {l:'Volume HI',v:seance.volHI || 0,u:'UA',c:'#378ADD', d:0},
+            {l:'Vmax',v:seance.vmax || 0,u:'km/h',c:'#1D9E75', d:1},
+            {l:'% Vmax',v:seance.vmaxPct || statsFiltre.pctVmax,u:'%',c:'#5DCAA5', d:1},
+          ]
+          kpis.forEach(k => {
+            if (k.v == null) return
+            const card = document.createElement('div')
+            card.className = 'gps-kpi'
+            card.innerHTML = `
+              <div class="gps-kpi-label">${k.l}</div>
+              <div class="gps-hero-val" style="color:${k.c};font-size:20px;">${Number(k.v).toFixed(k.d)}</div>
+              <div class="gps-kpi-unit">${k.u}</div>
+            `
+            kpiDiv.appendChild(card)
+          })
+        } else {
+          // Mode période : afficher les moyennes calculées (alignées sur appli coach)
+          const kpis = [
+            {l:'Dist HI / séance',v:statsFiltre.distHI,u:'m',c:'#E24B4A', d:0},
+            {l:'m / min',v:statsFiltre.mMin,u:'',c:'#FECC00', d:1},
+            {l:'HI / min',v:statsFiltre.hiMin,u:'',c:'#EF9F27', d:2},
+            {l:'Volume HI / séance',v:statsFiltre.volHI,u:'UA',c:'#378ADD', d:0},
+            {l:'Vmax max',v:statsFiltre.vmax,u:'km/h',c:'#1D9E75', d:1},
+            {l:'% Vmax',v:statsFiltre.pctVmax,u:'%',c:'#5DCAA5', d:1},
+            {l:'Séances',v:hist.length,u:'',c:'#888', d:0},
+          ]
+          kpis.forEach(k => {
+            if (k.v == null) return
+            const card = document.createElement('div')
+            card.className = 'gps-kpi'
+            card.innerHTML = `
+              <div class="gps-kpi-label">${k.l}</div>
+              <div class="gps-hero-val" style="color:${k.c};font-size:20px;">${Number(k.v).toFixed(k.d)}</div>
+              <div class="gps-kpi-unit">${k.u}</div>
+            `
+            kpiDiv.appendChild(card)
+          })
+        }
+        zoneStats.appendChild(kpiDiv)
+
+        // ===== GRAPHIQUE RYTHME PAR PERIODE =====
+        if (hist.length > 0) {
+          const statsParPeriode = calculerStatsParPeriode(hist)
+          const periodLabels = Object.keys(statsParPeriode).filter(p => isValidPeriod(p) || p !== 'Autre').sort()
+          
+          if (periodLabels.length > 0) {
+            const periodChartSection = document.createElement('div')
+            periodChartSection.style.cssText = 'background:#1a1a1a;border:1px solid #378ADD44;border-radius:14px;padding:18px;margin-bottom:20px;'
+            
+            const periodChartHeader = document.createElement('div')
+            periodChartHeader.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'
+            periodChartHeader.innerHTML = `
+              <div>
+                <div style="font-size:13px;font-weight:700;color:#FECC00;letter-spacing:.04em;">⚡ Rythme par période</div>
+                <div style="font-size:10px;color:#555;margin-top:2px;">m/min moyen (toutes périodes valides)</div>
+              </div>`
+            periodChartSection.appendChild(periodChartHeader)
+            
+            const chartHeight = 140
+            const barW = Math.max(24, Math.min(60, Math.floor(400 / periodLabels.length) - 8))
+            
+            const svgWrap = document.createElement('div')
+            svgWrap.style.cssText = 'display:flex;gap:0;align-items:flex-end;justify-content:center;padding:0 8px;overflow-x:auto;'
+            
+            const periodValues = periodLabels.map(p => statsParPeriode[p].mMinMoyen)
+            const maxPeriodVal = Math.max(...periodValues, 1)
+            
+            periodLabels.forEach((label, i) => {
+              const val = periodValues[i]
+              const barH = Math.max(4, Math.round(val / maxPeriodVal * chartHeight))
+              const col = val >= 90 ? '#E24B4A' : val >= 70 ? '#EF9F27' : '#378ADD'
+              const col2 = val >= 90 ? '#E24B4A99' : val >= 70 ? '#EF9F2799' : '#378ADD99'
+              
+              const barGroup = document.createElement('div')
+              barGroup.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 ${Math.max(2, Math.floor(barW * 0.15))}px;`
+              
+              barGroup.innerHTML = `
+                <div style="font-size:10px;font-weight:700;color:${col};">${val.toFixed(1)}</div>
+                <div style="width:${barW}px;height:${barH}px;background:linear-gradient(180deg,${col},${col2});border-radius:4px 4px 0 0;position:relative;cursor:default;transition:opacity .15s;" title="${label}: ${val.toFixed(1)} m/min"
+                  onmouseenter="this.style.opacity='.75'" onmouseleave="this.style.opacity='1'"></div>
+                <div style="font-size:9px;color:#666;text-align:center;width:${barW + 8}px;word-break:break-word;line-height:1.2;">${label}</div>`
+              svgWrap.appendChild(barGroup)
+            })
+            
+            const baseline = document.createElement('div')
+            baseline.style.cssText = 'width:100%;height:1px;background:#2a2a2a;margin:2px 0 4px;'
+            periodChartSection.appendChild(svgWrap)
+            periodChartSection.appendChild(baseline)
+            zoneStats.appendChild(periodChartSection)
+          }
+        }
+
+        // ===== STATS DÉTAILLÉES PAR TYPE D'ENTRAÎNEMENT =====
+        if (hist.length > 0 && vueMode === 'periode') {
+          const statsParType = calculerStatsParType(hist)
+          const types = Object.keys(statsParType).filter(t => t !== 'Autre')
+          
+          if (types.length > 0) {
+            const typeSection = document.createElement('div')
+            typeSection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:18px;margin-bottom:20px;'
+            typeSection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;letter-spacing:.04em;margin-bottom:12px;">📊 Stats par type d'entraînement</div>`
+            
+            types.forEach(type => {
+              const t = statsParType[type]
+              const typeCard = document.createElement('div')
+              typeCard.style.cssText = 'background:#0f0f0f;border:1px solid #2a2a2a;border-radius:8px;padding:10px;margin-bottom:8px;'
+              typeCard.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <span style="font-size:12px;font-weight:600;color:#ccc;">${type}</span>
+                  <span style="font-size:10px;color:#555;">${t.count} séance(s)</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:10px;">
+                  <div><span style="color:#666;">Dist HI:</span> <span style="color:#E24B4A;font-weight:600;">${Math.round(t.distHIMoy)}m</span></div>
+                  <div><span style="color:#666;">m/min:</span> <span style="color:#FECC00;font-weight:600;">${t.mMinMoy.toFixed(1)}</span></div>
+                  <div><span style="color:#666;">Vol HI:</span> <span style="color:#378ADD;font-weight:600;">${Math.round(t.volHIMoy)}</span></div>
+                </div>
+              `
+              typeSection.appendChild(typeCard)
+            })
+            zoneStats.appendChild(typeSection)
+          }
+        }
+
+        // Graphique d'évolution (seulement en mode période ou si plusieurs séances)
+        if (hist.length > 1 || (hist.length === 1 && vueMode === 'periode' && s.historique.length > 1)) {
+          const chartDiv = document.createElement('div')
+          chartDiv.className = 'gps-chart-card'
+
+          const metricSelect = document.createElement('select')
+          metricSelect.style.cssText = 'width:100%;padding:6px 10px;margin-bottom:10px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:12px;'
+          const metrics = [
+            {k:'distHI',l:'Distance HI (m)',c:'#E24B4A'},
+            {k:'volHI',l:'Volume HI (UA)',c:'#378ADD'},
+            {k:'mMin',l:'m/min',c:'#FECC00'},
+            {k:'hiMin',l:'HI/min',c:'#EF9F27'},
+            {k:'vmax',l:'Vmax (km/h)',c:'#1D9E75'},
+            {k:'accB2',l:'Acc B2',c:'#EF9F27'},
+            {k:'accB3',l:'Acc B3',c:'#EF9F27'},
+          ]
+          metricSelect.innerHTML = metrics.map(m => `<option value="${m.k}">${m.l}</option>`).join('')
+
+          const compareSelect = document.createElement('select')
+          compareSelect.id = 'gps-compare-mode'
+          compareSelect.style.cssText = 'width:100%;padding:6px 10px;margin-bottom:12px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#FECC00;font-size:12px;'
+          compareSelect.innerHTML = `
+            <option value="self">📊 Valeurs du joueur</option>
+            <option value="avg">📈 Moyenne mobile (3 séances)</option>
+            <option value="max">🔥 Record personnel sur la période</option>
+          `
+
+          const chartTitle = document.createElement('div')
+          chartTitle.className = 'gps-chart-title'
+          chartTitle.textContent = 'Évolution'
+
+          const chartContainer = document.createElement('div')
+          chartContainer.className = 'gps-chart'
+          chartContainer.id = 'gps-chart-container'
+
+          chartDiv.appendChild(chartTitle)
+          chartDiv.appendChild(metricSelect)
+          chartDiv.appendChild(compareSelect)
+          chartDiv.appendChild(chartContainer)
+          zoneStats.appendChild(chartDiv)
+
+          function renderChart() {
+            const metric = metricSelect.value
+            const mode = compareSelect.value
+            const color = metrics.find(m => m.k === metric)?.c || '#FECC00'
+
+            let data = hist.map((h, i) => ({date: h.date?.split('/').slice(0,2).join('/') || '?', val: h[metric] || 0, idx: i}))
+            data = data.filter(d => d.val > 0)
+
+            if (mode === 'avg' && data.length >= 3) {
+              data = data.map((d, i) => {
+                if (i < 2) return d
+                const avg = (data[i-2].val + data[i-1].val + d.val) / 3
+                return {...d, val: avg, isAvg: true}
+              })
+            } else if (mode === 'max') {
+              const maxVal = Math.max(...data.map(d => d.val), 1)
+              data = data.map(d => ({...d, pct: (d.val / maxVal) * 100}))
+            }
+
+            const maxVal = Math.max(...data.map(d => d.val), 1)
+            const barColor = mode === 'avg' ? '#378ADD' : (mode === 'max' ? '#EF9F27' : color)
+
+            chartContainer.innerHTML = ''
+            data.slice(-12).forEach(d => {
+              const grp = document.createElement('div')
+              grp.className = 'gps-bar-grp'
+              const height = Math.max((d.val / maxVal) * 100, 5)
+              grp.innerHTML = `
+                <div class="gps-bar" style="height:${height}%;background:${barColor};"></div>
+                <div class="gps-bar-nom">${d.date}</div>
+              `
+              grp.onclick = () => {
+                const seance = hist[d.idx]
+                if (seance) afficherDetailSeance(seance, zoneStats)
+              }
+              chartContainer.appendChild(grp)
+            })
+          }
+
+          metricSelect.addEventListener('change', renderChart)
+          compareSelect.addEventListener('change', renderChart)
+          renderChart()
+        }
+      }
+
+      // ===== RENDU SÉANCES =====
+      function renderSeances() {
+        zoneSeances.innerHTML = ''
+        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        if (!hist.length) {
+          zoneSeances.innerHTML = '<div class="empty-msg"><div class="empty-icon">📋</div>Aucune séance pour la période sélectionnée</div>'
+          return
+        }
+
+        // En-tête avec info sur le filtre
+        const headerInfo = document.createElement('div')
+        headerInfo.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;text-align:center;'
+        if (vueMode === 'derniere') {
+          headerInfo.textContent = `Affichage: dernière séance (${hist[0]?.date || '—'})`
+        } else {
+          headerInfo.textContent = `Affichage: ${hist.length} séance(s) sur la période`
+        }
+        zoneSeances.appendChild(headerInfo)
+
+        const tbl = document.createElement('table')
+        tbl.className = 'gps-table'
+        tbl.innerHTML = `<thead><tr>
+          <th>Date</th>
+          <th>Période</th>
+          <th style="color:#E24B4A;">HI</th>
+          <th style="color:#FECC00;">m/min</th>
+          <th style="color:#378ADD;">Vol HI</th>
+          <th style="color:#1D9E75;">Vmax</th>
+        </tr></thead>`
+        const tbody = document.createElement('tbody')
+        ;[...hist].reverse().forEach(h => {
+          const tr = document.createElement('tr')
+          tr.innerHTML = `
+            <td style="color:#555;">${h.date||'—'}</td>
+            <td style="color:#666;font-size:10px;">${h.period||'—'}</td>
+            <td style="color:#E24B4A;font-weight:600;">${Math.round(h.distHI||0)}</td>
+            <td style="color:#FECC00;font-weight:600;">${(h.mMin||0).toFixed(1)}</td>
+            <td style="color:#378ADD;font-weight:600;">${Math.round(h.volHI||0)}</td>
+            <td style="color:#1D9E75;font-weight:600;">${(h.vmax||0).toFixed(1)}</td>
+          `
+          tr.onclick = () => afficherDetailSeance(h, zoneSeances)
+          tbody.appendChild(tr)
+        })
+        tbl.appendChild(tbody)
+        zoneSeances.appendChild(tbl)
+      }
+
+      // ===== RENDU CLASSEMENT =====
+      function renderClassement() {
+        zoneClassement.innerHTML = ''
+        
+        // Sélecteur équipe / ligne / poste
+        const selectorDiv = document.createElement('div')
+        selectorDiv.style.cssText = 'display:flex;gap:6px;margin-bottom:14px;'
+        selectorDiv.innerHTML = `
+          <button id="btn-rang-equipe" class="rang-mode-btn active" style="flex:1;padding:8px 6px;border-radius:6px;border:1px solid #FECC00;background:#FECC00;color:#0f0f0f;font-size:10px;font-weight:600;cursor:pointer;">🏢 Équipe</button>
+          <button id="btn-rang-ligne" class="rang-mode-btn" style="flex:1;padding:8px 6px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#888;font-size:10px;cursor:pointer;">🔄 Ligne</button>
+          <button id="btn-rang-poste" class="rang-mode-btn" style="flex:1;padding:8px 6px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#888;font-size:10px;cursor:pointer;">👤 Poste</button>
+        `
+        zoneClassement.appendChild(selectorDiv)
+        
+        // Mettre à jour l'état visuel des boutons selon rangMode
+        const btnEquipeInit = document.getElementById('btn-rang-equipe')
+        const btnLigneInit = document.getElementById('btn-rang-ligne')
+        const btnPosteInit = document.getElementById('btn-rang-poste')
+        
+        // Reset tous les boutons
+        btnEquipeInit.style.background = '#0f0f0f'
+        btnEquipeInit.style.color = '#888'
+        btnEquipeInit.style.borderColor = '#2a2a2a'
+        btnLigneInit.style.background = '#0f0f0f'
+        btnLigneInit.style.color = '#888'
+        btnLigneInit.style.borderColor = '#2a2a2a'
+        btnPosteInit.style.background = '#0f0f0f'
+        btnPosteInit.style.color = '#888'
+        btnPosteInit.style.borderColor = '#2a2a2a'
+        
+        // Activer le bon bouton
+        if (rangMode === 'equipe') {
+          btnEquipeInit.style.background = '#FECC00'
+          btnEquipeInit.style.color = '#0f0f0f'
+          btnEquipeInit.style.borderColor = '#FECC00'
+        } else if (rangMode === 'ligne') {
+          btnLigneInit.style.background = '#FECC00'
+          btnLigneInit.style.color = '#0f0f0f'
+          btnLigneInit.style.borderColor = '#FECC00'
+        } else {
+          btnPosteInit.style.background = '#FECC00'
+          btnPosteInit.style.color = '#0f0f0f'
+          btnPosteInit.style.borderColor = '#FECC00'
+        }
+        
+        // Calculer les stats sur la période filtrée pour le joueur actuel
+        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        const statsFiltre = calculerStatsFiltre(hist)
+        
+        // Fonction pour parser une date
+        const parseDate = (str) => {
+          if (!str) return null
+          const [j, m, a] = str.split('/').map(Number)
+          return j && m && a ? new Date(a, m - 1, j) : new Date(str)
+        }
+        
+        // Obtenir les dates de la période filtrée
+        const datesFiltre = hist.map(h => parseDate(h.date)).filter(d => d).sort((a, b) => a - b)
+        const dateDebut = datesFiltre[0]
+        const dateFin = datesFiltre[datesFiltre.length - 1]
+
+        const METRIQUES = [
+          {k:'distHI',sk:'distHIMoySean',hk:'distHI',l:'Distance HI / séance',u:'m',c:'#E24B4A', d:0},
+          {k:'mMin',sk:'mMinMoy',hk:'mMin',l:'m / min',u:'m/min',c:'#FECC00', d:1},
+          {k:'hiMin',sk:'hiMinMoy',hk:'hiMin',l:'HI / min',u:'m/min',c:'#EF9F27', d:2},
+          {k:'volHI',sk:'volHIMoySean',hk:'volHI',l:'Volume HI / séance',u:'UA',c:'#378ADD', d:0},
+          {k:'vmax',sk:'vmaxSaison',hk:'vmax',l:'Vmax',u:'km/h',c:'#1D9E75', d:1},
+          {k:'pctVmax',sk:'pctVmax6m',hk:'pctVmax',l:'% Vmax',u:'%',c:'#5DCAA5', d:1},
+        ]
+        
+        // Fonction pour normaliser le poste
+        const normaliserPoste = (poste) => {
+          const p = String(poste || '').toLowerCase()
+          if (p.includes('pilier') || p.includes('talonneur') || p.includes('ligne')) return 'Avants'
+          if (p.includes('demi') || p.includes('centre') || p.includes('ailier') || p.includes('arrière')) return '3/4'
+          return 'Autre'
+        }
+        
+        // Calculer les stats pour tous les joueurs sur la période filtrée (aligné sur l'appli coach)
+        const statsAllJoueurs = allJoueursData.map(j => {
+          // Filtrer l'historique du joueur sur la même période
+          const histJoueur = (j.historique || []).filter(h => {
+            const d = parseDate(h.date)
+            return d && d >= dateDebut && d <= dateFin
+          })
+          
+          if (histJoueur.length === 0) {
+            return { nomGPS: j.nomGPS, posteGPS: j.posteGPS, stats: null }
+          }
+          
+          const totalDistHI = histJoueur.reduce((sum, h) => sum + (h.distHI || 0), 0)
+          const distHI = totalDistHI / histJoueur.length
+          
+          const totalVolHI = histJoueur.reduce((sum, h) => sum + (h.volHI || 0), 0)
+          const volHI = totalVolHI / histJoueur.length
+          
+          const totalDist = histJoueur.reduce((sum, h) => sum + (h.distTot || 0), 0)
+          const totalDur = histJoueur.reduce((sum, h) => sum + (h.duree || 0), 0)
+          const mMin = totalDur > 0 ? totalDist / totalDur : 0
+          const hiMin = totalDur > 0 ? totalDistHI / totalDur : 0
+          
+          const vmax = Math.max(...histJoueur.map(h => h.vmax || 0), 0)
+          const vmaxRef = Math.max(j.vmax6m || j.vmaxSaison || 0, vmax)
+          const pctVmax = vmaxRef > 0 ? Math.round((vmax / vmaxRef) * 100) : 0
+          
+          return {
+            nomGPS: j.nomGPS,
+            posteGPS: j.posteGPS,
+            stats: {
+              distHI,
+              mMin,
+              hiMin,
+              volHI,
+              vmax,
+              pctVmax
+            }
+          }
+        }) // Garder tous les joueurs, même sans données (stats: null)
+
+        // Info sur le rang actuel
+        const infoRang = document.createElement('div')
+        infoRang.style.cssText = 'font-size:10px;color:#666;margin-bottom:10px;padding:8px;background:#0f0f0f;border-radius:6px;'
+        const infoTexte = rangMode === 'equipe' 
+          ? 'autres joueurs' 
+          : rangMode === 'ligne' 
+            ? `joueurs de la même ligne (${normaliserPoste(s.posteGPS)})`
+            : `joueurs du même poste (${s.posteGPS || '?'})`
+        infoRang.innerHTML = `📊 <b>Ta moyenne sur la période sélectionnée</b> comparée aux ${infoTexte}`
+        zoneClassement.appendChild(infoRang)
+
+        const monPoste = normaliserPoste(s.posteGPS)
+        const monPosteExact = String(s.posteGPS || '').trim()
+
+        METRIQUES.forEach(m => {
+          // Filtrer selon le mode ET ne garder que les joueurs avec des données
+          let joueursFiltres = statsAllJoueurs.filter(j => j.stats !== null)
+          if (rangMode === 'ligne') {
+            joueursFiltres = statsAllJoueurs.filter(j => j.stats !== null && normaliserPoste(j.posteGPS) === monPoste)
+          } else if (rangMode === 'poste') {
+            joueursFiltres = statsAllJoueurs.filter(j => j.stats !== null && String(j.posteGPS || '').trim() === monPosteExact)
+          }
+          
+          // Nombre total de joueurs avec données dans ce groupe
+          const totalJoueurs = joueursFiltres.length
+          
+          // Trier par la métrique (seulement ceux avec des données > 0)
+          const sorted = joueursFiltres
+            .filter(j => j.stats && j.stats[m.hk] > 0)
+            .sort((a, b) => (b.stats?.[m.hk] || 0) - (a.stats?.[m.hk] || 0))
+          
+          // Nombre de joueurs avec données valides
+          const avecDonnees = sorted.length
+          const sansDonnees = totalJoueurs - avecDonnees
+          
+          // Trouver le rang du joueur actuel
+          const monRang = sorted.findIndex(j => j.nomGPS === s.nomGPS) + 1
+          const total = totalJoueurs // Afficher le vrai total
+          
+          // Top 3
+          const top3vals = sorted.slice(0, 3).map((j, i) => ({
+            rang: i + 1,
+            estMoi: j.nomGPS === s.nomGPS,
+            valeur: j.stats?.[m.hk] || 0
+          }))
+          
+          // Valeur sur la période filtrée pour le joueur actuel
+          const valeurFiltre = statsFiltre[m.k]
+
+          const card = document.createElement('div')
+          card.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:12px;margin-bottom:10px;'
+          
+          // Afficher le rang
+          const rangTexte = monRang > 0 
+            ? `<span style="color:${m.c};">#${monRang}</span>` 
+            : `<span style="color:#666;">—</span>`
+
+          // Info sur les données manquantes
+          const infoManquante = sansDonnees > 0 
+            ? `<span style="font-size:9px;color:#444;margin-left:6px;">(${sansDonnees} sans données)</span>` 
+            : ''
+          
+          card.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;margin-bottom:10px;">
+            ${m.l}
+            <span style="float:right;">${rangTexte}/${total}${infoManquante}</span>
+          </div>
+          <div style="font-size:10px;color:#666;margin-bottom:8px;padding:4px 8px;background:#FECC0011;border-radius:4px;">
+            Ta moyenne période: <b style="color:#FECC00;">${valeurFiltre.toFixed(m.d)} ${m.u}</b>
+          </div>`
+
+          const MEDALS = ['🥇','🥈','🥉']
+
+          top3vals.forEach((entry, i) => {
+            const row = document.createElement('div')
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #111;'
+            const estMoi = entry.estMoi
+            const valeurTop = entry.valeur
+            // Comparer la valeur filtrée au top3
+            const diff = valeurFiltre - valeurTop
+            const diffStr = diff > 0 ? `(+${diff.toFixed(m.d)})` : diff < 0 ? `(${diff.toFixed(m.d)})` : ''
+            
+            row.innerHTML = `
+              <div style="width:22px;text-align:center;font-size:16px;">${MEDALS[i]}</div>
+              <div style="flex:1;font-size:12px;color:${estMoi?'#FECC00':'#888'};font-weight:${estMoi?'600':'normal'};">${estMoi ? `${joueur.prenom} ${joueur.nom}` : '—'}</div>
+              <div style="font-size:11px;font-weight:600;color:${i===0?m.c:'#888'};">${valeurTop?.toFixed(m.d)} ${m.u}</div>
+            `
+            card.appendChild(row)
+          })
+
+          // Ligne pour le joueur si son rang > 3
+          if (monRang > 3) {
+            const sep = document.createElement('div')
+            sep.style.cssText = 'text-align:center;font-size:10px;color:#333;padding:4px;'
+            sep.textContent = '···'
+            card.appendChild(sep)
+
+            const row = document.createElement('div')
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px;background:#FECC0015;border-radius:6px;border:1px solid #FECC0033;'
+            row.innerHTML = `
+              <div style="width:22px;text-align:center;font-size:11px;color:#FECC00;font-weight:600;">#${monRang}</div>
+              <div style="flex:1;font-size:12px;color:#FECC00;font-weight:600;">${joueur.prenom} ${joueur.nom}</div>
+              <div style="font-size:11px;font-weight:600;color:#FECC00;">${valeurFiltre.toFixed(m.d)} ${m.u}</div>
+            `
+            card.appendChild(row)
+          }
+
+          zoneClassement.appendChild(card)
+        })
+
+        if (!zoneClassement.children.length || zoneClassement.children.length === 1) {
+          zoneClassement.innerHTML += '<div class="empty-msg"><div class="empty-icon">🏆</div>Données de classement non disponibles</div>'
+        }
+        
+        // Gestion du toggle équipe / ligne / poste
+        const btnEquipe = document.getElementById('btn-rang-equipe')
+        const btnLigne = document.getElementById('btn-rang-ligne')
+        const btnPoste = document.getElementById('btn-rang-poste')
+        
+        const resetBtns = () => {
+          btnEquipe.style.background = '#0f0f0f'
+          btnEquipe.style.color = '#888'
+          btnEquipe.style.borderColor = '#2a2a2a'
+          btnLigne.style.background = '#0f0f0f'
+          btnLigne.style.color = '#888'
+          btnLigne.style.borderColor = '#2a2a2a'
+          btnPoste.style.background = '#0f0f0f'
+          btnPoste.style.color = '#888'
+          btnPoste.style.borderColor = '#2a2a2a'
+        }
+        
+        btnEquipe.addEventListener('click', () => {
+          rangMode = 'equipe'
+          resetBtns()
+          btnEquipe.style.background = '#FECC00'
+          btnEquipe.style.color = '#0f0f0f'
+          btnEquipe.style.borderColor = '#FECC00'
+          renderClassement()
+        })
+        
+        btnLigne.addEventListener('click', () => {
+          rangMode = 'ligne'
+          resetBtns()
+          btnLigne.style.background = '#FECC00'
+          btnLigne.style.color = '#0f0f0f'
+          btnLigne.style.borderColor = '#FECC00'
+          renderClassement()
+        })
+        
+        btnPoste.addEventListener('click', () => {
+          rangMode = 'poste'
+          resetBtns()
+          btnPoste.style.background = '#FECC00'
+          btnPoste.style.color = '#0f0f0f'
+          btnPoste.style.borderColor = '#FECC00'
+          renderClassement()
+        })
+      }
+      
+      // Calculer les stats sur la période filtrée (aligné sur l'appli coach)
+      function calculerStatsFiltre(hist) {
+        if (!hist || hist.length === 0) {
+          return { distHI: 0, mMin: 0, hiMin: 0, volHI: 0, vmax: 0, pctVmax: 0 }
+        }
+        
+        const totalDistHI = hist.reduce((sum, h) => sum + (h.distHI || 0), 0)
+        const distHI = totalDistHI / hist.length
+        
+        const totalVolHI = hist.reduce((sum, h) => sum + (h.volHI || 0), 0)
+        const volHI = totalVolHI / hist.length
+        
+        const totalDist = hist.reduce((sum, h) => sum + (h.distTot || 0), 0)
+        const totalDur = hist.reduce((sum, h) => sum + (h.duree || 0), 0)
+        const mMin = totalDur > 0 ? totalDist / totalDur : 0
+        const hiMin = totalDur > 0 ? totalDistHI / totalDur : 0
+        
+        const vmax = Math.max(...hist.map(h => h.vmax || 0), 0)
+        const vmaxRef = Math.max(s.vmax6m || s.vmaxSaison || 0, vmax)
+        const pctVmax = vmaxRef > 0 ? Math.round((vmax / vmaxRef) * 100) : 0
+        
+        return {
+          distHI,
+          mMin,
+          hiMin,
+          volHI,
+          vmax,
+          pctVmax
+        }
+      }
+
+      // Fonction pour tout re-render
+      function renderAll() {
+        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        updateHero(hist)
+        renderStats()
+        renderSeances()
+        renderClassement()
+      }
+
+      // ===== DÉTAIL SÉANCE =====
+      function afficherDetailSeance(h, zone) {
+        const existing = zone.querySelector('.sean-detail')
+        if (existing) existing.remove()
+
+        const d = document.createElement('div')
+        d.className = 'sean-detail'
+        d.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin:10px 0;'
+        const nom = h.seance?.replace(/^\d+_/,'').replace(/_/g,' ') || 'Séance'
+        d.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <button onclick="this.closest('.sean-detail').remove()" style="padding:4px 8px;border-radius:6px;border:1px solid #2a2a2a;background:none;color:#888;font-size:11px;cursor:pointer;">✕</button>
+            <div style="font-size:13px;font-weight:700;">${nom}</div>
+          </div>
+          <div style="font-size:11px;color:#555;margin-bottom:12px;">${h.date} · ${h.duree} min · Période: ${h.period||'—'}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            ${renderMetricRow('Distance HI', h.distHI, 'm', '#E24B4A')}
+            ${renderMetricRow('m/min', h.mMin, '', '#FECC00')}
+            ${renderMetricRow('HI/min', h.hiMin, '', '#EF9F27')}
+            ${renderMetricRow('Volume HI', h.volHI, 'UA', '#378ADD')}
+            ${renderMetricRow('Vmax', h.vmax, 'km/h', '#1D9E75')}
+            ${renderMetricRow('% Vmax', h.vmaxPct, '%', '#5DCAA5')}
+            ${renderMetricRow('Acc B2', h.accB2, '', '#EF9F27')}
+            ${renderMetricRow('Acc B3', h.accB3, '', '#EF9F27')}
+            ${renderMetricRow('Load', h.load, 'UA', '#7F77DD')}
+            ${renderMetricRow('RHIE', h.rhie, '', '#ED93B1')}
+          </div>
+        `
+        zone.insertBefore(d, zone.firstChild)
+      }
+
+      function renderMetricRow(label, val, unit, color) {
+        if (val == null) return ''
+        return `<div style="display:flex;justify-content:space-between;padding:6px 8px;background:#111;border-radius:6px;">
+          <span style="font-size:11px;color:#666;">${label}</span>
+          <span style="font-size:12px;font-weight:700;color:${color};">${val}${unit}</span>
+        </div>`
+      }
+
+      // Render initial
+      renderAll()
+    }
+
+    // Fonctions auxiliaires
+    function norm(s){return String(s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
+    function parseD(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
+    function parseDate(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
+  </script>
+
+  <!-- MODAL COMING SOON -->
+  <div class="day-detail-modal" id="coming-soon-modal" onclick="closeComingSoonModal(event)" style="z-index: 99999;">
+    <div class="day-detail-sheet" style="padding: 24px 20px 44px; text-align: center; background: #141414; border-radius: 20px 20px 0 0; width: 100%; max-height: 88vh; overflow-y: auto;">
+      <div class="day-detail-handle" style="width: 36px; height: 4px; background: #2a2a2a; border-radius: 2px; margin: 0 auto 20px;"></div>
+      <div style="font-size: 48px; margin-bottom: 16px;">🚧</div>
+      <h2 id="coming-soon-title" style="color: #FECC00; font-size: 20px; font-weight: 700; margin-bottom: 8px; font-family: system-ui, -apple-system, sans-serif;">Fonctionnalité Bientôt Disponible</h2>
+      <p id="coming-soon-desc" style="color: #ccc; font-size: 14px; line-height: 1.5; margin: 0 auto 24px; max-width: 320px; font-family: system-ui, -apple-system, sans-serif;">
+        Nous travaillons actuellement sur cette fonctionnalité pour vous proposer un suivi de qualité. Restez connectés !
+      </p>
+      <button onclick="closeComingSoonModal()" style="width: 100%; max-width: 200px; padding: 12px; background: #FECC00; color: #000; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: system-ui, -apple-system, sans-serif;">D'accord</button>
+    </div>
+  </div>
+
+  <!-- MAINTENANCE SCREEN -->
+  <div id="maintenance-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#111; color:#fff; z-index:999999; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px; font-family:system-ui, -apple-system, sans-serif;">
+    <img src="https://www.sca-albi.fr/wp-content/uploads/2023/10/cropped-SCA-bis.png" style="width:100px; margin-bottom:24px;">
+    <h1 style="color:#FECC00; font-size:24px; margin-bottom:12px; font-weight:700;">Application en Maintenance</h1>
+    <p style="color:#ccc; font-size:15px; max-width:400px; line-height:1.5; margin:0 0 24px;">
+      Nous effectuons actuellement des mises à jour ou des corrections pour améliorer votre expérience. L'application des joueurs sera de retour très bientôt !
+    </p>
+    <div style="font-size:32px; animation: bounce 2s infinite;">🛠️</div>
+    <style>
+      @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+      }
+    </style>
+  </div>
+</body>
+</html>
