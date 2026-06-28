@@ -259,6 +259,7 @@
           </div>
           
           <button class="submit-btn" id="btn-login-submit" onclick="handleEmailAuth()" style="margin-top: 0;">Se connecter</button>
+          <button id="btn-forgot-password" onclick="resetPassword()" style="background: none; border: none; color: #555; font-size: 11px; cursor: pointer; text-decoration: underline; display: block; margin: 12px auto 0; font-weight: 500;">Mot de passe oublié ?</button>
         </div>
         
         <div style="margin: 20px 0; display: flex; align-items: center; justify-content: center; gap: 10px;">
@@ -454,7 +455,7 @@
   <script type="module">
     import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js'
     import{getFirestore,collection,doc,setDoc,getDoc,getDocs,serverTimestamp,onSnapshot}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js'
-    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js'
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js'
     const app=initializeApp({apiKey:"AIzaSyCvMs-5LX9Ivk3OkzUR3iz9Kk1E5b9_7Vk",authDomain:"delta-rugby-app.firebaseapp.com",projectId:"delta-rugby-app",storageBucket:"delta-rugby-app.firebasestorage.app",messagingSenderId:"61187079762",appId:"1:61187079762:web:56cd1eaa8beb9e1a2ee98b"})
     const db=getFirestore(app)
     const auth=getAuth(app)
@@ -610,6 +611,7 @@
       const loginBtn = document.getElementById('tab-login');
       const signupBtn = document.getElementById('tab-signup');
       const submitBtn = document.getElementById('btn-login-submit');
+      const forgotBtn = document.getElementById('btn-forgot-password');
       
       if (tab === 'login') {
         loginBtn.style.color = '#FECC00';
@@ -621,6 +623,7 @@
         signupBtn.style.fontWeight = '600';
         
         submitBtn.textContent = 'Se connecter';
+        if (forgotBtn) forgotBtn.style.display = 'block';
       } else {
         signupBtn.style.color = '#FECC00';
         signupBtn.style.borderBottomColor = '#FECC00';
@@ -631,8 +634,21 @@
         loginBtn.style.fontWeight = '600';
         
         submitBtn.textContent = 'Créer mon compte';
+        if (forgotBtn) forgotBtn.style.display = 'none';
       }
       document.getElementById('login-error-msg').textContent = '';
+    }
+
+    window.resetPassword = async function() {
+      const email = prompt("Saisis ton adresse email pour recevoir un lien de réinitialisation de mot de passe :");
+      if (!email) return;
+      try {
+        await sendPasswordResetEmail(auth, email.trim());
+        alert("Un email de réinitialisation de mot de passe t'a été envoyé ! Vérifie ta boîte de réception (et tes spams).");
+      } catch (e) {
+        console.error(e);
+        alert("Erreur lors de l'envoi de l'email. Vérifie que l'adresse saisie est correcte.");
+      }
     }
 
     window.handleEmailAuth = async function() {
@@ -691,31 +707,26 @@
 
     // ===== INIT =====
     async function init(){
-      try{
-        const[jSnap,rSnap,eSnap]=await Promise.all([getDocs(collection(db,'joueurs')),getDoc(doc(db,'config','ratios')),getDoc(doc(db,'config','exercices'))])
-        joueurs=jSnap.docs.map(d=>({id:d.id,...d.data()})).filter(j=>!j.archived)
-        ratios=rSnap.exists()?rSnap.data():{}
-        exercicesList=eSnap.exists()?(eSnap.data().liste||[]):[]
-        
-        // Load custom event types from Firebase
-        await loadEventTypesFromFirebase()
-        
-        renderMenuGrid()
-        buildHooper()
-      }catch(e){
-        console.error('Init:',e)
-        document.getElementById('joueurs-list').innerHTML='<div class="empty-msg"><div class="empty-icon">⚠️</div>Erreur de connexion.<br>Vérifie ta connexion internet.</div>'
-        return
-      }
-
       // Check persistent connection via Auth State Observer
       onAuthStateChanged(auth, async (user) => {
         if (user) {
           startConfigListeners();
           try {
-            // Refresh players from Firestore to verify their association status
-            const jSnap = await getDocs(collection(db, 'joueurs'));
+            // Load configurations, players list, ratios, and exercises safely now that user is authenticated
+            const [jSnap, rSnap, eSnap] = await Promise.all([
+              getDocs(collection(db, 'joueurs')),
+              getDoc(doc(db, 'config', 'ratios')),
+              getDoc(doc(db, 'config', 'exercices'))
+            ]);
             joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived);
+            ratios = rSnap.exists() ? rSnap.data() : {};
+            exercicesList = eSnap.exists() ? (eSnap.data().liste || []) : [];
+            
+            // Load custom event types from Firebase
+            await loadEventTypesFromFirebase();
+            
+            renderMenuGrid();
+            buildHooper();
             
             const associatedPlayer = joueurs.find(j => j.uid === user.uid);
             if (associatedPlayer) {
@@ -727,7 +738,8 @@
               allerVers('select');
             }
           } catch (e) {
-            console.error('Auth state check error:', e);
+            console.error('Error loading data after auth:', e);
+            document.getElementById('joueurs-list').innerHTML = '<div class="empty-msg"><div class="empty-icon">⚠️</div>Erreur de chargement des données.<br>Vérifie tes permissions Firebase.</div>';
           }
         } else {
           stopConfigListeners();
@@ -798,9 +810,30 @@
     }
 
     async function selectionnerJoueur(j){
-      // Check if they are authenticated and need linkage
       const user = auth.currentUser;
-      if (user && !j.uid) {
+      if (!user) return;
+      
+      // If this player profile is already linked to a DIFFERENT account, block it!
+      if (j.uid && j.uid !== user.uid) {
+        alert("Ce profil joueur est déjà associé à un autre compte de connexion.");
+        return;
+      }
+
+      // Check if they need linkage
+      if (!j.uid) {
+        // Double check from Firestore to make sure nobody linked it in the meantime
+        try {
+          const freshSnap = await getDoc(doc(db, 'joueurs', j.id));
+          const freshData = freshSnap.exists() ? freshSnap.data() : {};
+          if (freshData.uid) {
+            alert("Ce profil joueur a déjà été associé à un autre compte entre-temps.");
+            window.location.reload();
+            return;
+          }
+        } catch (e) {
+          console.error('Real-time double check error:', e);
+        }
+
         if (!confirm(`Es-tu bien ${j.prenom} ${j.nom} ? Cette action liera définitivement ton compte de connexion à ce profil.`)) {
           return;
         }
