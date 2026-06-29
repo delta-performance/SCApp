@@ -301,7 +301,10 @@
           <div class="player-big-nom" id="menu-nom">—</div>
           <div class="player-big-poste" id="menu-poste">—</div>
         </div>
-        <button class="change-btn" onclick="seDeconnecter()">Déconnexion</button>
+        <div style="margin-left: auto; display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">
+          <button class="change-btn" onclick="seDeconnecter()" style="margin: 0;">Déconnexion</button>
+          <button id="btn-admin-change-player" class="change-btn" onclick="ouvrirSelectionAdmin()" style="display:none; margin: 0; background:#FECC00; color:#000; border:none; font-weight: 700;">Changer Joueur</button>
+        </div>
       </div>
       <div class="menu-grid" id="menu-grid">
         <div class="menu-card" id="card-wellness" onclick="allerVers('wellness')">
@@ -485,6 +488,8 @@
       unsubscribeModules = onSnapshot(doc(db, 'config', 'player_modules'), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data()
+          window.__playerModulesData = data
+          
           MODULES.forEach(m => {
             if (data[m.id] !== undefined) {
               m.active = data[m.id]
@@ -570,8 +575,35 @@
     window.renderMenuGrid = function() {
       const grid = document.getElementById('menu-grid')
       if (!grid) return
+      
+      const data = window.__playerModulesData || {}
+      const defaultStates = { wellness: true, seance: true, planning: false, gps: true }
+
       grid.innerHTML = MODULES.map(m => {
-        if (m.active) {
+        // 1. Déterminer si le module est actif globalement
+        const isGloballyActive = data[m.id] !== undefined ? data[m.id] : (defaultStates[m.id] || false)
+
+        // 2. Déterminer s'il est actif pour le joueur en cours (joueurActif)
+        let isActiveForPlayer = isGloballyActive
+
+        if (isGloballyActive && joueurActif) {
+          const target = data[m.id + '_target'] || 'all'
+          if (target === 'blesse') {
+            isActiveForPlayer = joueurActif.statut === 'blesse'
+          } else if (target === 'absent') {
+            isActiveForPlayer = joueurActif.statut === 'absent'
+          } else if (target === 'custom') {
+            const allowedPlayers = data[m.id + '_players'] || []
+            isActiveForPlayer = allowedPlayers.includes(joueurActif.id)
+          }
+        }
+
+        let comingSoonText = m.comingSoonText || "Cette fonctionnalité arrive bientôt ! Nous la préparons pour l'équipe."
+        if (isGloballyActive && !isActiveForPlayer) {
+          comingSoonText = "Ce module n'est pas disponible pour ton profil actuellement."
+        }
+
+        if (isActiveForPlayer) {
           return `
             <div class="menu-card" id="card-${m.id}" onclick="allerVers('${m.id}')">
               <div class="menu-icon">${m.icon}</div>
@@ -582,7 +614,7 @@
           `
         } else {
           return `
-            <div class="menu-card soon" id="card-${m.id}" onclick="window.showComingSoon('${m.label.replace(/'/g, "\\'")}', '${(m.comingSoonText || 'Cette fonctionnalité arrive bientôt !').replace(/'/g, "\\'")}')">
+            <div class="menu-card soon" id="card-${m.id}" onclick="window.showComingSoon('${m.label.replace(/'/g, "\\'")}', '${comingSoonText.replace(/'/g, "\\'")}')">
               <div class="menu-icon">${m.icon}</div>
               <div class="menu-label">${m.label}</div>
               <div class="menu-sub" style="color: #FECC00; font-weight: 500;">Bientôt</div>
@@ -728,14 +760,31 @@
             renderMenuGrid();
             buildHooper();
             
-            const associatedPlayer = joueurs.find(j => j.uid === user.uid);
-            if (associatedPlayer) {
-              await selectionnerJoueur(associatedPlayer);
+            const isBypassUser = user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
+            const btnChange = document.getElementById('btn-admin-change-player');
+            if (btnChange) {
+              btnChange.style.display = isBypassUser ? 'block' : 'none';
+            }
+
+            if (isBypassUser) {
+              const savedPlayerId = localStorage.getItem('sca_joueur_id');
+              const savedPlayer = savedPlayerId ? joueurs.find(j => j.id === savedPlayerId) : null;
+              if (savedPlayer) {
+                await selectionnerJoueur(savedPlayer);
+              } else {
+                renderJoueurs(joueurs);
+                allerVers('select');
+              }
             } else {
-              // Unassociated user: show player list of only unlinked players to select their name
-              const unlinkedPlayers = joueurs.filter(j => !j.uid);
-              renderJoueurs(unlinkedPlayers);
-              allerVers('select');
+              const associatedPlayer = joueurs.find(j => j.uid === user.uid);
+              if (associatedPlayer) {
+                await selectionnerJoueur(associatedPlayer);
+              } else {
+                // Unassociated user: show player list of only unlinked players to select their name
+                const unlinkedPlayers = joueurs.filter(j => !j.uid);
+                renderJoueurs(unlinkedPlayers);
+                allerVers('select');
+              }
             }
           } catch (e) {
             console.error('Error loading data after auth:', e);
@@ -804,23 +853,40 @@
       }
     }
 
+    window.ouvrirSelectionAdmin = function() {
+      renderJoueurs(joueurs);
+      allerVers('select');
+    }
+
     window.filtrerJoueurs=function(q){
-      const ql=q.toLowerCase()
-      renderJoueurs(joueurs.filter(j=>((j.nom||'')+' '+(j.prenom||'')).toLowerCase().includes(ql)||((j.prenom||'')+' '+(j.nom||'')).toLowerCase().includes(ql)))
+      const ql=q.toLowerCase().trim();
+      const user = auth.currentUser;
+      const isBypassUser = user && user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
+      
+      const filtered = joueurs.filter(j => {
+        const matchesName = ((j.nom||'')+' '+(j.prenom||'')).toLowerCase().includes(ql) || ((j.prenom||'')+' '+(j.nom||'')).toLowerCase().includes(ql);
+        if (!matchesName) return false;
+        
+        return isBypassUser || !j.uid;
+      });
+      
+      renderJoueurs(filtered);
     }
 
     async function selectionnerJoueur(j){
       const user = auth.currentUser;
       if (!user) return;
       
+      const isBypassUser = user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
+
       // If this player profile is already linked to a DIFFERENT account, block it!
-      if (j.uid && j.uid !== user.uid) {
+      if (!isBypassUser && j.uid && j.uid !== user.uid) {
         alert("Ce profil joueur est déjà associé à un autre compte de connexion.");
         return;
       }
 
       // Check if they need linkage
-      if (!j.uid) {
+      if (!j.uid && !isBypassUser) {
         // Double check from Firestore to make sure nobody linked it in the meantime
         try {
           const freshSnap = await getDoc(doc(db, 'joueurs', j.id));
@@ -850,6 +916,15 @@
 
       joueurActif=j
       localStorage.setItem('sca_joueur_id',j.id)
+
+      // Enregistrer la date de dernière connexion dans Firestore
+      try {
+        await setDoc(doc(db, 'joueurs', j.id), { lastLogin: new Date().toISOString() }, { merge: true });
+        j.lastLogin = new Date().toISOString();
+      } catch (e) {
+        console.error('Error logging last connection:', e);
+      }
+
       const col=COUL[j.poste]||'#444'
       try{const mx=await getDoc(doc(db,'maxTestes',j.id));maxTestes=mx.exists()?mx.data():{}}catch(e){maxTestes={}}
       const av=document.getElementById('menu-avatar')
@@ -861,6 +936,9 @@
       if (menuNom) menuNom.textContent=(j.prenom||'')+' '+(j.nom||'')
       const menuPoste = document.getElementById('menu-poste')
       if (menuPoste) menuPoste.textContent=j.poste||''
+      if (typeof window.renderMenuGrid === 'function') {
+        window.renderMenuGrid()
+      }
       try{
         const wSnap=await getDoc(doc(db,'wellness',`${j.id}_${aujourdhui}`))
         const cardWellness = document.getElementById('card-wellness')
