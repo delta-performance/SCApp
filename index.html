@@ -217,6 +217,7 @@
       border-color: #2a2a2a !important;
     }
   </style>
+  <link rel="manifest" href="../manifest.json">
 </head>
 <body>
 
@@ -518,7 +519,7 @@
     const COL={joueur:'Player Name',date:'Date',seance:'Activity Name',period:'Period Name',distHI:'Distance Haute Intensité',distTot:'Total Distance',vmax:'Maximum Velocity',vmaxPct:'Max Vel (% Max)',load:'Total Player Load',accB2:'Acceleration B2 Efforts (Gen 2)',accB3:'Acceleration B3 Efforts (Gen 2)',rhie:'RHIE Total Bouts',duree:'Total Duration'}
     const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 
-    let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[]
+    let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
     let tapCount=0,tapStarted=false,tapDone=false,tapRemaining=10,tapTimer=null
     // Même logique que planning.html : midi local pour éviter décalage DST/UTC
     function getLundi(date){
@@ -927,6 +928,17 @@
 
       const col=COUL[j.poste]||'#444'
       try{const mx=await getDoc(doc(db,'maxTestes',j.id));maxTestes=mx.exists()?mx.data():{}}catch(e){maxTestes={}}
+      // Charger le poids du joueur (depuis collection 'poids' ou propriété du joueur)
+      try{
+        const pSnap=await getDocs(collection(db,'poids'))
+        const pDocs=pSnap.docs.map(d=>d.data()).filter(p=>p.joueurId===j.id||p.joueurId===j.nom+'_'+j.prenom)
+        if(pDocs.length){
+          pDocs.sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+          poidsJoueur=pDocs[0].poids||null
+        } else {
+          poidsJoueur=j.poids||null
+        }
+      }catch(e){poidsJoueur=j.poids||null}
       const av=document.getElementById('menu-avatar')
       if (av) {
         av.textContent=(j.prenom||'?')[0]+(j.nom||'?')[0]
@@ -1116,7 +1128,182 @@
       setTimeout(()=>allerVers('menu'),1400)
     }
 
-    // ===== SÉANCE =====
+    // ===== HELPERS CHARGE & TRACTION =====
+    function isTraction(nom){
+      return (nom||'').toLowerCase().includes('traction')
+    }
+    // Calcule la charge prédicte selon l'unité d'intensité
+    function calculerChargeUnit(exo){
+      const unit=exo.intensityUnit||'RPE'
+      const val=parseFloat(exo.rpe)
+      if(!val)return null
+      let pct=0
+      if(unit==='%')pct=val/100
+      else if(unit==='Vitesse (m/s)'||unit==='VITESSE'){pct=Math.round(100-((val-0.2)/(1.3-0.2))*70);pct=Math.max(10,Math.min(100,pct))/100}
+      else if(unit==='PDC')return null // PDC = poids du corps, pas de charge calculée
+      else if(unit==='% PDC'){pct=val/100}
+      else pct=val/10 // RPE
+      // Chercher 1RM direct
+      const exoLower=(exo.exercice||'').toLowerCase().trim()
+      let oneRM=null
+      for(const[k,v]of Object.entries(maxTestes||{})){if(k.toLowerCase().trim()===exoLower){oneRM=parseFloat(v);break}}
+      if(!oneRM&&ratios){
+        const rd=ratios[exo.exercice]
+        if(rd){const{ratio,mvtRoi}=rd;const mr=(mvtRoi||'').toLowerCase().trim();for(const[k,v]of Object.entries(maxTestes||{})){if(k.toLowerCase().trim()===mr){oneRM=parseFloat(v)*ratio;break}}}
+        if(!oneRM){
+          const nl=exoLower
+          for(const[key,vr]of Object.entries(ratios)){const m=key.match(/^(.+)_vs_(.+)$/);if(!m)continue;if(m[1].toLowerCase().trim()===nl){const t=m[2].toLowerCase().trim();for(const[k,v]of Object.entries(maxTestes||{})){if(k.toLowerCase().trim()===t){oneRM=parseFloat(v)*vr;break}}}}
+        }
+      }
+      if(!oneRM||oneRM<=0)return null
+      return Math.round(oneRM*pct/2.5)*2.5
+    }
+    // Calcule la charge recommandée pour un exercice (label affiché)
+    function labelChargeReco(exo){
+      const unit=exo.intensityUnit||'RPE'
+      const traction=isTraction(exo.exercice)
+      // Pour les tractions: si on peut calculer une charge et qu'elle > PDC, afficher 'PDC + X kg', sinon 'PDC'
+      if(traction){
+        const kg=calculerChargeUnit(exo)
+        const pdc=poidsJoueur||0
+        if(kg!==null&&pdc>0){
+          if(kg>pdc){
+            const leste=Math.round((kg-pdc)/2.5)*2.5
+            return 'PDC + '+leste+' kg'
+          }
+          return 'PDC'
+        }
+        if(unit==='% PDC'&&pdc>0){
+          const charge=pdc*parseFloat(exo.rpe)/100
+          if(charge>pdc){
+            const leste=Math.round((charge-pdc)/2.5)*2.5
+            return 'PDC + '+leste+' kg'
+          }
+          return 'PDC'
+        }
+        if(pdc>0)return 'PDC ('+pdc+' kg)'
+        return 'PDC'
+      }
+      if(unit==='PDC')return 'PDC'
+      if(unit==='% PDC'){
+        if(poidsJoueur){
+          const charge=poidsJoueur*parseFloat(exo.rpe)/100
+          return Math.round(charge/2.5)*2.5+' kg'
+        }
+        return exo.rpe+'% PDC'
+      }
+      const kg2=calculerChargeUnit(exo)
+      if(kg2!==null)return kg2+' kg'
+      if(unit==='%')return exo.rpe+'%'
+      if(unit==='Vitesse (m/s)'||unit==='VITESSE')return exo.rpe+' m/s'
+      return 'RPE '+exo.rpe
+    }
+    // Calcule la charge réelle à enregistrer selon le mode de traction
+    function calculerChargeTraction(mode, valeur, exo){
+      const pdc=poidsJoueur||0
+      if(mode==='pdc')return pdc
+      if(mode==='leste')return pdc+(parseFloat(valeur)||0)
+      if(mode==='deleste')return pdc // délesté = PDC, on enregistre juste le nbr de reps différemment
+      return null
+    }
+
+    // Modal traction — choix multiple PDC/lesté/délesté
+    window._tractionExos={}
+    window.ouvrirModalTraction=function(seanceId,clef,joueurId,exoKey,ckId){
+      const exo=window._tractionExos[exoKey]
+      if(!exo)return
+      const overlay=document.createElement('div')
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;display:flex;align-items:flex-end;'
+      const sheet=document.createElement('div')
+      sheet.style.cssText='background:#141414;border-radius:20px 20px 0 0;width:100%;max-height:88vh;overflow-y:auto;padding:0 0 44px;'
+      sheet.innerHTML=`<div style="width:36px;height:4px;background:#2a2a2a;border-radius:2px;margin:12px auto 0;"></div>
+        <div style="padding:14px 18px 12px;border-bottom:1px solid #222;display:flex;align-items:center;gap:10px;">
+          <div style="font-size:16px;font-weight:700;color:#FECC00;flex:1;">${exo.exercice}</div>
+          <button onclick="this.closest('[data-overlay]').remove()" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>
+        </div>
+        <div style="padding:16px 18px;">
+          <div style="font-size:12px;color:#888;margin-bottom:14px;">Comment as-tu réalisé cet exercice ?</div>
+          <div id="traction-choices" style="display:flex;flex-direction:column;gap:10px;">
+            <button data-mode="pdc" style="padding:14px;border-radius:12px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;">🏋️</span><div><div>Poids du corps (PDC)</div><div style="font-size:11px;color:#888;font-weight:400;">${poidsJoueur?poidsJoueur+' kg':'Poids non renseigné'}</div></div>
+            </button>
+            <button data-mode="leste" style="padding:14px;border-radius:12px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;">➕</span><div><div>Lesté</div><div style="font-size:11px;color:#888;font-weight:400;">PDC + poids additionnel</div></div>
+            </button>
+            <button data-mode="deleste" style="padding:14px;border-radius:12px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;">➖</span><div><div>Délesté (assistance)</div><div style="font-size:11px;color:#888;font-weight:400;">Combien de reps as-tu fait ?</div></div>
+            </button>
+          </div>
+          <div id="traction-input-zone" style="display:none;margin-top:14px;">
+            <label id="traction-input-label" style="font-size:12px;color:#888;display:block;margin-bottom:6px;"></label>
+            <input id="traction-input-val" type="number" step="0.5" placeholder="0" style="width:100%;padding:12px;border-radius:8px;border:1px solid #2a2a2a;background:#0f0f0f;color:#FECC00;font-size:18px;font-weight:700;text-align:center;outline:none;" />
+          </div>
+          <button id="traction-confirm" style="width:100%;padding:14px;border-radius:12px;border:none;background:#FECC00;color:#0f0f0f;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;display:none;">✓ Confirmer</button>
+        </div>`
+      overlay.appendChild(sheet)
+      overlay.setAttribute('data-overlay','')
+      document.body.appendChild(overlay)
+      overlay.onclick=e=>{if(e.target===overlay)overlay.remove()}
+
+      let selectedMode=null
+      const choices=sheet.querySelectorAll('[data-mode]')
+      const inputZone=sheet.querySelector('#traction-input-zone')
+      const inputLabel=sheet.querySelector('#traction-input-label')
+      const inputVal=sheet.querySelector('#traction-input-val')
+      const confirmBtn=sheet.querySelector('#traction-confirm')
+
+      choices.forEach(btn=>{
+        btn.onclick=()=>{
+          selectedMode=btn.dataset.mode
+          choices.forEach(b=>{b.style.borderColor='#2a2a2a';b.style.background='#1a1a1a'})
+          btn.style.borderColor='#FECC00';btn.style.background='#1a1a00'
+          if(selectedMode==='pdc'){
+            inputZone.style.display='none'
+            confirmBtn.style.display='block'
+          } else {
+            inputZone.style.display='block'
+            if(selectedMode==='leste'){
+              inputLabel.textContent='Poids additionnel (kg) :'
+              inputVal.placeholder='ex: 10'
+              inputVal.step='0.5'
+            } else {
+              inputLabel.textContent='Nombre de reps fait :'
+              inputVal.placeholder='ex: 8'
+              inputVal.step='1'
+            }
+            confirmBtn.style.display='block'
+          }
+        }
+      })
+      confirmBtn.onclick=async()=>{
+        if(!selectedMode)return
+        let valeur=0
+        if(selectedMode!=='pdc'){
+          valeur=parseFloat(inputVal.value)||0
+          if(valeur<=0){inputVal.style.borderColor='#E24B4A';return}
+        }
+        const charge=calculerChargeTraction(selectedMode,valeur,exo)
+        if(charge===null)return
+        // Sauver la charge
+        chargesReelles[clef]=String(charge)
+        const meta={[clef]:String(charge),updatedAt:serverTimestamp()}
+        meta[clef+'_mode']=selectedMode
+        if(selectedMode==='leste')meta[clef+'_leste']=String(valeur)
+        if(selectedMode==='deleste')meta[clef+'_reps']=String(valeur)
+        try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),meta,{merge:true})}catch(e){console.error(e)}
+        // Mettre à jour l'UI
+        const ck=document.getElementById(ckId)
+        if(ck){ck.textContent='✓';ck.style.color='#1D9E75'}
+        const inp=document.querySelector(`[data-clef="${clef}"]`)
+        if(inp){
+          inp.textContent=charge+' kg'
+          inp.style.color='#1D9E75'
+          inp.style.fontWeight='700'
+        }
+        overlay.remove()
+      }
+    }
+
     async function chargerSeance(){
       const c=document.getElementById('seance-content');c.innerHTML='<div class="empty-msg">Chargement...</div>'
       if(!joueurActif)return
@@ -1187,10 +1374,11 @@
               const exoData=exercicesList.find(e=>e.nom===exo.exercice)
               const photoUrl=exoData?.photo||''
               
-              let cp=null
-              const orm=maxTestes[exo.exercice]
-              if(orm>0)cp=Math.round((exo.rpe/10)*orm/2.5)*2.5
-              else if(ratios[exo.exercice]){const{ratio,mvtRoi}=ratios[exo.exercice];const or2=maxTestes[mvtRoi]||0;if(or2>0)cp=Math.round((exo.rpe/10)*ratio*or2/2.5)*2.5}
+              const unit=exo.intensityUnit||'RPE'
+              const reco=labelChargeReco(exo)
+              const traction=isTraction(exo.exercice)
+              const unitLabel=unit==='Vitesse (m/s)'?'m/s':unit
+              const hasInput=unit!=='RPE'||traction // RPE = pas de saisie, sauf pour les tractions
               
               const eEl=document.createElement('div');eEl.className='seance-exo'
               eEl.style.display='flex'
@@ -1206,22 +1394,32 @@
                 ${photoHtml}
                 <div style="flex:1;">
                   <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${exo.numExo||''}. ${exo.exercice}</div>
-                  <div class="seance-exo-params">${exo.nbSets} séries × ${exo.nbReps} reps · RPE ${exo.rpe}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
-                  <div class="seance-charge">${cp?cp+' kg préconisés':'RPE '+exo.rpe}</div>
+                  <div class="seance-exo-params">${exo.nbSets} séries × ${exo.nbReps} reps · ${unitLabel} ${exo.rpe}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
+                  <div class="seance-charge">${reco}</div>
                 </div>
               `
               
-              const gr=document.createElement('div');gr.className='series-grid'
-              gr.style.marginTop='8px'
-              for(let s=1;s<=(exo.nbSets||1);s++){
-                const clef=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}_s${s}`
-                const vs=chargesReelles[clef]||''
-                const ckId='ck_'+Math.random().toString(36).slice(2)
-                const box=document.createElement('div');box.className='serie-box'
-                box.innerHTML=`<div class="serie-lbl">Série ${s}</div><input class="serie-inp" type="number" step="0.5" placeholder="${cp||exo.rpe}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${cp?'Préco '+cp+'kg':''}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
-                gr.appendChild(box)
+              if(hasInput){
+                const gr=document.createElement('div');gr.className='series-grid'
+                gr.style.marginTop='8px'
+                for(let s=1;s<=(exo.nbSets||1);s++){
+                  const clef=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}_s${s}`
+                  const vs=chargesReelles[clef]||''
+                  const ckId='ck_'+Math.random().toString(36).slice(2)
+                  const box=document.createElement('div');box.className='serie-box'
+                  if(traction){
+                    // Traction → bouton qui ouvre le modal
+                    const exoKey='trac_'+Math.random().toString(36).slice(2)
+                    window._tractionExos[exoKey]=exo
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}</div><button class="serie-inp" data-clef="${clef}" style="width:100%;background:none;border:1px solid #2a2a2a;border-radius:6px;color:${vs?'#1D9E75':'#FECC00'};font-size:14px;font-weight:700;text-align:center;padding:4px;cursor:pointer;" onclick="ouvrirModalTraction('${sa.id}','${clef}','${joueurActif.id}','${exoKey}','${ckId}')">${vs?vs+' kg':'Remplir'}</button><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                  } else {
+                    // %/m/s/PDC/% PDC → input normal
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}</div><input class="serie-inp" type="number" step="0.5" placeholder="${reco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                  }
+                  gr.appendChild(box)
+                }
+                eEl.querySelector('div[style*="flex:1"]').appendChild(gr)
               }
-              eEl.querySelector('div[style*="flex:1"]').appendChild(gr)
               bEl.appendChild(eEl)
             })
             body.appendChild(bEl)
@@ -1990,12 +2188,15 @@
       if (!historique) return []
       return historique.map(h => {
         const hCorr = { ...h }
-        if (hCorr.mMin > 1000) {
-          hCorr.mMin = hCorr.mMin / 1440
-          hCorr.hiMin = hCorr.hiMin / 1440
+        if (hCorr.mMin > 1000 && isFinite(hCorr.mMin)) {
+          hCorr.mMin = +(hCorr.mMin / 1440).toFixed(1)
+          if (hCorr.hiMin > 1000 && isFinite(hCorr.hiMin)) {
+            hCorr.hiMin = +(hCorr.hiMin / 1440).toFixed(2)
+          }
         }
-        if ((hCorr.duree == null || hCorr.duree <= 1) && hCorr.mMin > 0) {
-          hCorr.duree = Math.round((hCorr.distTot || 0) / hCorr.mMin)
+        if ((hCorr.duree == null || hCorr.duree <= 5 || hCorr.duree > 600) && hCorr.mMin > 0 && isFinite(hCorr.mMin)) {
+          const dureeCalc = Math.round((hCorr.distTot || 0) / hCorr.mMin)
+          if (isFinite(dureeCalc) && dureeCalc > 0) hCorr.duree = dureeCalc
         }
         return hCorr
       })
@@ -2004,18 +2205,30 @@
     const sData = snap.data()
     if (sData) {
       sData.historique = corrigerDonneesGPS(sData.historique)
-      if (sData.mMinMoy > 1000) {
-        sData.mMinMoy = sData.mMinMoy / 1440
-        sData.hiMinMoy = sData.hiMinMoy / 1440
+      if (sData.mMinMoy > 1000 && isFinite(sData.mMinMoy)) {
+        sData.mMinMoy = +(sData.mMinMoy / 1440).toFixed(1)
+        sData.hiMinMoy = +(sData.hiMinMoy / 1440).toFixed(2)
       }
+      sData.historique.sort((a, b) => {
+        const da = parseDate(a.date), db = parseDate(b.date)
+        if (!da || !db) return 0
+        return da - db
+      })
     }
 
     allJoueursData.forEach(j => {
-      if (j.mMinMoy > 1000) {
-        j.mMinMoy = j.mMinMoy / 1440
-        j.hiMinMoy = j.hiMinMoy / 1440
+      if (j.mMinMoy > 1000 && isFinite(j.mMinMoy)) {
+        j.mMinMoy = +(j.mMinMoy / 1440).toFixed(1)
+        j.hiMinMoy = +(j.hiMinMoy / 1440).toFixed(2)
       }
       j.historique = corrigerDonneesGPS(j.historique)
+      if (j.historique) {
+        j.historique.sort((a, b) => {
+          const da = parseDate(a.date), db = parseDate(b.date)
+          if (!da || !db) return 0
+          return da - db
+        })
+      }
     })
 
     renderGPSStats(c, sData, joueurActif, allJoueursData)
@@ -2079,6 +2292,9 @@
         // Dernière date avec données
         const lastDate = dates[dates.length-1]
 
+        const minDateStr = dateStrLocal(minDate)
+        const maxDateStr = dateStrLocal(maxDate)
+        const lastDateStr = lastDate.toLocaleDateString('fr-FR')
         const filtresDiv = document.createElement('div')
         filtresDiv.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:14px;'
         filtresDiv.innerHTML = `
@@ -2090,10 +2306,10 @@
             <div style="font-size:11px;color:#888;margin-bottom:8px;">Filtrer par période</div>
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
               <input type="date" id="gps-date-debut" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:11px;"
-                     value="${minDate}">
+                     value="${minDateStr}">
               <span style="color:#555;font-size:11px;">→</span>
               <input type="date" id="gps-date-fin" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:11px;"
-                     value="${maxDate}">
+                     value="${maxDateStr}">
             </div>
             <div style="display:flex;gap:6px;">
               <button onclick="resetGPSDates()" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#888;font-size:11px;cursor:pointer;">Réinitialiser</button>
@@ -2101,7 +2317,7 @@
             </div>
           </div>
           <div id="derniere-info" style="font-size:11px;color:#555;text-align:center;padding:8px;background:#0f0f0f;border-radius:6px;">
-            ${s.historique.length > 0 ? `Dernière séance : ${s.historique[s.historique.length-1].date}` : 'Aucune séance'}
+            ${s.historique.length > 0 ? `Dernière séance : ${lastDateStr}` : 'Aucune séance'}
           </div>
         `
         c.appendChild(filtresDiv)
@@ -2156,15 +2372,20 @@
         })
 
         window.resetGPSDates = function() {
-          document.getElementById('gps-date-debut').value = minDate
-          document.getElementById('gps-date-fin').value = maxDate
+          document.getElementById('gps-date-debut').value = minDateStr
+          document.getElementById('gps-date-fin').value = maxDateStr
           historiqueFiltre = s.historique
           renderAll()
         }
 
         window.appliquerGPSDates = function() {
-          const d1 = new Date(document.getElementById('gps-date-debut').value)
-          const d2 = new Date(document.getElementById('gps-date-fin').value)
+          const v1 = document.getElementById('gps-date-debut').value
+          const v2 = document.getElementById('gps-date-fin').value
+          const d1 = v1 ? new Date(v1 + 'T00:00:00') : null
+          const d2 = v2 ? new Date(v2 + 'T00:00:00') : null
+          if (!d1 || !d2 || isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+            return
+          }
           historiqueFiltre = s.historique.filter(h => {
             const dh = parseDate(h.date)
             return dh && dh >= d1 && dh <= d2
@@ -2331,7 +2552,7 @@
         // ===== GRAPHIQUE RYTHME PAR PERIODE =====
         if (hist.length > 0) {
           const statsParPeriode = calculerStatsParPeriode(hist)
-          const periodLabels = Object.keys(statsParPeriode).filter(p => isValidPeriod(p) || p !== 'Autre').sort()
+          const periodLabels = Object.keys(statsParPeriode).filter(p => isValidPeriod(p) && p !== 'Autre').sort()
           
           if (periodLabels.length > 0) {
             const periodChartSection = document.createElement('div')
@@ -2352,7 +2573,7 @@
             const svgWrap = document.createElement('div')
             svgWrap.style.cssText = 'display:flex;gap:0;align-items:flex-end;justify-content:center;padding:0 8px;overflow-x:auto;'
             
-            const periodValues = periodLabels.map(p => statsParPeriode[p].mMinMoyen)
+            const periodValues = periodLabels.map(p => statsParPeriode[p].mMinCalc)
             const maxPeriodVal = Math.max(...periodValues, 1)
             
             periodLabels.forEach((label, i) => {
@@ -2527,7 +2748,11 @@
           <th style="color:#1D9E75;">Vmax</th>
         </tr></thead>`
         const tbody = document.createElement('tbody')
-        ;[...hist].reverse().forEach(h => {
+        ;[...hist].sort((a,b) => {
+          const da = parseDate(a.date), db = parseDate(b.date)
+          if (!da || !db) return 0
+          return db - da
+        }).forEach(h => {
           const tr = document.createElement('tr')
           tr.innerHTML = `
             <td style="color:#555;">${h.date||'—'}</td>
@@ -2700,12 +2925,13 @@
           
           // Trouver le rang du joueur actuel
           const monRang = sorted.findIndex(j => j.nomGPS === s.nomGPS) + 1
-          const total = totalJoueurs // Afficher le vrai total
+          const total = avecDonnees // Afficher le nombre de joueurs classés
           
           // Top 3
           const top3vals = sorted.slice(0, 3).map((j, i) => ({
             rang: i + 1,
             estMoi: j.nomGPS === s.nomGPS,
+            nomGPS: j.nomGPS,
             valeur: j.stats?.[m.hk] || 0
           }))
           
@@ -2744,10 +2970,11 @@
             const diff = valeurFiltre - valeurTop
             const diffStr = diff > 0 ? `(+${diff.toFixed(m.d)})` : diff < 0 ? `(${diff.toFixed(m.d)})` : ''
             
+            const nomTop = estMoi ? `${joueur.prenom} ${joueur.nom}` : '—'
             row.innerHTML = `
               <div style="width:22px;text-align:center;font-size:16px;">${MEDALS[i]}</div>
-              <div style="flex:1;font-size:12px;color:${estMoi?'#FECC00':'#888'};font-weight:${estMoi?'600':'normal'};">${estMoi ? `${joueur.prenom} ${joueur.nom}` : '—'}</div>
-              <div style="font-size:11px;font-weight:600;color:${i===0?m.c:'#888'};">${valeurTop?.toFixed(m.d)} ${m.u}</div>
+              <div style="flex:1;font-size:12px;color:${estMoi?'#FECC00':'#888'};font-weight:${estMoi?'600':'normal'};">${nomTop}</div>
+              <div style="font-size:11px;font-weight:600;color:${i===0?m.c:'#888'};text-align:right;">${valeurTop?.toFixed(m.d)} ${m.u}<br><span style="font-size:9px;font-weight:500;color:#666;">${diffStr}</span></div>
             `
             card.appendChild(row)
           })
