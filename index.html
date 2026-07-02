@@ -80,6 +80,14 @@
     .serie-inp { width: 100%; background: none; border: none; color: #FECC00; font-size: 16px; font-weight: 700; text-align: center; outline: none; padding: 2px 0; }
     .serie-pre { font-size: 9px; color: #333; margin-top: 2px; }
     .serie-ok { font-size: 11px; color: #1D9E75; margin-top: 2px; }
+    .switch-container { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #1a1a1a; border-radius: 20px; border: 1px solid #2a2a2a; }
+    .switch-label { font-size: 11px; font-weight: 600; color: #888; user-select: none; }
+    .switch-tv { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+    .switch-tv input { opacity: 0; width: 0; height: 0; }
+    .slider-tv { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .3s; border-radius: 24px; border: 1px solid #444; }
+    .slider-tv:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: #fff; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+    input:checked + .slider-tv { background-color: #1D9E75; border-color: #1D9E75; }
+    input:checked + .slider-tv:before { transform: translateX(20px); }
     .planning-jour { margin-bottom: 14px; }
     .planning-jour-titre { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 7px; }
     .planning-jour-titre.today { color: #FECC00; }
@@ -380,6 +388,16 @@
         <button class="btn-nav-week" onclick="semaineSuivanteSeance()">›</button>
       </div>
       
+      <div style="display:flex;align-items:center;justify-content:flex-end;padding:4px 0 8px;">
+        <div class="switch-container">
+          <span class="switch-label" id="seance-saisie-toggle-label">Toutes les séries d'un coup</span>
+          <label class="switch-tv">
+            <input type="checkbox" id="seance-saisie-toggle" checked onchange="toggleSaisieMode(this.checked)">
+            <span class="slider-tv"></span>
+          </label>
+        </div>
+      </div>
+      
       <div id="seance-content"><div class="empty-msg">Chargement...</div></div>
     </div>
 
@@ -520,6 +538,7 @@
     const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 
     let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
+    let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
     let tapCount=0,tapStarted=false,tapDone=false,tapRemaining=10,tapTimer=null
     // Même logique que planning.html : midi local pour éviter décalage DST/UTC
     function getLundi(date){
@@ -1046,7 +1065,13 @@
       const el=document.getElementById('screen-'+screen)
       if(!el){console.error('Screen manquant: screen-'+screen);return}
       el.classList.add('active');window.scrollTo(0,0)
-      if(screen==='seance')chargerSeance()
+      if(screen==='seance'){
+        const toggleEl=document.getElementById('seance-saisie-toggle')
+        if(toggleEl)toggleEl.checked=saisieUniqueMode
+        const labelEl=document.getElementById('seance-saisie-toggle-label')
+        if(labelEl)labelEl.textContent=saisieUniqueMode?"Toutes les séries d'un coup":'Série par série'
+        chargerSeance()
+      }
       if(screen==='planning')chargerPlanning()
       if(screen==='gps')chargerGPS()
     }
@@ -1402,21 +1427,48 @@
               if(hasInput){
                 const gr=document.createElement('div');gr.className='series-grid'
                 gr.style.marginTop='8px'
-                for(let s=1;s<=(exo.nbSets||1);s++){
-                  const clef=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}_s${s}`
-                  const vs=chargesReelles[clef]||''
-                  const ckId='ck_'+Math.random().toString(36).slice(2)
-                  const box=document.createElement('div');box.className='serie-box'
-                  if(traction){
-                    // Traction → bouton qui ouvre le modal
+                const clefBase=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}`
+                if(traction){
+                  if(saisieUniqueMode){
+                    // Traction + saisie unique → un seul bouton pour toutes les séries
+                    const clefS1=clefBase+'_s1'
+                    const vs=chargesReelles[clefS1]||''
+                    const ckId='ck_'+Math.random().toString(36).slice(2)
                     const exoKey='trac_'+Math.random().toString(36).slice(2)
                     window._tractionExos[exoKey]=exo
-                    box.innerHTML=`<div class="serie-lbl">Série ${s}</div><button class="serie-inp" data-clef="${clef}" style="width:100%;background:none;border:1px solid #2a2a2a;border-radius:6px;color:${vs?'#1D9E75':'#FECC00'};font-size:14px;font-weight:700;text-align:center;padding:4px;cursor:pointer;" onclick="ouvrirModalTraction('${sa.id}','${clef}','${joueurActif.id}','${exoKey}','${ckId}')">${vs?vs+' kg':'Remplir'}</button><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    const box=document.createElement('div');box.className='serie-box';box.style.maxWidth='140px'
+                    box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div><button class="serie-inp" data-clef="${clefBase}" style="width:100%;background:none;border:1px solid #2a2a2a;border-radius:6px;color:${vs?'#1D9E75':'#FECC00'};font-size:14px;font-weight:700;text-align:center;padding:4px;cursor:pointer;" onclick="ouvrirModalTractionToutesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}','${exoKey}','${ckId}')">${vs?vs+' kg':'Remplir'}</button><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    gr.appendChild(box)
                   } else {
-                    // %/m/s/PDC/% PDC → input normal
-                    box.innerHTML=`<div class="serie-lbl">Série ${s}</div><input class="serie-inp" type="number" step="0.5" placeholder="${reco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    for(let s=1;s<=(exo.nbSets||1);s++){
+                      const clef=clefBase+'_s'+s
+                      const vs=chargesReelles[clef]||''
+                      const ckId='ck_'+Math.random().toString(36).slice(2)
+                      const exoKey='trac_'+Math.random().toString(36).slice(2)
+                      window._tractionExos[exoKey]=exo
+                      const box=document.createElement('div');box.className='serie-box'
+                      box.innerHTML=`<div class="serie-lbl">Série ${s}</div><button class="serie-inp" data-clef="${clef}" style="width:100%;background:none;border:1px solid #2a2a2a;border-radius:6px;color:${vs?'#1D9E75':'#FECC00'};font-size:14px;font-weight:700;text-align:center;padding:4px;cursor:pointer;" onclick="ouvrirModalTraction('${sa.id}','${clef}','${joueurActif.id}','${exoKey}','${ckId}')">${vs?vs+' kg':'Remplir'}</button><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                      gr.appendChild(box)
+                    }
                   }
+                } else if(saisieUniqueMode){
+                  // Saisie unique → un seul input pour toutes les séries
+                  const clefS1=clefBase+'_s1'
+                  const vs=chargesReelles[clefS1]||''
+                  const ckId='ck_'+Math.random().toString(36).slice(2)
+                  const box=document.createElement('div');box.className='serie-box';box.style.maxWidth='140px'
+                  box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div><input class="serie-inp" type="number" step="0.5" placeholder="${reco}" value="${vs}" style="font-size:18px;${vs?'color:#1D9E75':''}" onchange="sauverToutesLesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                   gr.appendChild(box)
+                } else {
+                  // Saisie série par série
+                  for(let s=1;s<=(exo.nbSets||1);s++){
+                    const clef=clefBase+'_s'+s
+                    const vs=chargesReelles[clef]||''
+                    const ckId='ck_'+Math.random().toString(36).slice(2)
+                    const box=document.createElement('div');box.className='serie-box'
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}</div><input class="serie-inp" type="number" step="0.5" placeholder="${reco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    gr.appendChild(box)
+                  }
                 }
                 eEl.querySelector('div[style*="flex:1"]').appendChild(gr)
               }
@@ -1456,6 +1508,126 @@
       chargesReelles[clef]=val;inp.style.color='#1D9E75'
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
       try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[clef]:val,updatedAt:serverTimestamp()},{merge:true})}catch(e){console.error(e)}
+    }
+
+    window.sauverToutesLesSeries=async function(seanceId,clefBase,nbSets,joueurId,val,inp,ckId){
+      if(!val&&val!==0)return
+      const updates={}
+      for(let s=1;s<=nbSets;s++){
+        const clef=clefBase+'_s'+s
+        chargesReelles[clef]=val
+        updates[clef]=val
+      }
+      updates.updatedAt=serverTimestamp()
+      inp.style.color='#1D9E75'
+      const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
+      try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+    }
+
+    window.toggleSaisieMode=function(checked){
+      saisieUniqueMode=checked
+      localStorage.setItem('player_saisie_unique_mode',checked)
+      const label=document.getElementById('seance-saisie-toggle-label')
+      if(label){label.textContent=checked?"Toutes les séries d'un coup":'Série par série'}
+      chargerSeance()
+    }
+
+    window.ouvrirModalTractionToutesSeries=function(seanceId,clefBase,nbSets,joueurId,exoKey,ckId){
+      const exo=window._tractionExos[exoKey]
+      if(!exo)return
+      const overlay=document.createElement('div')
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;display:flex;align-items:flex-end;'
+      const sheet=document.createElement('div')
+      sheet.style.cssText='background:#141414;border-radius:20px 20px 0 0;width:100%;max-height:88vh;overflow-y:auto;padding:0 0 44px;'
+      sheet.innerHTML=`<div style="width:36px;height:4px;background:#2a2a2a;border-radius:2px;margin:12px auto 0;"></div>
+        <div style="padding:14px 18px 12px;border-bottom:1px solid #222;display:flex;align-items:center;gap:10px;">
+          <div style="font-size:16px;font-weight:700;color:#FECC00;flex:1;">${exo.exercice}</div>
+          <button onclick="this.closest('[data-overlay]').remove()" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>
+        </div>
+        <div style="padding:16px 18px;">
+          <div style="font-size:12px;color:#888;margin-bottom:14px;">Comment as-tu réalisé cet exercice ? (valable pour les ${nbSets} séries)</div>
+          <div id="traction-choices-ts" style="display:flex;flex-direction:column;gap:10px;">
+            <button data-mode="pdc" style="padding:14px;border-radius:12px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;">🏋️</span><div><div>Poids du corps (PDC)</div><div style="font-size:11px;color:#888;font-weight:400;">${poidsJoueur?poidsJoueur+' kg':'Poids non renseigné'}</div></div>
+            </button>
+            <button data-mode="leste" style="padding:14px;border-radius:12px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;">➕</span><div><div>Lesté</div><div style="font-size:11px;color:#888;font-weight:400;">PDC + poids additionnel</div></div>
+            </button>
+            <button data-mode="deleste" style="padding:14px;border-radius:12px;border:1px solid #2a2a2a;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;">➖</span><div><div>Délesté (assistance)</div><div style="font-size:11px;color:#888;font-weight:400;">Combien de reps as-tu fait ?</div></div>
+            </button>
+          </div>
+          <div id="traction-input-zone-ts" style="display:none;margin-top:14px;">
+            <label id="traction-input-label-ts" style="font-size:12px;color:#888;display:block;margin-bottom:6px;"></label>
+            <input id="traction-input-val-ts" type="number" step="0.5" placeholder="0" style="width:100%;padding:12px;border-radius:8px;border:1px solid #2a2a2a;background:#0f0f0f;color:#FECC00;font-size:18px;font-weight:700;text-align:center;outline:none;" />
+          </div>
+          <button id="traction-confirm-ts" style="width:100%;padding:14px;border-radius:12px;border:none;background:#FECC00;color:#0f0f0f;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;display:none;">✓ Confirmer</button>
+        </div>`
+      overlay.appendChild(sheet)
+      overlay.setAttribute('data-overlay','')
+      document.body.appendChild(overlay)
+      overlay.onclick=e=>{if(e.target===overlay)overlay.remove()}
+
+      let selectedMode=null
+      const choices=sheet.querySelectorAll('[data-mode]')
+      const inputZone=sheet.querySelector('#traction-input-zone-ts')
+      const inputLabel=sheet.querySelector('#traction-input-label-ts')
+      const inputVal=sheet.querySelector('#traction-input-val-ts')
+      const confirmBtn=sheet.querySelector('#traction-confirm-ts')
+
+      choices.forEach(btn=>{
+        btn.onclick=()=>{
+          selectedMode=btn.dataset.mode
+          choices.forEach(b=>{b.style.borderColor='#2a2a2a';b.style.background='#1a1a1a'})
+          btn.style.borderColor='#FECC00';btn.style.background='#1a1a00'
+          if(selectedMode==='pdc'){
+            inputZone.style.display='none'
+            confirmBtn.style.display='block'
+          } else {
+            inputZone.style.display='block'
+            if(selectedMode==='leste'){
+              inputLabel.textContent='Poids additionnel (kg) :'
+              inputVal.placeholder='ex: 10'
+              inputVal.step='0.5'
+            } else {
+              inputLabel.textContent='Nombre de reps fait :'
+              inputVal.placeholder='ex: 8'
+              inputVal.step='1'
+            }
+            confirmBtn.style.display='block'
+          }
+        }
+      })
+      confirmBtn.onclick=async()=>{
+        if(!selectedMode)return
+        let valeur=0
+        if(selectedMode!=='pdc'){
+          valeur=parseFloat(inputVal.value)||0
+          if(valeur<=0){inputVal.style.borderColor='#E24B4A';return}
+        }
+        const charge=calculerChargeTraction(selectedMode,valeur,exo)
+        if(charge===null)return
+        const updates={}
+        for(let s=1;s<=nbSets;s++){
+          const clef=clefBase+'_s'+s
+          chargesReelles[clef]=String(charge)
+          updates[clef]=String(charge)
+        }
+        updates.updatedAt=serverTimestamp()
+        updates[clefBase+'_mode']=selectedMode
+        if(selectedMode==='leste')updates[clefBase+'_leste']=String(valeur)
+        if(selectedMode==='deleste')updates[clefBase+'_reps']=String(valeur)
+        try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+        const ck=document.getElementById(ckId)
+        if(ck){ck.textContent='✓';ck.style.color='#1D9E75'}
+        const inp=document.querySelector(`[data-clef="${clefBase}"]`)
+        if(inp){
+          inp.textContent=charge+' kg'
+          inp.style.color='#1D9E75'
+          inp.style.fontWeight='700'
+        }
+        overlay.remove()
+      }
     }
 
     // ===== PLANNING MOBILE =====
