@@ -3248,6 +3248,9 @@
         const mMin = totalDur > 0 ? totalDist / totalDur : 0
         const hiMin = totalDur > 0 ? totalDistHI / totalDur : 0
         
+        const totalAccB23 = hist.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
+        const accB23 = totalAccB23 / hist.length
+        
         const vmax = Math.max(...hist.map(h => h.vmax || 0), 0)
         const vmaxRef = Math.max(s.vmax6m || s.vmaxSaison || 0, vmax)
         const pctVmax = vmaxRef > 0 ? Math.round((vmax / vmaxRef) * 100) : 0
@@ -3257,6 +3260,7 @@
           mMin,
           hiMin,
           volHI,
+          accB23,
           vmax,
           pctVmax
         }
@@ -3328,6 +3332,87 @@
         const objContent = document.createElement('div')
         zoneObjectifs.appendChild(objContent)
 
+        // ===== FONCTIONS DE SCORING INDIVIDUEL (adaptées de renderer/gps.html) =====
+        function _sHIAcc(p) {
+          if (p >= 100) return 1
+          if (p >= 95) return 0.9 + (p - 95) * 0.02
+          if (p >= 85) return 0.8 + (p - 85) * 0.02
+          if (p >= 70) return 0.6 + (p - 70) * 0.2 / 15
+          if (p >= 50) return 0.4 + (p - 50) * 0.01
+          return 0
+        }
+        function _sRythme(real, seuil) {
+          if (seuil <= 0) return 0.5
+          const r = Math.min(1, real / seuil)
+          if (r >= 1) return 1
+          if (r >= 0.95) return 0.8 + (r - 0.95) * 4
+          if (r >= 0.90) return 0.6 + (r - 0.90) * 4
+          if (r >= 0.80) return 0.35 + (r - 0.80) * 2.5
+          if (r >= 0.70) return 0.15 + (r - 0.70) * 2
+          return 0
+        }
+        function getPosteGroupe(poste) {
+          const posN = String(poste || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+          if (posN === '1' || posN.includes('pilier') || posN.includes('talon')) return '1ère ligne'
+          if (posN === '2' || posN.includes('2eme') || posN.includes('2e')) return '2ème ligne'
+          if (posN === '3' || posN === 'number 8' || posN.includes('3eme') || posN.includes('3e')) return '3ème ligne'
+          if (posN.includes('demi melee') || posN.includes('demi mêlée')) return "Demi de mêlée"
+          if (posN.includes('demi ouverture') || posN.includes("demi d'ouverture") || posN.includes('ouverture')) return "Demi d'ouverture"
+          if (posN.includes('centre')) return 'Centre'
+          if (posN.includes('ailier') || posN.includes('arriere') || posN.includes('trident')) return 'Triangle arrière'
+          return 'Autre'
+        }
+        function _isRythmePeriodExcluded(periodName) {
+          const p = String(periodName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          return p.includes('echauffement') || p.includes('warmup') || p.includes('warm up') ||
+                 p.includes('extra') || p.includes('separe') || p.includes('separate') ||
+                 p.includes('prepa indiv') || p.includes('prep indiv')
+        }
+        function calcMMinRythme(rows) {
+          let rowsFiltrees = rows.filter(r => {
+            const p = String(r.period || '').toLowerCase().trim()
+            return p === 'collectif'
+          })
+          if (!rowsFiltrees.length) {
+            rowsFiltrees = rows.filter(r => !_isRythmePeriodExcluded(r.period))
+          }
+          if (!rowsFiltrees.length) return 0
+          let totalDist = 0, totalDurMin = 0
+          rowsFiltrees.forEach(r => {
+            const durMin = r.duree || 0
+            const dist = r.distTot || 0
+            if (dist <= 0 || durMin <= 0) return
+            totalDist += dist
+            totalDurMin += durMin
+          })
+          return totalDurMin > 0 ? +(totalDist / totalDurMin).toFixed(1) : 0
+        }
+        function calcSeuilPosteRythme(posteJoueur) {
+          const groupeRef = getPosteGroupe(posteJoueur)
+          const rows = []
+          if (allJoueursData && allJoueursData.length) {
+            allJoueursData.forEach(j => {
+              const jGroupe = getPosteGroupe(j.posteGPS)
+              if (groupeRef && groupeRef !== 'Autre' && jGroupe !== groupeRef) return
+              const histJoueur = j.historique || []
+              histJoueur.forEach(r => {
+                const activity = String(r.seance || '').toLowerCase()
+                if (!activity.includes('match') || activity.includes('amical')) return
+                const period = String(r.period || '').trim().toLowerCase()
+                if (!period.includes('qt')) return
+                const durMin = r.duree || 0
+                const dist = r.distTot || 0
+                if (dist <= 0 || durMin <= 0) return
+                rows.push({ dist, durMin })
+              })
+            })
+          }
+          if (!rows.length) return 0
+          let totalDist = 0, totalDurMin = 0
+          rows.forEach(r => { totalDist += r.dist; totalDurMin += r.durMin })
+          return totalDurMin > 0 ? +(totalDist / totalDurMin).toFixed(1) : 0
+        }
+
         function renderObjContent() {
           objContent.innerHTML = ''
 
@@ -3397,9 +3482,12 @@
             }
           })
 
-          // ===== CALCUL SCORE SELON LE MODE =====
+          // ===== CALCUL TOTAUX POUR KPIs ET SCORES BRUTS =====
           let scoreGlobal, scoreHI, scoreAcc
           let totalRealHI, totalObjHI, totalRealAcc, totalObjAcc, totalRealVolHI, totalRealVmax
+
+          // Source d'historique selon le mode
+          const histSource = objMode === 'hebdomadaire' ? histComplete : hist
 
           if (objMode === 'quotidien') {
             // Score quotidien = moyenne des % journaliers (jours avec données seulement)
@@ -3419,12 +3507,6 @@
             totalObjAcc = daysWithData.reduce((s, d) => s + d.objAcc, 0)
             totalRealVolHI = perWeekData.reduce((s, w) => s + w.realVolHI, 0)
             totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
-
-            if (totalObjAcc > 0) {
-              scoreGlobal = Math.round(scoreHI * 0.7 + scoreAcc * 0.3)
-            } else {
-              scoreGlobal = scoreHI
-            }
           } else {
             // Mode hebdomadaire = totaux par semaine
             totalObjHI = perWeekData.reduce((s, w) => s + w.objHI, 0)
@@ -3436,22 +3518,38 @@
 
             scoreHI = totalObjHI > 0 ? Math.round((totalRealHI / totalObjHI) * 100) : 0
             scoreAcc = totalObjAcc > 0 ? Math.round((totalRealAcc / totalObjAcc) * 100) : 0
-            if (totalObjAcc > 0) {
-              scoreGlobal = Math.round(scoreHI * 0.7 + scoreAcc * 0.3)
-            } else {
-              scoreGlobal = scoreHI
-            }
           }
 
-          // Couleur du score
-          const scoreColor = scoreGlobal >= 100 ? '#1D9E75' : scoreGlobal >= 80 ? '#FECC00' : scoreGlobal >= 50 ? '#EF9F27' : '#E24B4A'
-          const scoreLabel = scoreGlobal >= 100 ? 'Objectif atteint ! 🎉' : scoreGlobal >= 80 ? 'Excellent 💪' : scoreGlobal >= 50 ? 'Bon effort 👍' : 'À travailler 🔥'
+          // ===== SCORE INDIVIDUEL (même formule que renderer/gps.html) =====
+          const _hasV = histSource.some(r => String(r.period || '').toLowerCase().includes('vitesse'))
+          const _mH = _hasV ? 45 : 55, _mA = _hasV ? 25 : 30, _mR = 15, _mV = _hasV ? 15 : 0
+
+          const _pH = totalObjHI > 0 ? Math.min(150, Math.round(totalRealHI / totalObjHI * 100)) : totalObjHI === 0 ? 150 : null
+          const _pA = totalObjAcc > 0 ? Math.min(150, Math.round(totalRealAcc / totalObjAcc * 100)) : totalObjAcc === 0 ? 150 : null
+
+          const _sH = _pH !== null ? Math.round(_sHIAcc(_pH) * _mH) : 0
+          const _sA = _pA !== null ? Math.round(_sHIAcc(_pA) * _mA) : 0
+
+          const _seuil = calcSeuilPosteRythme(s.posteGPS)
+          const _mminJ = calcMMinRythme(histSource)
+          const _sR = _seuil > 0 ? Math.round(_sRythme(_mminJ, _seuil) * _mR) : Math.round(_mR * 0.5)
+
+          const _vm6 = s.vmax6m || 0
+          const scorePlayerStats = calculerStatsFiltre(histSource)
+          const _vmOk = _vm6 > 0 && scorePlayerStats.vmax > 0 && (scorePlayerStats.vmax / _vm6 * 100) >= 90
+          const _sV = _hasV ? (_vmOk ? _mV : Math.round(_mV * 0.25)) : 0
+
+          scoreGlobal = Math.min(100, _sH + _sA + _sR + _sV)
+
+          // Couleur du score (alignée sur renderer/gps.html)
+          const scoreColor = scoreGlobal >= 75 ? '#1D9E75' : scoreGlobal >= 55 ? '#EF9F27' : '#E24B4A'
+          const scoreLabel = scoreGlobal >= 75 ? 'Excellent 💪' : scoreGlobal >= 55 ? 'Bon effort 👍' : 'À travailler 🔥'
 
           // ===== HERO SCORE =====
           const scoreHero = document.createElement('div')
           scoreHero.style.cssText = `background:linear-gradient(135deg,#1a1a1a,#141414);border:2px solid ${scoreColor}44;border-radius:16px;padding:20px;margin-bottom:14px;text-align:center;`
           scoreHero.innerHTML = `
-            <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Score Objectifs ${objMode === 'quotidien' ? '(moy. quotidienne)' : '(total semaine)'}</div>
+            <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Score individuel ${objMode === 'quotidien' ? '(moy. quotidienne)' : '(total semaine)'}</div>
             <div style="font-size:48px;font-weight:800;color:${scoreColor};line-height:1;margin-bottom:6px;">${scoreGlobal}<span style="font-size:20px;">%</span></div>
             <div style="font-size:13px;font-weight:600;color:${scoreColor};">${scoreLabel}</div>
             <div style="margin-top:14px;height:8px;background:#2a2a2a;border-radius:4px;overflow:hidden;">
