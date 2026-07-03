@@ -3272,8 +3272,10 @@
           return
         }
 
-        // Trouver les planifs qui couvrent la période filtrée
-        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        // Utiliser l'historique complet pour les calculs hebdomadaires
+        // (même en mode "dernière séance", on veut les totaux de la semaine)
+        const histComplete = s.historique || []
+        const hist = historiqueFiltre.length ? historiqueFiltre : histComplete
         const datesPresentes = new Set(hist.map(h => String(h.date || '').trim()).filter(Boolean))
         if (!datesPresentes.size) {
           zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucune donnée GPS sur la période sélectionnée.</div>'
@@ -3340,7 +3342,9 @@
             const gpsPbJours = resultat.gpsProblemeJours || {}
 
             // Réel: filtrer l'historique sur cette semaine
-            const histSemaine = hist.filter(h => {
+            // En mode hebdomadaire, utiliser l'historique complet pour avoir tous les jours de la semaine
+            const histSource = objMode === 'hebdomadaire' ? histComplete : hist
+            const histSemaine = histSource.filter(h => {
               const d = parseDate(h.date)
               return d && d >= lundi && d <= dimanche
             })
@@ -3364,14 +3368,13 @@
                 const dateJour = new Date(lundi)
                 dateJour.setDate(lundi.getDate() + off)
                 const dateJourStr = `${String(dateJour.getDate()).padStart(2,'0')}/${String(dateJour.getMonth()+1).padStart(2,'0')}/${dateJour.getFullYear()}`
-                const hasData = datesPresentes.has(dateJourStr)
-                const isGPSPb = gpsPbJours[jour]
-                if (isGPSPb) return
-
                 const realDay = histSemaine.filter(h => {
                   const d = parseDate(h.date)
                   return d && d.toDateString() === dateJour.toDateString()
                 })
+                const hasData = realDay.length > 0
+                const isGPSPb = gpsPbJours[jour]
+                if (isGPSPb) return
                 const realDayHI = realDay.reduce((sum, h) => sum + (h.distHI || 0), 0)
                 const realDayAcc = realDay.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
 
@@ -3580,7 +3583,14 @@
           }
 
           // ===== RADAR CHARTS =====
-          const playerStats = calculerStatsFiltre(hist)
+          // En mode hebdomadaire, utiliser les données de la semaine complète
+          const histForRadar = objMode === 'hebdomadaire' 
+            ? histComplete.filter(h => {
+                const d = parseDate(h.date)
+                return d && d >= dateMin && d <= dateMax
+              })
+            : hist
+          const playerStats = calculerStatsFiltre(histForRadar)
           const normaliserPoste = (poste) => {
             const p = String(poste || '').toLowerCase()
             if (p.includes('pilier') || p.includes('talonneur') || p.includes('ligne')) return 'Avants'
@@ -3591,7 +3601,7 @@
 
           function calcCompareStats(mode) {
             if (!allJoueursData || !allJoueursData.length) return null
-            const datesFiltre = hist.map(h => parseDate(h.date)).filter(d => d).sort((a, b) => a - b)
+            const datesFiltre = histForRadar.map(h => parseDate(h.date)).filter(d => d).sort((a, b) => a - b)
             const dateDebut = datesFiltre[0]
             const dateFin = datesFiltre[datesFiltre.length - 1]
 
@@ -3754,12 +3764,12 @@
             const cmp = calcCompareStats(compareMode)
             const modeLabels = { 'self': 'Mes séances', 'team-avg': 'Moy. équipe', 'team-max': 'Max équipe', 'poste-avg': 'Moy. poste', 'poste-max': 'Max poste' }
             leg1.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Moi</span><span style="color:#378ADD;">● ${modeLabels[compareMode] || 'Comparaison'}</span></div>`
-            const pVals1 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, playerStats.distHI > 0 ? (totalRealAcc / Math.max(hist.length, 1)) : 0]
+            const pVals1 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, playerStats.distHI > 0 ? (totalRealAcc / Math.max(histForRadar.length, 1)) : 0]
             const cVals1 = cmp ? [cmp.distHI, cmp.mMin, cmp.hiMin, cmp.volHI, cmp.vmax, cmp.accB23] : [0, 0, 0, 0, 0, 0]
             drawRadar(canvas1, pVals1, cVals1, radarLabels, radarFmts)
 
             leg2.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Réel</span><span style="color:#378ADD;">● Objectif</span></div>`
-            const pVals2 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, totalRealAcc / Math.max(hist.length, 1)]
+            const pVals2 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, totalRealAcc / Math.max(histForRadar.length, 1)]
             const cVals2 = [objStats.distHI, 0, 0, 0, 0, objStats.accB23]
             drawRadar(canvas2, pVals2, cVals2, radarLabels, radarFmts)
           }
