@@ -3412,11 +3412,11 @@
               } else { scoreAcc = 0 }
             } else { scoreHI = 0; scoreAcc = 0 }
 
-            // Totaux pour KPIs = sommes journalières
-            totalRealHI = perDayData.reduce((s, d) => s + d.realHI, 0)
-            totalObjHI = perDayData.reduce((s, d) => s + d.objHI, 0)
-            totalRealAcc = perDayData.reduce((s, d) => s + d.realAcc, 0)
-            totalObjAcc = perDayData.reduce((s, d) => s + d.objAcc, 0)
+            // Totaux pour KPIs = sommes journalières (jours avec données seulement)
+            totalRealHI = daysWithData.reduce((s, d) => s + d.realHI, 0)
+            totalObjHI = daysWithData.reduce((s, d) => s + d.objHI, 0)
+            totalRealAcc = daysWithData.reduce((s, d) => s + d.realAcc, 0)
+            totalObjAcc = daysWithData.reduce((s, d) => s + d.objAcc, 0)
             totalRealVolHI = perWeekData.reduce((s, w) => s + w.realVolHI, 0)
             totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
 
