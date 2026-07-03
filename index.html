@@ -3263,6 +3263,7 @@
       }
 
       // ===== RENDU OBJECTIFS =====
+      let objMode = 'hebdomadaire' // 'quotidien' ou 'hebdomadaire'
       function renderObjectifs() {
         zoneObjectifs.innerHTML = ''
 
@@ -3287,7 +3288,6 @@
 
         // Trouver les planifs pertinentes
         const JOURS_OFF = {Lundi:0, Mardi:1, Mercredi:2, Jeudi:3, Vendredi:4, Samedi:5, Dimanche:6}
-        const JOURS_FR = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']
 
         let planifsMatched = []
         planifsGPS.forEach(planif => {
@@ -3310,416 +3310,488 @@
           return
         }
 
-        // Calculer les totaux réels vs objectifs
-        let totalObjHI = 0, totalRealHI = 0
-        let totalObjAcc = 0, totalRealAcc = 0
-        let totalObjVolHI = 0, totalRealVolHI = 0
-        let totalObjVmax = 0, totalRealVmax = 0
-        let perDayData = []
-
-        planifsMatched.forEach(({ planif, resultat, lundi, dimanche }) => {
-          const objHI = resultat.chargeCibleAjustee || resultat.distHI || 0
-          const objAcc = resultat.accB23 || 0
-          const distHIParJour = resultat.distHIParJourAdaptatif || resultat.distHIParJour || null
-          const gpsPbJours = resultat.gpsProblemeJours || {}
-
-          // Réel: filtrer l'historique sur cette semaine
-          const histSemaine = hist.filter(h => {
-            const d = parseDate(h.date)
-            return d && d >= lundi && d <= dimanche
-          })
-          const realHI = histSemaine.reduce((sum, h) => sum + (h.distHI || 0), 0)
-          const realAcc = histSemaine.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
-          const realVolHI = histSemaine.reduce((sum, h) => sum + (h.volHI || 0), 0)
-          const realVmax = Math.max(...histSemaine.map(h => h.vmax || 0), 0)
-
-          totalObjHI += objHI
-          totalRealHI += realHI
-          totalObjAcc += objAcc
-          totalRealAcc += realAcc
-          totalObjVolHI += 0 // pas d'objectif volHI direct
-          totalRealVolHI += realVolHI
-          totalObjVmax += 0 // pas d'objectif vmax direct
-          totalRealVmax = Math.max(totalRealVmax, realVmax)
-
-          // Per-day breakdown
-          if (distHIParJour && Object.keys(distHIParJour).length) {
-            Object.entries(distHIParJour).forEach(([jour, valHI]) => {
-              const off = JOURS_OFF[jour]
-              if (off === undefined) return
-              const dateJour = new Date(lundi)
-              dateJour.setDate(lundi.getDate() + off)
-              const dateJourStr = `${String(dateJour.getDate()).padStart(2,'0')}/${String(dateJour.getMonth()+1).padStart(2,'0')}/${dateJour.getFullYear()}`
-              const hasData = datesPresentes.has(dateJourStr)
-              const isGPSPb = gpsPbJours[jour]
-              if (isGPSPb) return // skip GPS problem days
-
-              // Trouver les données réelles pour ce jour
-              const realDay = histSemaine.filter(h => {
-                const d = parseDate(h.date)
-                return d && d.toDateString() === dateJour.toDateString()
-              })
-              const realDayHI = realDay.reduce((sum, h) => sum + (h.distHI || 0), 0)
-
-              perDayData.push({
-                jour,
-                dateStr: dateJourStr,
-                objHI: valHI || 0,
-                realHI: realDayHI,
-                hasData,
-                semaine: planif.semaine
-              })
-            })
-          } else {
-            // Pas de détail par jour, afficher le total de la semaine
-            perDayData.push({
-              jour: 'Semaine',
-              dateStr: planif.semaine,
-              objHI,
-              realHI,
-              hasData: histSemaine.length > 0,
-              semaine: planif.semaine
-            })
-          }
-        })
-
-        // ===== SCORE GLOBAL =====
-        const scoreHI = totalObjHI > 0 ? Math.round((totalRealHI / totalObjHI) * 100) : 0
-        const scoreAcc = totalObjAcc > 0 ? Math.round((totalRealAcc / totalObjAcc) * 100) : 0
-
-        // Score global (moyenne pondérée: 70% distHI, 30% accB23 si disponible)
-        let scoreGlobal
-        if (totalObjAcc > 0) {
-          scoreGlobal = Math.round(scoreHI * 0.7 + scoreAcc * 0.3)
-        } else {
-          scoreGlobal = scoreHI
-        }
-
-        // Couleur du score
-        const scoreColor = scoreGlobal >= 100 ? '#1D9E75' : scoreGlobal >= 80 ? '#FECC00' : scoreGlobal >= 50 ? '#EF9F27' : '#E24B4A'
-        const scoreLabel = scoreGlobal >= 100 ? 'Objectif atteint ! 🎉' : scoreGlobal >= 80 ? 'Excellent 💪' : scoreGlobal >= 50 ? 'Bon effort 👍' : 'À travailler 🔥'
-
-        // ===== HERO SCORE =====
-        const scoreHero = document.createElement('div')
-        scoreHero.style.cssText = `background:linear-gradient(135deg,#1a1a1a,#141414);border:2px solid ${scoreColor}44;border-radius:16px;padding:20px;margin-bottom:14px;text-align:center;`
-        scoreHero.innerHTML = `
-          <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Score Global Objectifs</div>
-          <div style="font-size:48px;font-weight:800;color:${scoreColor};line-height:1;margin-bottom:6px;">${scoreGlobal}<span style="font-size:20px;">%</span></div>
-          <div style="font-size:13px;font-weight:600;color:${scoreColor};">${scoreLabel}</div>
-          <div style="margin-top:14px;height:8px;background:#2a2a2a;border-radius:4px;overflow:hidden;">
-            <div style="height:100%;width:${Math.min(scoreGlobal,100)}%;background:${scoreColor};border-radius:4px;transition:width .5s;"></div>
-          </div>
+        // ===== TOGGLE QUOTIDIEN / HEBDOMADAIRE =====
+        const toggleWrap = document.createElement('div')
+        toggleWrap.style.cssText = 'display:flex;gap:3px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:3px;margin-bottom:14px;'
+        toggleWrap.innerHTML = `
+          <button id="obj-toggle-quot" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:none;color:#555;">📅 Quotidien</button>
+          <button id="obj-toggle-heb" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:#FECC00;color:#0f0f0f;">🗓 Hebdomadaire</button>
         `
-        zoneObjectifs.appendChild(scoreHero)
+        zoneObjectifs.appendChild(toggleWrap)
 
-        // ===== KPI GRID: Réel vs Objectif =====
-        const kpiData = [
-          { label: 'Distance HI', real: totalRealHI, obj: totalObjHI, unit: 'm', color: '#E24B4A', decimals: 0 },
-          { label: 'Acc B2+B3', real: totalRealAcc, obj: totalObjAcc, unit: '', color: '#EF9F27', decimals: 0 },
-          { label: 'Volume HI', real: totalRealVolHI, obj: null, unit: 'UA', color: '#378ADD', decimals: 0 },
-          { label: 'Vmax max', real: totalRealVmax, obj: null, unit: 'km/h', color: '#1D9E75', decimals: 1 },
-        ]
+        const btnQuot = toggleWrap.querySelector('#obj-toggle-quot')
+        const btnHeb = toggleWrap.querySelector('#obj-toggle-heb')
 
-        const kpiGrid = document.createElement('div')
-        kpiGrid.className = 'gps-kpi-grid'
-        kpiData.forEach(k => {
-          const card = document.createElement('div')
-          card.className = 'gps-kpi'
-          const pct = k.obj > 0 ? Math.round((k.real / k.obj) * 100) : null
-          const pctStr = pct !== null ? `<div style="font-size:10px;font-weight:600;color:${pct>=100?'#1D9E75':pct>=80?'#FECC00':pct>=50?'#EF9F27':'#E24B4A'};margin-top:4px;">${pct}% de l'objectif</div>` : ''
-          const objStr = k.obj !== null && k.obj > 0 ? `<div style="font-size:9px;color:#555;margin-top:2px;">Objectif: ${k.obj.toFixed(k.decimals)} ${k.unit}</div>` : ''
-          card.innerHTML = `
-            <div class="gps-kpi-label">${k.label}</div>
-            <div class="gps-hero-val" style="color:${k.color};font-size:20px;">${k.real.toFixed(k.decimals)}</div>
-            <div class="gps-kpi-unit">${k.unit}</div>
-            ${objStr}
-            ${pctStr}
+        // Conteneur dynamique qui se re-render au toggle
+        const objContent = document.createElement('div')
+        zoneObjectifs.appendChild(objContent)
+
+        function renderObjContent() {
+          objContent.innerHTML = ''
+
+          // ===== CALCUL DES DONNÉES =====
+          let perDayData = []
+          let perWeekData = []
+
+          planifsMatched.forEach(({ planif, resultat, lundi, dimanche }) => {
+            const objHI = resultat.chargeCibleAjustee || resultat.distHI || 0
+            const objAcc = resultat.accB23 || 0
+            const distHIParJour = resultat.distHIParJourAdaptatif || resultat.distHIParJour || null
+            const gpsPbJours = resultat.gpsProblemeJours || {}
+
+            // Réel: filtrer l'historique sur cette semaine
+            const histSemaine = hist.filter(h => {
+              const d = parseDate(h.date)
+              return d && d >= lundi && d <= dimanche
+            })
+            const realHI = histSemaine.reduce((sum, h) => sum + (h.distHI || 0), 0)
+            const realAcc = histSemaine.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
+            const realVolHI = histSemaine.reduce((sum, h) => sum + (h.volHI || 0), 0)
+            const realVmax = Math.max(...histSemaine.map(h => h.vmax || 0), 0)
+
+            // Données par semaine
+            perWeekData.push({
+              semaine: planif.semaine,
+              objHI, realHI, objAcc, realAcc, realVolHI, realVmax,
+              hasData: histSemaine.length > 0
+            })
+
+            // Per-day breakdown
+            if (distHIParJour && Object.keys(distHIParJour).length) {
+              Object.entries(distHIParJour).forEach(([jour, valHI]) => {
+                const off = JOURS_OFF[jour]
+                if (off === undefined) return
+                const dateJour = new Date(lundi)
+                dateJour.setDate(lundi.getDate() + off)
+                const dateJourStr = `${String(dateJour.getDate()).padStart(2,'0')}/${String(dateJour.getMonth()+1).padStart(2,'0')}/${dateJour.getFullYear()}`
+                const hasData = datesPresentes.has(dateJourStr)
+                const isGPSPb = gpsPbJours[jour]
+                if (isGPSPb) return
+
+                const realDay = histSemaine.filter(h => {
+                  const d = parseDate(h.date)
+                  return d && d.toDateString() === dateJour.toDateString()
+                })
+                const realDayHI = realDay.reduce((sum, h) => sum + (h.distHI || 0), 0)
+                const realDayAcc = realDay.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
+
+                // Objectif acc proportionnel pour ce jour
+                const objAccJour = objHI > 0 && objAcc > 0 ? (valHI / objHI) * objAcc : 0
+
+                perDayData.push({
+                  jour, dateStr: dateJourStr,
+                  objHI: valHI || 0, realHI: realDayHI,
+                  objAcc: objAccJour, realAcc: realDayAcc,
+                  hasData, semaine: planif.semaine
+                })
+              })
+            } else {
+              perDayData.push({
+                jour: 'Semaine', dateStr: planif.semaine,
+                objHI, realHI, objAcc, realAcc,
+                hasData: histSemaine.length > 0, semaine: planif.semaine
+              })
+            }
+          })
+
+          // ===== CALCUL SCORE SELON LE MODE =====
+          let scoreGlobal, scoreHI, scoreAcc
+          let totalRealHI, totalObjHI, totalRealAcc, totalObjAcc, totalRealVolHI, totalRealVmax
+
+          if (objMode === 'quotidien') {
+            // Score quotidien = moyenne des % journaliers (jours avec données seulement)
+            const daysWithData = perDayData.filter(d => d.hasData && d.objHI > 0)
+            if (daysWithData.length) {
+              scoreHI = Math.round(daysWithData.reduce((s, d) => s + Math.min((d.realHI / d.objHI) * 100, 150), 0) / daysWithData.length)
+              const daysAcc = daysWithData.filter(d => d.objAcc > 0)
+              if (daysAcc.length) {
+                scoreAcc = Math.round(daysAcc.reduce((s, d) => s + Math.min((d.realAcc / d.objAcc) * 100, 150), 0) / daysAcc.length)
+              } else { scoreAcc = 0 }
+            } else { scoreHI = 0; scoreAcc = 0 }
+
+            // Totaux pour KPIs = sommes journalières
+            totalRealHI = perDayData.reduce((s, d) => s + d.realHI, 0)
+            totalObjHI = perDayData.reduce((s, d) => s + d.objHI, 0)
+            totalRealAcc = perDayData.reduce((s, d) => s + d.realAcc, 0)
+            totalObjAcc = perDayData.reduce((s, d) => s + d.objAcc, 0)
+            totalRealVolHI = perWeekData.reduce((s, w) => s + w.realVolHI, 0)
+            totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
+
+            if (totalObjAcc > 0) {
+              scoreGlobal = Math.round(scoreHI * 0.7 + scoreAcc * 0.3)
+            } else {
+              scoreGlobal = scoreHI
+            }
+          } else {
+            // Mode hebdomadaire = totaux par semaine
+            totalObjHI = perWeekData.reduce((s, w) => s + w.objHI, 0)
+            totalRealHI = perWeekData.reduce((s, w) => s + w.realHI, 0)
+            totalObjAcc = perWeekData.reduce((s, w) => s + w.objAcc, 0)
+            totalRealAcc = perWeekData.reduce((s, w) => s + w.realAcc, 0)
+            totalRealVolHI = perWeekData.reduce((s, w) => s + w.realVolHI, 0)
+            totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
+
+            scoreHI = totalObjHI > 0 ? Math.round((totalRealHI / totalObjHI) * 100) : 0
+            scoreAcc = totalObjAcc > 0 ? Math.round((totalRealAcc / totalObjAcc) * 100) : 0
+            if (totalObjAcc > 0) {
+              scoreGlobal = Math.round(scoreHI * 0.7 + scoreAcc * 0.3)
+            } else {
+              scoreGlobal = scoreHI
+            }
+          }
+
+          // Couleur du score
+          const scoreColor = scoreGlobal >= 100 ? '#1D9E75' : scoreGlobal >= 80 ? '#FECC00' : scoreGlobal >= 50 ? '#EF9F27' : '#E24B4A'
+          const scoreLabel = scoreGlobal >= 100 ? 'Objectif atteint ! 🎉' : scoreGlobal >= 80 ? 'Excellent 💪' : scoreGlobal >= 50 ? 'Bon effort 👍' : 'À travailler 🔥'
+
+          // ===== HERO SCORE =====
+          const scoreHero = document.createElement('div')
+          scoreHero.style.cssText = `background:linear-gradient(135deg,#1a1a1a,#141414);border:2px solid ${scoreColor}44;border-radius:16px;padding:20px;margin-bottom:14px;text-align:center;`
+          scoreHero.innerHTML = `
+            <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Score Objectifs ${objMode === 'quotidien' ? '(moy. quotidienne)' : '(total semaine)'}</div>
+            <div style="font-size:48px;font-weight:800;color:${scoreColor};line-height:1;margin-bottom:6px;">${scoreGlobal}<span style="font-size:20px;">%</span></div>
+            <div style="font-size:13px;font-weight:600;color:${scoreColor};">${scoreLabel}</div>
+            <div style="margin-top:14px;height:8px;background:#2a2a2a;border-radius:4px;overflow:hidden;">
+              <div style="height:100%;width:${Math.min(scoreGlobal,100)}%;background:${scoreColor};border-radius:4px;transition:width .5s;"></div>
+            </div>
           `
-          kpiGrid.appendChild(card)
-        })
-        zoneObjectifs.appendChild(kpiGrid)
+          objContent.appendChild(scoreHero)
 
-        // ===== BARRE DE PROGRESSION DIST HI =====
-        if (totalObjHI > 0) {
-          const progSection = document.createElement('div')
-          progSection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
-          const pctHI = Math.min(scoreHI, 150)
-          const barWidth = Math.min(pctHI, 100)
-          progSection.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <div style="font-size:13px;font-weight:700;color:#FECC00;">⚡ Distance HI — Réel vs Objectif</div>
-              <div style="font-size:11px;font-weight:600;color:${scoreHI>=100?'#1D9E75':scoreHI>=80?'#FECC00':'#E24B4A'};">${scoreHI}%</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <div style="flex:1;height:24px;background:#0f0f0f;border-radius:8px;overflow:hidden;position:relative;border:1px solid #2a2a2a;">
-                <div style="height:100%;width:${barWidth}%;background:linear-gradient(90deg,${scoreHI>=100?'#1D9E75':'#FECC00'},${scoreHI>=100?'#1D9E7588':'#FECC0088'});border-radius:8px;transition:width .5s;"></div>
-                <div style="position:absolute;top:0;left:50%;width:2px;height:100%;background:#fff3;"></div>
+          // ===== KPI GRID =====
+          const kpiData = [
+            { label: 'Distance HI', real: totalRealHI, obj: totalObjHI, unit: 'm', color: '#E24B4A', decimals: 0 },
+            { label: 'Acc B2+B3', real: totalRealAcc, obj: totalObjAcc, unit: '', color: '#EF9F27', decimals: 0 },
+            { label: 'Volume HI', real: totalRealVolHI, obj: null, unit: 'UA', color: '#378ADD', decimals: 0 },
+            { label: 'Vmax max', real: totalRealVmax, obj: null, unit: 'km/h', color: '#1D9E75', decimals: 1 },
+          ]
+
+          const kpiGrid = document.createElement('div')
+          kpiGrid.className = 'gps-kpi-grid'
+          kpiData.forEach(k => {
+            const card = document.createElement('div')
+            card.className = 'gps-kpi'
+            const pct = k.obj > 0 ? Math.round((k.real / k.obj) * 100) : null
+            const pctStr = pct !== null ? `<div style="font-size:10px;font-weight:600;color:${pct>=100?'#1D9E75':pct>=80?'#FECC00':pct>=50?'#EF9F27':'#E24B4A'};margin-top:4px;">${pct}% de l'objectif</div>` : ''
+            const objStr = k.obj !== null && k.obj > 0 ? `<div style="font-size:9px;color:#555;margin-top:2px;">Objectif: ${k.obj.toFixed(k.decimals)} ${k.unit}</div>` : ''
+            card.innerHTML = `
+              <div class="gps-kpi-label">${k.label}</div>
+              <div class="gps-hero-val" style="color:${k.color};font-size:20px;">${k.real.toFixed(k.decimals)}</div>
+              <div class="gps-kpi-unit">${k.unit}</div>
+              ${objStr}
+              ${pctStr}
+            `
+            kpiGrid.appendChild(card)
+          })
+          objContent.appendChild(kpiGrid)
+
+          // ===== BARRE DE PROGRESSION DIST HI =====
+          if (totalObjHI > 0) {
+            const progSection = document.createElement('div')
+            progSection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
+            const barWidth = Math.min(scoreHI, 100)
+            progSection.innerHTML = `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:700;color:#FECC00;">⚡ Distance HI — Réel vs Objectif</div>
+                <div style="font-size:11px;font-weight:600;color:${scoreHI>=100?'#1D9E75':scoreHI>=80?'#FECC00':'#E24B4A'};">${scoreHI}%</div>
               </div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;">
-              <span style="color:#E24B4A;font-weight:600;">Réel: ${Math.round(totalRealHI)} m</span>
-              <span style="color:#888;">Objectif: ${Math.round(totalObjHI)} m</span>
-            </div>
-          `
-          zoneObjectifs.appendChild(progSection)
-        }
-
-        // ===== DÉTAIL PAR JOUR =====
-        if (perDayData.length > 0) {
-          const daySection = document.createElement('div')
-          daySection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
-          daySection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">📅 Détail par jour</div>`
-
-          perDayData.forEach(d => {
-            const dayPct = d.objHI > 0 ? Math.round((d.realHI / d.objHI) * 100) : 0
-            const dayColor = dayPct >= 100 ? '#1D9E75' : dayPct >= 80 ? '#FECC00' : dayPct >= 50 ? '#EF9F27' : '#E24B4A'
-            const barW = Math.min(dayPct, 100)
-            const statusIcon = d.hasData ? (dayPct >= 100 ? '✅' : dayPct >= 80 ? '💪' : dayPct >= 50 ? '👍' : '🔥') : '⏳'
-
-            const row = document.createElement('div')
-            row.style.cssText = 'margin-bottom:10px;'
-            row.innerHTML = `
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} ${d.jour}</span>
-                <span style="font-size:11px;color:${dayColor};font-weight:600;">${d.hasData ? dayPct + '%' : '—'}</span>
-              </div>
-              <div style="display:flex;align-items:center;gap:6px;">
-                <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
-                  <div style="height:100%;width:${d.hasData ? barW : 0}%;background:${dayColor};border-radius:6px;transition:width .4s;"></div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <div style="flex:1;height:24px;background:#0f0f0f;border-radius:8px;overflow:hidden;position:relative;border:1px solid #2a2a2a;">
+                  <div style="height:100%;width:${barWidth}%;background:linear-gradient(90deg,${scoreHI>=100?'#1D9E75':'#FECC00'},${scoreHI>=100?'#1D9E7588':'#FECC0088'});border-radius:8px;transition:width .5s;"></div>
+                  <div style="position:absolute;top:0;left:50%;width:2px;height:100%;background:#fff3;"></div>
                 </div>
               </div>
-              <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
-                <span style="color:#E24B4A;">${d.hasData ? Math.round(d.realHI) + 'm' : 'Pas de données'}</span>
-                <span style="color:#555;">Obj: ${Math.round(d.objHI)}m</span>
+              <div style="display:flex;justify-content:space-between;font-size:11px;">
+                <span style="color:#E24B4A;font-weight:600;">Réel: ${Math.round(totalRealHI)} m</span>
+                <span style="color:#888;">Objectif: ${Math.round(totalObjHI)} m</span>
               </div>
             `
-            daySection.appendChild(row)
-          })
-          zoneObjectifs.appendChild(daySection)
-        }
+            objContent.appendChild(progSection)
+          }
 
-        // ===== RADAR CHARTS =====
-        // Calculer les stats du joueur sur la période filtrée
-        const playerStats = calculerStatsFiltre(hist)
+          // ===== DÉTAIL SELON LE MODE =====
+          if (objMode === 'quotidien') {
+            // Détail par jour
+            if (perDayData.length > 0) {
+              const daySection = document.createElement('div')
+              daySection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
+              daySection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">📅 Détail par jour</div>`
 
-        // Normaliser le poste pour comparaison
-        const normaliserPoste = (poste) => {
-          const p = String(poste || '').toLowerCase()
-          if (p.includes('pilier') || p.includes('talonneur') || p.includes('ligne')) return 'Avants'
-          if (p.includes('demi') || p.includes('centre') || p.includes('ailier') || p.includes('arrière')) return '3/4'
-          return 'Autre'
-        }
-        const monPosteNorm = normaliserPoste(s.posteGPS)
+              perDayData.forEach(d => {
+                const dayPct = d.objHI > 0 ? Math.round((d.realHI / d.objHI) * 100) : 0
+                const dayColor = dayPct >= 100 ? '#1D9E75' : dayPct >= 80 ? '#FECC00' : dayPct >= 50 ? '#EF9F27' : '#E24B4A'
+                const barW = Math.min(dayPct, 100)
+                const statusIcon = d.hasData ? (dayPct >= 100 ? '✅' : dayPct >= 80 ? '💪' : dayPct >= 50 ? '👍' : '🔥') : '⏳'
 
-        // Calculer les stats de comparaison depuis allJoueursData
-        function calcCompareStats(mode) {
-          if (!allJoueursData || !allJoueursData.length) return null
-          const datesFiltre = hist.map(h => parseDate(h.date)).filter(d => d).sort((a, b) => a - b)
-          const dateDebut = datesFiltre[0]
-          const dateFin = datesFiltre[datesFiltre.length - 1]
-
-          const perPlayer = allJoueursData.map(j => {
-            const histJoueur = (j.historique || []).filter(h => {
-              const d = parseDate(h.date)
-              return d && d >= dateDebut && d <= dateFin
-            })
-            if (!histJoueur.length) return null
-            const totalDistHI = histJoueur.reduce((sum, h) => sum + (h.distHI || 0), 0)
-            const totalVolHI = histJoueur.reduce((sum, h) => sum + (h.volHI || 0), 0)
-            const totalDist = histJoueur.reduce((sum, h) => sum + (h.distTot || 0), 0)
-            const totalDur = histJoueur.reduce((sum, h) => sum + (h.duree || 0), 0)
-            const totalAcc = histJoueur.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
-            return {
-              nomGPS: j.nomGPS,
-              posteGPS: j.posteGPS,
-              distHI: totalDistHI / histJoueur.length,
-              volHI: totalVolHI / histJoueur.length,
-              mMin: totalDur > 0 ? totalDist / totalDur : 0,
-              hiMin: totalDur > 0 ? totalDistHI / totalDur : 0,
-              vmax: Math.max(...histJoueur.map(h => h.vmax || 0), 0),
-              accB23: totalAcc / histJoueur.length
+                const row = document.createElement('div')
+                row.style.cssText = 'margin-bottom:10px;'
+                row.innerHTML = `
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} ${d.jour} <span style="color:#444;font-size:10px;">${d.dateStr}</span></span>
+                    <span style="font-size:11px;color:${dayColor};font-weight:600;">${d.hasData ? dayPct + '%' : '—'}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
+                      <div style="height:100%;width:${d.hasData ? barW : 0}%;background:${dayColor};border-radius:6px;transition:width .4s;"></div>
+                    </div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
+                    <span style="color:#E24B4A;">${d.hasData ? Math.round(d.realHI) + 'm' : 'Pas de données'}</span>
+                    <span style="color:#555;">Obj: ${Math.round(d.objHI)}m</span>
+                  </div>
+                `
+                daySection.appendChild(row)
+              })
+              objContent.appendChild(daySection)
             }
-          }).filter(Boolean)
+          } else {
+            // Détail par semaine
+            if (perWeekData.length > 0) {
+              const weekSection = document.createElement('div')
+              weekSection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
+              weekSection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">🗓 Détail par semaine</div>`
 
-          if (mode === 'self') {
-            // Moyenne des séances du joueur lui-même (par séance)
-            const bySeance = {}
-            hist.forEach(h => {
-              const k = h.seance || '?'
-              if (!bySeance[k]) bySeance[k] = []
-              bySeance[k].push(h)
-            })
-            const sessionStats = Object.values(bySeance).map(rows => {
-              const tHI = rows.reduce((s, h) => s + (h.distHI || 0), 0)
-              const tVol = rows.reduce((s, h) => s + (h.volHI || 0), 0)
-              const tDist = rows.reduce((s, h) => s + (h.distTot || 0), 0)
-              const tDur = rows.reduce((s, h) => s + (h.duree || 0), 0)
-              const tAcc = rows.reduce((s, h) => s + (h.accB2 || 0) + (h.accB3 || 0), 0)
+              perWeekData.forEach(w => {
+                const wPct = w.objHI > 0 ? Math.round((w.realHI / w.objHI) * 100) : 0
+                const wColor = wPct >= 100 ? '#1D9E75' : wPct >= 80 ? '#FECC00' : wPct >= 50 ? '#EF9F27' : '#E24B4A'
+                const barW = Math.min(wPct, 100)
+                const statusIcon = w.hasData ? (wPct >= 100 ? '✅' : wPct >= 80 ? '💪' : wPct >= 50 ? '👍' : '🔥') : '⏳'
+
+                const row = document.createElement('div')
+                row.style.cssText = 'margin-bottom:10px;'
+                row.innerHTML = `
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} Semaine ${w.semaine}</span>
+                    <span style="font-size:11px;color:${wColor};font-weight:600;">${w.hasData ? wPct + '%' : '—'}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
+                      <div style="height:100%;width:${w.hasData ? barW : 0}%;background:${wColor};border-radius:6px;transition:width .4s;"></div>
+                    </div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
+                    <span style="color:#E24B4A;">${w.hasData ? Math.round(w.realHI) + 'm' : 'Pas de données'}</span>
+                    <span style="color:#555;">Obj: ${Math.round(w.objHI)}m</span>
+                  </div>
+                `
+                weekSection.appendChild(row)
+              })
+              objContent.appendChild(weekSection)
+            }
+          }
+
+          // ===== RADAR CHARTS =====
+          const playerStats = calculerStatsFiltre(hist)
+          const normaliserPoste = (poste) => {
+            const p = String(poste || '').toLowerCase()
+            if (p.includes('pilier') || p.includes('talonneur') || p.includes('ligne')) return 'Avants'
+            if (p.includes('demi') || p.includes('centre') || p.includes('ailier') || p.includes('arrière')) return '3/4'
+            return 'Autre'
+          }
+          const monPosteNorm = normaliserPoste(s.posteGPS)
+
+          function calcCompareStats(mode) {
+            if (!allJoueursData || !allJoueursData.length) return null
+            const datesFiltre = hist.map(h => parseDate(h.date)).filter(d => d).sort((a, b) => a - b)
+            const dateDebut = datesFiltre[0]
+            const dateFin = datesFiltre[datesFiltre.length - 1]
+
+            const perPlayer = allJoueursData.map(j => {
+              const histJoueur = (j.historique || []).filter(h => {
+                const d = parseDate(h.date)
+                return d && d >= dateDebut && d <= dateFin
+              })
+              if (!histJoueur.length) return null
+              const totalDistHI = histJoueur.reduce((sum, h) => sum + (h.distHI || 0), 0)
+              const totalVolHI = histJoueur.reduce((sum, h) => sum + (h.volHI || 0), 0)
+              const totalDist = histJoueur.reduce((sum, h) => sum + (h.distTot || 0), 0)
+              const totalDur = histJoueur.reduce((sum, h) => sum + (h.duree || 0), 0)
+              const totalAcc = histJoueur.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
               return {
-                distHI: tHI, volHI: tVol, mMin: tDur > 0 ? tDist / tDur : 0,
-                hiMin: tDur > 0 ? tHI / tDur : 0, vmax: Math.max(...rows.map(r => r.vmax || 0), 0), accB23: tAcc
+                nomGPS: j.nomGPS, posteGPS: j.posteGPS,
+                distHI: totalDistHI / histJoueur.length,
+                volHI: totalVolHI / histJoueur.length,
+                mMin: totalDur > 0 ? totalDist / totalDur : 0,
+                hiMin: totalDur > 0 ? totalDistHI / totalDur : 0,
+                vmax: Math.max(...histJoueur.map(h => h.vmax || 0), 0),
+                accB23: totalAcc / histJoueur.length
               }
-            })
-            if (!sessionStats.length) return null
-            const avg = f => sessionStats.reduce((s, m) => s + m[f], 0) / sessionStats.length
-            return { distHI: avg('distHI'), volHI: avg('volHI'), mMin: avg('mMin'), hiMin: avg('hiMin'), vmax: avg('vmax'), accB23: avg('accB23') }
+            }).filter(Boolean)
+
+            if (mode === 'self') {
+              const bySeance = {}
+              hist.forEach(h => { const k = h.seance || '?'; if (!bySeance[k]) bySeance[k] = []; bySeance[k].push(h) })
+              const sessionStats = Object.values(bySeance).map(rows => {
+                const tHI = rows.reduce((s, h) => s + (h.distHI || 0), 0)
+                const tVol = rows.reduce((s, h) => s + (h.volHI || 0), 0)
+                const tDist = rows.reduce((s, h) => s + (h.distTot || 0), 0)
+                const tDur = rows.reduce((s, h) => s + (h.duree || 0), 0)
+                const tAcc = rows.reduce((s, h) => s + (h.accB2 || 0) + (h.accB3 || 0), 0)
+                return { distHI: tHI, volHI: tVol, mMin: tDur > 0 ? tDist / tDur : 0, hiMin: tDur > 0 ? tHI / tDur : 0, vmax: Math.max(...rows.map(r => r.vmax || 0), 0), accB23: tAcc }
+              })
+              if (!sessionStats.length) return null
+              const avg = f => sessionStats.reduce((s, m) => s + m[f], 0) / sessionStats.length
+              return { distHI: avg('distHI'), volHI: avg('volHI'), mMin: avg('mMin'), hiMin: avg('hiMin'), vmax: avg('vmax'), accB23: avg('accB23') }
+            }
+
+            let filtered = perPlayer
+            if (mode === 'poste-avg' || mode === 'poste-max') {
+              filtered = perPlayer.filter(j => normaliserPoste(j.posteGPS) === monPosteNorm)
+            }
+            if (!filtered.length) return null
+            if (mode.includes('max')) {
+              const maxF = f => Math.max(...filtered.map(m => m[f]), 0)
+              return { distHI: maxF('distHI'), volHI: maxF('volHI'), mMin: maxF('mMin'), hiMin: maxF('hiMin'), vmax: maxF('vmax'), accB23: maxF('accB23') }
+            }
+            const avgF = f => filtered.reduce((s, m) => s + m[f], 0) / filtered.length
+            return { distHI: avgF('distHI'), volHI: avgF('volHI'), mMin: avgF('mMin'), hiMin: avgF('hiMin'), vmax: avgF('vmax'), accB23: avgF('accB23') }
           }
 
-          let filtered = perPlayer
-          if (mode === 'poste-avg' || mode === 'poste-max') {
-            filtered = perPlayer.filter(j => normaliserPoste(j.posteGPS) === monPosteNorm)
-          }
-          if (!filtered.length) return null
-          if (mode.includes('max')) {
-            const maxF = f => Math.max(...filtered.map(m => m[f]), 0)
-            return { distHI: maxF('distHI'), volHI: maxF('volHI'), mMin: maxF('mMin'), hiMin: maxF('hiMin'), vmax: maxF('vmax'), accB23: maxF('accB23') }
-          }
-          const avgF = f => filtered.reduce((s, m) => s + m[f], 0) / filtered.length
-          return { distHI: avgF('distHI'), volHI: avgF('volHI'), mMin: avgF('mMin'), hiMin: avgF('hiMin'), vmax: avgF('vmax'), accB23: avgF('accB23') }
-        }
-
-        // Objectifs en format stats pour le radar
-        const objStats = {
-          distHI: totalObjHI > 0 ? totalObjHI / Math.max(planifsMatched.length, 1) : 0,
-          volHI: 0,
-          mMin: 0,
-          hiMin: 0,
-          vmax: 0,
-          accB23: totalObjAcc > 0 ? totalObjAcc / Math.max(planifsMatched.length, 1) : 0
-        }
-
-        // Fonction de dessin radar (adaptée de gps.html drawRSimple)
-        function drawRadar(canvas, pVals, cVals, labels, fmts) {
-          const ctx = canvas.getContext('2d')
-          const cX = canvas.width / 2, cY = canvas.height / 2, rad = 100
-          const n = labels.length, as = (Math.PI * 2) / n
-          const maxV = pVals.map((v, i) => Math.max(v, cVals[i], 1))
-
-          ctx.clearRect(0, 0, canvas.width, canvas.height)
-          ctx.strokeStyle = '#333'; ctx.lineWidth = 1
-          for (let i = 1; i <= 4; i++) { ctx.beginPath(); ctx.arc(cX, cY, (rad / 4) * i, 0, Math.PI * 2); ctx.stroke() }
-          for (let i = 0; i < n; i++) {
-            const a = i * as - Math.PI / 2
-            ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(cX + Math.cos(a) * rad, cY + Math.sin(a) * rad); ctx.stroke()
+          const objStats = {
+            distHI: totalObjHI > 0 ? totalObjHI / Math.max(planifsMatched.length, 1) : 0,
+            volHI: 0, mMin: 0, hiMin: 0, vmax: 0,
+            accB23: totalObjAcc > 0 ? totalObjAcc / Math.max(planifsMatched.length, 1) : 0
           }
 
-          // Radar comparaison (bleu)
-          if (cVals.some(v => v > 0)) {
-            ctx.beginPath(); ctx.strokeStyle = '#378ADD'; ctx.fillStyle = '#378ADD33'; ctx.lineWidth = 2
-            cVals.forEach((v, i) => {
+          function drawRadar(canvas, pVals, cVals, labels, fmts) {
+            const ctx = canvas.getContext('2d')
+            const cX = canvas.width / 2, cY = canvas.height / 2, rad = 100
+            const n = labels.length, as = (Math.PI * 2) / n
+            const maxV = pVals.map((v, i) => Math.max(v, cVals[i], 1))
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            ctx.strokeStyle = '#333'; ctx.lineWidth = 1
+            for (let i = 1; i <= 4; i++) { ctx.beginPath(); ctx.arc(cX, cY, (rad / 4) * i, 0, Math.PI * 2); ctx.stroke() }
+            for (let i = 0; i < n; i++) {
+              const a = i * as - Math.PI / 2
+              ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(cX + Math.cos(a) * rad, cY + Math.sin(a) * rad); ctx.stroke()
+            }
+
+            if (cVals.some(v => v > 0)) {
+              ctx.beginPath(); ctx.strokeStyle = '#378ADD'; ctx.fillStyle = '#378ADD33'; ctx.lineWidth = 2
+              cVals.forEach((v, i) => {
+                const a = i * as - Math.PI / 2, r = rad * Math.min(v / maxV[i], 1)
+                if (i === 0) ctx.moveTo(cX + Math.cos(a) * r, cY + Math.sin(a) * r)
+                else ctx.lineTo(cX + Math.cos(a) * r, cY + Math.sin(a) * r)
+              })
+              ctx.closePath(); ctx.fill(); ctx.stroke()
+              cVals.forEach((v, i) => {
+                const a = i * as - Math.PI / 2, r = rad * Math.min(v / maxV[i], 1)
+                ctx.fillStyle = '#378ADD'; ctx.beginPath(); ctx.arc(cX + Math.cos(a) * r, cY + Math.sin(a) * r, 4, 0, Math.PI * 2); ctx.fill()
+              })
+            }
+
+            ctx.beginPath(); ctx.strokeStyle = '#FECC00'; ctx.fillStyle = '#FECC0055'; ctx.lineWidth = 2
+            pVals.forEach((v, i) => {
               const a = i * as - Math.PI / 2, r = rad * Math.min(v / maxV[i], 1)
               if (i === 0) ctx.moveTo(cX + Math.cos(a) * r, cY + Math.sin(a) * r)
               else ctx.lineTo(cX + Math.cos(a) * r, cY + Math.sin(a) * r)
             })
             ctx.closePath(); ctx.fill(); ctx.stroke()
-            cVals.forEach((v, i) => {
+            pVals.forEach((v, i) => {
               const a = i * as - Math.PI / 2, r = rad * Math.min(v / maxV[i], 1)
-              ctx.fillStyle = '#378ADD'; ctx.beginPath(); ctx.arc(cX + Math.cos(a) * r, cY + Math.sin(a) * r, 4, 0, Math.PI * 2); ctx.fill()
+              ctx.fillStyle = '#FECC00'; ctx.beginPath(); ctx.arc(cX + Math.cos(a) * r, cY + Math.sin(a) * r, 5, 0, Math.PI * 2); ctx.fill()
+              ctx.strokeStyle = '#0f0f0f'; ctx.lineWidth = 2; ctx.stroke()
+            })
+
+            ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+            labels.forEach((lbl, i) => {
+              const a = i * as - Math.PI / 2
+              const lx = cX + Math.cos(a) * (rad + 22), ly = cY + Math.sin(a) * (rad + 22)
+              ctx.fillStyle = '#aaa'; ctx.fillText(lbl, lx, ly - 8)
+              ctx.fillStyle = '#FECC00'; ctx.font = 'bold 9px sans-serif'; ctx.fillText(fmts[i](pVals[i]), lx, ly + 6)
+              if (cVals[i] > 0) { ctx.fillStyle = '#378ADD'; ctx.fillText('(' + fmts[i](cVals[i]) + ')', lx, ly + 18) }
+              ctx.font = 'bold 10px sans-serif'
             })
           }
 
-          // Radar joueur (jaune)
-          ctx.beginPath(); ctx.strokeStyle = '#FECC00'; ctx.fillStyle = '#FECC0055'; ctx.lineWidth = 2
-          pVals.forEach((v, i) => {
-            const a = i * as - Math.PI / 2, r = rad * Math.min(v / maxV[i], 1)
-            if (i === 0) ctx.moveTo(cX + Math.cos(a) * r, cY + Math.sin(a) * r)
-            else ctx.lineTo(cX + Math.cos(a) * r, cY + Math.sin(a) * r)
-          })
-          ctx.closePath(); ctx.fill(); ctx.stroke()
-          pVals.forEach((v, i) => {
-            const a = i * as - Math.PI / 2, r = rad * Math.min(v / maxV[i], 1)
-            ctx.fillStyle = '#FECC00'; ctx.beginPath(); ctx.arc(cX + Math.cos(a) * r, cY + Math.sin(a) * r, 5, 0, Math.PI * 2); ctx.fill()
-            ctx.strokeStyle = '#0f0f0f'; ctx.lineWidth = 2; ctx.stroke()
-          })
+          const radarSec = document.createElement('div')
+          radarSec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
+          radarSec.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;text-align:center;">📡 Radars de performance</div>`
 
-          // Labels
-          ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-          labels.forEach((lbl, i) => {
-            const a = i * as - Math.PI / 2
-            const lx = cX + Math.cos(a) * (rad + 22), ly = cY + Math.sin(a) * (rad + 22)
-            ctx.fillStyle = '#aaa'; ctx.fillText(lbl, lx, ly - 8)
-            ctx.fillStyle = '#FECC00'; ctx.font = 'bold 9px sans-serif'; ctx.fillText(fmts[i](pVals[i]), lx, ly + 6)
-            if (cVals[i] > 0) { ctx.fillStyle = '#378ADD'; ctx.fillText('(' + fmts[i](cVals[i]) + ')', lx, ly + 18) }
-            ctx.font = 'bold 10px sans-serif'
-          })
+          const compareSelect = document.createElement('select')
+          compareSelect.style.cssText = 'width:100%;padding:8px 12px;margin-bottom:14px;border-radius:8px;border:1px solid #2a2a2a;background:#0f0f0f;color:#FECC00;font-size:12px;'
+          compareSelect.innerHTML = `
+            <option value="team-avg">📊 Moyenne équipe</option>
+            <option value="team-max">🔥 Max équipe</option>
+            <option value="poste-avg">👥 Moyenne même poste</option>
+            <option value="poste-max">⚡ Max même poste</option>
+            <option value="self">👤 Mes séances (moyenne)</option>
+          `
+          radarSec.appendChild(compareSelect)
+
+          const radarGrid = document.createElement('div')
+          radarGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;'
+
+          const r1Wrap = document.createElement('div')
+          r1Wrap.innerHTML = '<div style="font-size:10px;color:#888;text-align:center;margin-bottom:6px;">Moi vs Comparaison</div>'
+          const canvas1 = document.createElement('canvas')
+          canvas1.width = 300; canvas1.height = 300
+          canvas1.style.cssText = 'width:100%;max-width:300px;height:auto;display:block;margin:0 auto;'
+          r1Wrap.appendChild(canvas1)
+          const leg1 = document.createElement('div')
+          leg1.style.cssText = 'font-size:9px;color:#888;text-align:center;margin-top:6px;'
+          r1Wrap.appendChild(leg1)
+          radarGrid.appendChild(r1Wrap)
+
+          const r2Wrap = document.createElement('div')
+          r2Wrap.innerHTML = '<div style="font-size:10px;color:#888;text-align:center;margin-bottom:6px;">Moi vs Objectifs</div>'
+          const canvas2 = document.createElement('canvas')
+          canvas2.width = 300; canvas2.height = 300
+          canvas2.style.cssText = 'width:100%;max-width:300px;height:auto;display:block;margin:0 auto;'
+          r2Wrap.appendChild(canvas2)
+          const leg2 = document.createElement('div')
+          leg2.style.cssText = 'font-size:9px;color:#888;text-align:center;margin-top:6px;'
+          r2Wrap.appendChild(leg2)
+          radarGrid.appendChild(r2Wrap)
+
+          radarSec.appendChild(radarGrid)
+          objContent.appendChild(radarSec)
+
+          const radarLabels = ['Dist HI', 'm/min', 'HI/min', 'Vol HI', 'Vmax', 'Acc']
+          const radarFmts = [v => v.toFixed(0) + 'm', v => v.toFixed(1), v => v.toFixed(2), v => v.toFixed(0), v => v.toFixed(1) + 'km/h', v => v.toFixed(0)]
+
+          function drawRadars(compareMode) {
+            const cmp = calcCompareStats(compareMode)
+            const modeLabels = { 'self': 'Mes séances', 'team-avg': 'Moy. équipe', 'team-max': 'Max équipe', 'poste-avg': 'Moy. poste', 'poste-max': 'Max poste' }
+            leg1.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Moi</span><span style="color:#378ADD;">● ${modeLabels[compareMode] || 'Comparaison'}</span></div>`
+            const pVals1 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, playerStats.distHI > 0 ? (totalRealAcc / Math.max(hist.length, 1)) : 0]
+            const cVals1 = cmp ? [cmp.distHI, cmp.mMin, cmp.hiMin, cmp.volHI, cmp.vmax, cmp.accB23] : [0, 0, 0, 0, 0, 0]
+            drawRadar(canvas1, pVals1, cVals1, radarLabels, radarFmts)
+
+            leg2.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Réel</span><span style="color:#378ADD;">● Objectif</span></div>`
+            const pVals2 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, totalRealAcc / Math.max(hist.length, 1)]
+            const cVals2 = [objStats.distHI, 0, 0, 0, 0, objStats.accB23]
+            drawRadar(canvas2, pVals2, cVals2, radarLabels, radarFmts)
+          }
+
+          compareSelect.addEventListener('change', () => drawRadars(compareSelect.value))
+          drawRadars('team-avg')
+
+          // ===== INFO PLANIFS =====
+          const infoDiv = document.createElement('div')
+          infoDiv.style.cssText = 'font-size:10px;color:#444;text-align:center;padding:8px;'
+          infoDiv.innerHTML = `📊 ${planifsMatched.length} planification(s) trouvée(s) sur la période`
+          objContent.appendChild(infoDiv)
         }
 
-        // Section radar
-        const radarSec = document.createElement('div')
-        radarSec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
-        radarSec.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;text-align:center;">📡 Radars de performance</div>`
+        // Event listeners pour le toggle
+        btnQuot.addEventListener('click', () => {
+          if (objMode === 'quotidien') return
+          objMode = 'quotidien'
+          btnQuot.style.background = '#FECC00'; btnQuot.style.color = '#0f0f0f'
+          btnHeb.style.background = 'none'; btnHeb.style.color = '#555'
+          renderObjContent()
+        })
+        btnHeb.addEventListener('click', () => {
+          if (objMode === 'hebdomadaire') return
+          objMode = 'hebdomadaire'
+          btnHeb.style.background = '#FECC00'; btnHeb.style.color = '#0f0f0f'
+          btnQuot.style.background = 'none'; btnQuot.style.color = '#555'
+          renderObjContent()
+        })
 
-        // Dropdown de comparaison
-        const compareSelect = document.createElement('select')
-        compareSelect.style.cssText = 'width:100%;padding:8px 12px;margin-bottom:14px;border-radius:8px;border:1px solid #2a2a2a;background:#0f0f0f;color:#FECC00;font-size:12px;'
-        compareSelect.innerHTML = `
-          <option value="team-avg">📊 Moyenne équipe</option>
-          <option value="team-max">🔥 Max équipe</option>
-          <option value="poste-avg">👥 Moyenne même poste</option>
-          <option value="poste-max">⚡ Max même poste</option>
-          <option value="self">👤 Mes séances (moyenne)</option>
-        `
-        radarSec.appendChild(compareSelect)
-
-        // Grille 2 radars
-        const radarGrid = document.createElement('div')
-        radarGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;'
-
-        // Radar 1: Joueur vs Comparaison
-        const r1Wrap = document.createElement('div')
-        r1Wrap.innerHTML = '<div style="font-size:10px;color:#888;text-align:center;margin-bottom:6px;">Moi vs Comparaison</div>'
-        const canvas1 = document.createElement('canvas')
-        canvas1.width = 300; canvas1.height = 300
-        canvas1.style.cssText = 'width:100%;max-width:300px;height:auto;display:block;margin:0 auto;'
-        r1Wrap.appendChild(canvas1)
-        const leg1 = document.createElement('div')
-        leg1.style.cssText = 'font-size:9px;color:#888;text-align:center;margin-top:6px;'
-        r1Wrap.appendChild(leg1)
-        radarGrid.appendChild(r1Wrap)
-
-        // Radar 2: Joueur vs Objectifs
-        const r2Wrap = document.createElement('div')
-        r2Wrap.innerHTML = '<div style="font-size:10px;color:#888;text-align:center;margin-bottom:6px;">Moi vs Objectifs</div>'
-        const canvas2 = document.createElement('canvas')
-        canvas2.width = 300; canvas2.height = 300
-        canvas2.style.cssText = 'width:100%;max-width:300px;height:auto;display:block;margin:0 auto;'
-        r2Wrap.appendChild(canvas2)
-        const leg2 = document.createElement('div')
-        leg2.style.cssText = 'font-size:9px;color:#888;text-align:center;margin-top:6px;'
-        r2Wrap.appendChild(leg2)
-        radarGrid.appendChild(r2Wrap)
-
-        radarSec.appendChild(radarGrid)
-        zoneObjectifs.appendChild(radarSec)
-
-        // Labels et formats pour les radars
-        const radarLabels = ['Dist HI', 'm/min', 'HI/min', 'Vol HI', 'Vmax', 'Acc']
-        const radarFmts = [v => v.toFixed(0) + 'm', v => v.toFixed(1), v => v.toFixed(2), v => v.toFixed(0), v => v.toFixed(1) + 'km/h', v => v.toFixed(0)]
-
-        function drawRadars(compareMode) {
-          // Radar 1: Joueur vs Comparaison
-          const cmp = calcCompareStats(compareMode)
-          const modeLabels = { 'self': 'Mes séances', 'team-avg': 'Moy. équipe', 'team-max': 'Max équipe', 'poste-avg': 'Moy. poste', 'poste-max': 'Max poste' }
-          leg1.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Moi</span><span style="color:#378ADD;">● ${modeLabels[compareMode] || 'Comparaison'}</span></div>`
-          const pVals1 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, playerStats.distHI > 0 ? (totalRealAcc / Math.max(hist.length, 1)) : 0]
-          const cVals1 = cmp ? [cmp.distHI, cmp.mMin, cmp.hiMin, cmp.volHI, cmp.vmax, cmp.accB23] : [0, 0, 0, 0, 0, 0]
-          drawRadar(canvas1, pVals1, cVals1, radarLabels, radarFmts)
-
-          // Radar 2: Joueur vs Objectifs
-          leg2.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Réel</span><span style="color:#378ADD;">● Objectif</span></div>`
-          const pVals2 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.volHI, playerStats.vmax, totalRealAcc / Math.max(hist.length, 1)]
-          const cVals2 = [objStats.distHI, 0, 0, 0, 0, objStats.accB23]
-          drawRadar(canvas2, pVals2, cVals2, radarLabels, radarFmts)
-        }
-
-        compareSelect.addEventListener('change', () => drawRadars(compareSelect.value))
-        drawRadars('team-avg')
-
-        // ===== INFO PLANIFS =====
-        const infoDiv = document.createElement('div')
-        infoDiv.style.cssText = 'font-size:10px;color:#444;text-align:center;padding:8px;'
-        infoDiv.innerHTML = `📊 ${planifsMatched.length} planification(s) trouvée(s) sur la période`
-        zoneObjectifs.appendChild(infoDiv)
+        // Render initial
+        renderObjContent()
       }
 
       // Fonction pour tout re-render
