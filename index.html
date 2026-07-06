@@ -413,7 +413,7 @@
       </div>
       <div class="wellness-card">
         <div class="wellness-card-title">Commentaire <span style="color:#555;font-weight:400;text-transform:none;">(optionnel)</span></div>
-        <textarea id="wellness-comment" placeholder="Une note pour le staff ?" style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:14px;outline:none;resize:none;font-family:inherit;min-height:60px;" oninput="majProgress()"></textarea>
+        <textarea id="wellness-comment" placeholder="Un commentaire sur ton état ? (courbature, gêne, etc...)" style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:14px;outline:none;resize:none;font-family:inherit;min-height:60px;" oninput="majProgress()"></textarea>
       </div>
       <button class="submit-btn" id="submit-wellness" disabled onclick="soumettreWellness()">Valider mon wellness</button>
     </div>
@@ -1375,7 +1375,8 @@
           header.style.display='flex'
           header.style.alignItems='center'
           header.style.justifyContent='space-between'
-          header.innerHTML=`<span>${sa.date?new Date(sa.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):''}${sa.theme&&!sa.estBlessé?' · '+sa.theme:''}</span><span style="font-size:18px;color:#FECC00;">▼</span>`
+          const estJoueurBlesse = joueurActif?.statut === 'blesse'
+          header.innerHTML=`<span>${sa.date?new Date(sa.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):''}${sa.theme&&!estJoueurBlesse?' · '+sa.theme:''}</span><span style="font-size:18px;color:#FECC00;">▼</span>`
           
           const body=document.createElement('div')
           body.id=seanceId+'-body'
