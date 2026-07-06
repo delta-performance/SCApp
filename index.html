@@ -2351,7 +2351,7 @@
     const [snap, collectifSnap, planifSnap] = await Promise.all([
       getDoc(doc(db, 'statsGPS', joueurActif.id)),
       getDoc(doc(db, 'statsGPS', '_collectif')),
-      getDocs(scopedQuery('planificationsGPS'))
+      getDocs(scopedQuery('planificationsGPS', 'semaine'))
     ])
     if (!snap.exists()) {
       c.innerHTML = `<div class="empty-msg">
@@ -3276,7 +3276,7 @@
       }
 
       // ===== RENDU OBJECTIFS =====
-      let objMode = 'hebdomadaire' // 'quotidien' ou 'hebdomadaire'
+      let objMode = 'quotidien' // 'quotidien' ou 'hebdomadaire'
       function renderObjectifs() {
         zoneObjectifs.innerHTML = ''
 
@@ -3329,8 +3329,8 @@
         const toggleWrap = document.createElement('div')
         toggleWrap.style.cssText = 'display:flex;gap:3px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:3px;margin-bottom:14px;'
         toggleWrap.innerHTML = `
-          <button id="obj-toggle-quot" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:none;color:#555;">📅 Quotidien</button>
-          <button id="obj-toggle-heb" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:#FECC00;color:#0f0f0f;">🗓 Hebdomadaire</button>
+          <button id="obj-toggle-quot" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:#FECC00;color:#0f0f0f;">📅 Quotidien</button>
+          <button id="obj-toggle-heb" style="flex:1;padding:8px 4px;border-radius:7px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:none;color:#555;">🗓 Hebdomadaire</button>
         `
         zoneObjectifs.appendChild(toggleWrap)
 
@@ -3529,26 +3529,32 @@
             scoreAcc = totalObjAcc > 0 ? Math.round((totalRealAcc / totalObjAcc) * 100) : 0
           }
 
-          // ===== SCORE INDIVIDUEL (même formule que renderer/gps.html) =====
-          const _hasV = histSource.some(r => String(r.period || '').toLowerCase().includes('vitesse'))
-          const _mH = _hasV ? 45 : 55, _mA = _hasV ? 25 : 30, _mR = 15, _mV = _hasV ? 15 : 0
+          // ===== SCORE INDIVIDUEL =====
+          if (objMode === 'hebdomadaire') {
+            // Mode hebdomadaire : moyenne simple des % d'avancement HI et Accel
+            scoreGlobal = Math.round((scoreHI + scoreAcc) / 2)
+          } else {
+            // Mode quotidien : formule pondérée (même formule que renderer/gps.html)
+            const _hasV = histSource.some(r => String(r.period || '').toLowerCase().includes('vitesse'))
+            const _mH = _hasV ? 45 : 55, _mA = _hasV ? 25 : 30, _mR = 15, _mV = _hasV ? 15 : 0
 
-          const _pH = totalObjHI > 0 ? Math.min(150, Math.round(totalRealHI / totalObjHI * 100)) : totalObjHI === 0 ? 150 : null
-          const _pA = totalObjAcc > 0 ? Math.min(150, Math.round(totalRealAcc / totalObjAcc * 100)) : totalObjAcc === 0 ? 150 : null
+            const _pH = totalObjHI > 0 ? Math.min(150, Math.round(totalRealHI / totalObjHI * 100)) : totalObjHI === 0 ? 150 : null
+            const _pA = totalObjAcc > 0 ? Math.min(150, Math.round(totalRealAcc / totalObjAcc * 100)) : totalObjAcc === 0 ? 150 : null
 
-          const _sH = _pH !== null ? Math.round(_sHIAcc(_pH) * _mH) : 0
-          const _sA = _pA !== null ? Math.round(_sHIAcc(_pA) * _mA) : 0
+            const _sH = _pH !== null ? Math.round(_sHIAcc(_pH) * _mH) : 0
+            const _sA = _pA !== null ? Math.round(_sHIAcc(_pA) * _mA) : 0
 
-          const _seuil = calcSeuilPosteRythme(s.posteGPS)
-          const _mminJ = calcMMinRythme(histSource)
-          const _sR = _seuil > 0 ? Math.round(_sRythme(_mminJ, _seuil) * _mR) : Math.round(_mR * 0.5)
+            const _seuil = calcSeuilPosteRythme(s.posteGPS)
+            const _mminJ = calcMMinRythme(histSource)
+            const _sR = _seuil > 0 ? Math.round(_sRythme(_mminJ, _seuil) * _mR) : Math.round(_mR * 0.5)
 
-          const _vm6 = s.vmax6m || 0
-          const scorePlayerStats = calculerStatsFiltre(histSource)
-          const _vmOk = _vm6 > 0 && scorePlayerStats.vmax > 0 && (scorePlayerStats.vmax / _vm6 * 100) >= 90
-          const _sV = _hasV ? (_vmOk ? _mV : Math.round(_mV * 0.25)) : 0
+            const _vm6 = s.vmax6m || 0
+            const scorePlayerStats = calculerStatsFiltre(histSource)
+            const _vmOk = _vm6 > 0 && scorePlayerStats.vmax > 0 && (scorePlayerStats.vmax / _vm6 * 100) >= 90
+            const _sV = _hasV ? (_vmOk ? _mV : Math.round(_mV * 0.25)) : 0
 
-          scoreGlobal = Math.min(100, _sH + _sA + _sR + _sV)
+            scoreGlobal = Math.min(100, _sH + _sA + _sR + _sV)
+          }
 
           // Couleur du score (alignée sur renderer/gps.html)
           const scoreColor = scoreGlobal >= 75 ? '#1D9E75' : scoreGlobal >= 55 ? '#EF9F27' : '#E24B4A'
