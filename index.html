@@ -520,11 +520,22 @@
 
   <script type="module">
     import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js'
-    import{getFirestore,collection,doc,setDoc,getDoc,getDocs,serverTimestamp,onSnapshot}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js'
+    import{getFirestore,collection,doc,setDoc,getDoc,getDocs,serverTimestamp,onSnapshot,query,where,enableIndexedDbPersistence}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js'
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js'
     const app=initializeApp({apiKey:"AIzaSyCvMs-5LX9Ivk3OkzUR3iz9Kk1E5b9_7Vk",authDomain:"delta-rugby-app.firebaseapp.com",projectId:"delta-rugby-app",storageBucket:"delta-rugby-app.firebasestorage.app",messagingSenderId:"61187079762",appId:"1:61187079762:web:56cd1eaa8beb9e1a2ee98b"})
     const db=getFirestore(app)
+    try { enableIndexedDbPersistence(db).catch(() => {}) } catch(e) { console.warn('Persistence IndexedDB non disponible:', e) }
     const auth=getAuth(app)
+
+    function getDataScopeStart() {
+      const d = new Date()
+      d.setDate(d.getDate() - 30)
+      return d.toISOString().split('T')[0]
+    }
+
+    function scopedQuery(name, dateField = 'date') {
+      return query(collection(db, name), where(dateField, '>=', getDataScopeStart()))
+    }
 
     let unsubscribeMaintenance = null;
     let unsubscribeModules = null;
@@ -993,7 +1004,7 @@
       try{const mx=await getDoc(doc(db,'maxTestes',j.id));maxTestes=mx.exists()?mx.data():{}}catch(e){maxTestes={}}
       // Charger le poids du joueur (depuis collection 'poids' ou propriété du joueur)
       try{
-        const pSnap=await getDocs(collection(db,'poids'))
+        const pSnap=await getDocs(scopedQuery('poids'))
         const pDocs=pSnap.docs.map(d=>d.data()).filter(p=>p.joueurId===j.id||p.joueurId===j.nom+'_'+j.prenom)
         if(pDocs.length){
           pDocs.sort((a,b)=>(b.date||'').localeCompare(a.date||''))
@@ -1335,7 +1346,7 @@
       document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
       
       try{
-        const snap=await getDocs(collection(db,'seances'))
+        const snap=await getDocs(scopedQuery('seances'))
         const seances=snap.docs.map(d=>({id:d.id,...d.data()}))
           .filter(s=>s.statut === 'publie')
           .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
@@ -1815,8 +1826,8 @@
       try{
         // Toujours tout charger (planning collectif + TOUS les creneaux blesses)
         const [planSnap, bSnap] = await Promise.all([
-          getDocs(collection(db,'planning')),
-          getDocs(collection(db,'creneauxBlesses'))
+          getDocs(scopedQuery('planning')),
+          getDocs(scopedQuery('creneauxBlesses'))
         ])
         const planningAll = planSnap.docs.map(d=>({id:d.id,...d.data()}))
         const creneauxAll = bSnap.docs.map(d=>({id:d.id,...d.data()}))
@@ -2340,7 +2351,7 @@
     const [snap, collectifSnap, planifSnap] = await Promise.all([
       getDoc(doc(db, 'statsGPS', joueurActif.id)),
       getDoc(doc(db, 'statsGPS', '_collectif')),
-      getDocs(collection(db, 'planificationsGPS'))
+      getDocs(scopedQuery('planificationsGPS'))
     ])
     if (!snap.exists()) {
       c.innerHTML = `<div class="empty-msg">
