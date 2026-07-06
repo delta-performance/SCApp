@@ -999,66 +999,10 @@
       window.seDeconnecter()
     }
 
-    window.synchroniserPlayerApp = async function() {
+    window.synchroniserPlayerApp = function() {
       const btn = document.getElementById('player-sync-btn')
       if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
-      try {
-        console.log('Synchronisation Player App demandée...')
-        // 1. Recharger les snaps Firebase de base
-        const [jSnap, rSnap, eSnap] = await Promise.all([
-          getDocs(collection(db, 'joueurs')),
-          getDoc(doc(db, 'config', 'ratios')),
-          getDoc(doc(db, 'config', 'exercices'))
-        ])
-        joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived)
-        ratios = rSnap.exists() ? rSnap.data() : {}
-        exercicesList = eSnap.exists() ? (eSnap.data().liste || []) : []
-        
-        // 2. Recharger les types d'événements personnalisés
-        await loadEventTypesFromFirebase()
-        
-        // 3. Rafraîchir l'écran actif
-        const activeScreenEl = document.querySelector('.screen.active')
-        const activeScreenId = activeScreenEl ? activeScreenEl.id.replace('screen-', '') : 'select'
-        
-        if (activeScreenId === 'select') {
-          const q = document.getElementById('search-joueur').value || ''
-          filtrerJoueurs(q)
-        } else if (joueurActif) {
-          // Rafraîchir les maxes et profil du joueur actif
-          const mx = await getDoc(doc(db, 'maxTestes', joueurActif.id))
-          maxTestes = mx.exists() ? mx.data() : {}
-          
-          const col = COUL[joueurActif.poste] || '#444'
-          const av = document.getElementById('menu-avatar')
-          if (av) {
-            av.textContent = (joueurActif.prenom || '?')[0] + (joueurActif.nom || '?')[0]
-            av.style.background = col + '22'; av.style.borderColor = col; av.style.color = col
-          }
-          const nomEl = document.getElementById('menu-nom')
-          if (nomEl) nomEl.textContent = (joueurActif.prenom || '') + ' ' + (joueurActif.nom || '')
-          const posteEl = document.getElementById('menu-poste')
-          if (posteEl) posteEl.textContent = joueurActif.poste || ''
-          
-          try {
-            const wSnap = await getDoc(doc(db, 'wellness', `${joueurActif.id}_${aujourdhui}`))
-            const cardWellness = document.getElementById('card-wellness')
-            if (cardWellness) cardWellness.classList.toggle('done', wSnap.exists())
-            const badgeWellness = document.getElementById('wellness-done-badge')
-            if (badgeWellness) badgeWellness.style.display = wSnap.exists() ? 'block' : 'none'
-          } catch(e) {}
-          
-          // Recharger les données de l'écran actif s'il s'agit de seance, planning, etc.
-          if (activeScreenId === 'seance') chargerSeance()
-          if (activeScreenId === 'planning') chargerPlanning()
-          if (activeScreenId === 'gps') chargerGPS()
-        }
-        
-        console.log('Synchronisation Player App réussie !')
-      } catch (e) {
-        console.error('Erreur synchronisation Player App:', e)
-      }
-      if (btn) { btn.classList.remove('spinning'); btn.disabled = false; }
+      location.reload()
     }
 
     // ===== NAVIGATION — UNE SEULE DÉFINITION =====
