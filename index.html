@@ -2386,7 +2386,6 @@
 
     const sData = snap.data()
     if (sData) {
-      console.log('[GPS player read] joueurActif.id=', joueurActif.id, 'historique count=', sData.historique?.length, 'last HI=', sData.historique?.length ? sData.historique[sData.historique.length-1].distHI : null, 'last date=', sData.historique?.length ? sData.historique[sData.historique.length-1].date : null, 'distHIMoySean=', sData.distHIMoySean)
       sData.historique = corrigerDonneesGPS(sData.historique)
       if (sData.mMinMoy > 1000 && isFinite(sData.mMinMoy)) {
         sData.mMinMoy = +(sData.mMinMoy / 1440).toFixed(1)
