@@ -227,7 +227,45 @@
       border-color: #2a2a2a !important;
     }
   </style>
-  <link rel="manifest" href="../manifest.json">
+  <link rel="manifest" href="../manifest.json?v=20260706">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SCA Albi">
+  <script>
+    if ('serviceWorker' in navigator) {
+      const swCode = `
+        const CACHE_NAME = 'sca-player-v1';
+        self.addEventListener('install', e => { self.skipWaiting(); });
+        self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
+        self.addEventListener('fetch', e => {
+          const req = e.request;
+          if (req.mode === 'navigate') {
+            e.respondWith(
+              fetch(req).then(res => {
+                const copy = res.clone();
+                caches.open(CACHE_NAME).then(c => c.put(req, copy));
+                return res;
+              }).catch(() => caches.match(req).then(r => r || new Response('Hors ligne')))
+            );
+          } else {
+            e.respondWith(
+              fetch(req).then(res => {
+                const copy = res.clone();
+                caches.open(CACHE_NAME).then(c => c.put(req, copy));
+                return res;
+              }).catch(() => caches.match(req))
+            );
+          }
+        });
+      `;
+      const blob = new Blob([swCode], { type: 'application/javascript' });
+      const swUrl = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(swUrl).catch(err => console.error('SW register error:', err));
+    }
+  </script>
 </head>
 <body>
 
@@ -1002,7 +1040,9 @@
     window.synchroniserPlayerApp = function() {
       const btn = document.getElementById('player-sync-btn')
       if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
-      location.reload()
+      const url = new URL(window.location.href)
+      url.searchParams.set('v', Date.now().toString())
+      window.location.href = url.toString()
     }
 
     // ===== NAVIGATION — UNE SEULE DÉFINITION =====
