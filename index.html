@@ -2483,6 +2483,8 @@
         const minDateStr = dateStrLocal(minDate)
         const maxDateStr = dateStrLocal(maxDate)
         const lastDateStr = lastDate.toLocaleDateString('fr-FR')
+        const lastSeance = s.historique[s.historique.length - 1]
+        const lastSeanceStr = lastSeance ? `${lastDateStr} — ${lastSeance.seance || 'Séance'}` : 'Aucune séance'
         const filtresDiv = document.createElement('div')
         filtresDiv.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:14px;'
         filtresDiv.innerHTML = `
@@ -2505,16 +2507,13 @@
             </div>
           </div>
           <div id="derniere-info" style="font-size:11px;color:#555;text-align:center;padding:8px;background:#0f0f0f;border-radius:6px;">
-            ${s.historique.length > 0 ? `Dernière séance : ${lastDateStr}` : 'Aucune séance'}
+            ${lastSeanceStr}
           </div>
         `
         c.appendChild(filtresDiv)
 
-        // Par défaut : filtrer sur la dernière date uniquement
-        historiqueFiltre = s.historique.filter(h => {
-          const dh = parseDate(h.date)
-          return dh && dh.toDateString() === lastDate.toDateString()
-        })
+        // Par défaut : afficher la dernière séance uniquement
+        historiqueFiltre = s.historique.length ? [s.historique[s.historique.length - 1]] : []
 
         // Gestion des modes de vue
         const btnDerniere = document.getElementById('btn-vue-derniere')
@@ -2534,11 +2533,8 @@
           btnPeriode.style.borderColor = '#2a2a2a'
           periodeFiltres.style.display = 'none'
           derniereInfo.style.display = 'block'
-          // Filtrer sur la dernière date
-          historiqueFiltre = s.historique.filter(h => {
-            const dh = parseDate(h.date)
-            return dh && dh.toDateString() === lastDate.toDateString()
-          })
+          // Afficher la dernière séance uniquement
+          historiqueFiltre = s.historique.length ? [s.historique[s.historique.length - 1]] : []
           renderAll()
         })
 
