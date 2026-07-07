@@ -1229,6 +1229,11 @@
       if(unit==='W')return exo.rpe+' W'
       return 'RPE '+exo.rpe
     }
+    // Calcule la charge recommandée pour une série variable spécifique
+    function labelChargeRecoForSerie(exo, serieData){
+      const fakeExo=Object.assign({},exo,{rpe:serieData.intensity})
+      return labelChargeReco(fakeExo)
+    }
     // Calcule la charge réelle à enregistrer selon le mode de traction
     function calculerChargeTraction(mode, valeur, exo){
       const pdc=poidsJoueur||0
@@ -1427,7 +1432,7 @@
                 ${photoHtml}
                 <div style="flex:1;">
                   <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${exo.numExo||''}. ${exo.exercice}</div>
-                  <div class="seance-exo-params">${exo.nbSets} séries × ${exo.nbReps} reps · ${unitLabel} ${exo.rpe}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
+                  <div class="seance-exo-params">${exo.variableSeries&&exo.seriesData?.length?exo.seriesData.map((s,i)=>`S${i+1}: ${s.reps}×${s.intensity}${unitLabel}`).join(' · '):`${exo.nbSets} séries × ${exo.nbReps} reps · ${unitLabel} ${exo.rpe}`}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
                   <div class="seance-charge">${reco}</div>
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
                 </div>
@@ -1474,8 +1479,11 @@
                     const clef=clefBase+'_s'+s
                     const vs=chargesReelles[clef]||''
                     const ckId='ck_'+Math.random().toString(36).slice(2)
+                    const sData=exo.variableSeries&&exo.seriesData?.[s-1]
+                    const serieReco=sData?labelChargeRecoForSerie(exo,sData):reco
+                    const serieRepsLabel=sData?` · ${sData.reps} reps`:''
                     const box=document.createElement('div');box.className='serie-box'
-                    box.innerHTML=`<div class="serie-lbl">Série ${s}</div><input class="serie-inp" type="number" step="0.5" placeholder="${reco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="0.5" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                     gr.appendChild(box)
                   }
                 }
