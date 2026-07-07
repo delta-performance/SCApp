@@ -1127,9 +1127,7 @@
         if(seanceContent) chargerSeance() // Chargement direct
       }
       if(screen==='planning'){
-        // Vérifier que l'élément existe avant de charger
-        const planningContent = document.getElementById('planning-content')
-        if(planningContent) chargerPlanning() // Chargement direct
+        chargerPlanning() // Chargement direct
       }
       if(screen==='gps'){
         // Vérifier que l'élément existe avant de charger
@@ -1973,25 +1971,6 @@
     async function chargerPlanning(){
       if(!joueurActif) return
       
-      const c = document.getElementById('planning-content')
-      if(!c) {
-        console.error('Element planning-content non trouvé')
-        return
-      }
-      
-      // Vérifier le cache d'abord
-      const cachedData = getCache('planning')
-      if (cachedData) {
-        c.innerHTML = cachedData.html
-        // Restaurer les variables globales nécessaires
-        planningCache = cachedData.planningCache
-        currentWeekStart = new Date(cachedData.currentWeekStart)
-        selectedDayIdx = cachedData.selectedDayIdx
-        planningScope = cachedData.planningScope
-        return
-      }
-      
-      c.innerHTML = '<div class="empty-msg">⏳ Chargement de ton planning...</div>'
       planningCache = null
       
       const lundi = getLundi(new Date(currentWeekStart))
@@ -2068,15 +2047,6 @@
         goToSlide(selectedDayIdx, false)
         updateDaysPillSelection()
         updateDotVisibility(lundi, filtered.planning, filtered.creneaux)
-        
-        // Mettre en cache le résultat et les variables nécessaires
-        setCache('planning', { 
-          html: c.innerHTML, 
-          planningCache: planningCache,
-          currentWeekStart: currentWeekStart,
-          selectedDayIdx: selectedDayIdx,
-          planningScope: planningScope
-        })
         
       }catch(e){ console.error(e) }
     }
@@ -2596,9 +2566,16 @@
       
       try {
         const planifSnap = await getDocs(scopedQuery('planificationsGPS', 'semaine'))
-        const planifsGPS = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
+        const planifsData = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
+        // Synchroniser avec le tableau utilisé par la closure de renderObjectifs
+        if (Array.isArray(window.planifsGPS)) {
+          window.planifsGPS.length = 0
+          window.planifsGPS.push(...planifsData)
+        } else {
+          window.planifsGPS = planifsData
+        }
         
-        if (zoneObjectifs && planifsGPS.length > 0) {
+        if (zoneObjectifs && planifsData.length > 0) {
           // Utiliser la fonction renderObjectifs du contexte GPS
           if (typeof renderObjectifs === 'function') {
             renderObjectifs()
@@ -2710,10 +2687,17 @@
       
       try {
         const planifSnap = await getDocs(scopedQuery('planificationsGPS', 'semaine'))
-        const planifsGPS = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
+        const planifsData = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
+        // Synchroniser avec le tableau utilisé par la closure de renderObjectifs
+        if (Array.isArray(window.planifsGPS)) {
+          window.planifsGPS.length = 0
+          window.planifsGPS.push(...planifsData)
+        } else {
+          window.planifsGPS = planifsData
+        }
         
         // Mettre à jour uniquement la zone objectifs
-        if (zoneObjectifs && planifsGPS.length > 0) {
+        if (zoneObjectifs && planifsData.length > 0) {
           // Utiliser la fonction renderObjectifs du contexte GPS
           if (typeof renderObjectifs === 'function') {
             renderObjectifs()
