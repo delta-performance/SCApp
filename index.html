@@ -1081,54 +1081,8 @@
 
     // ===== FONCTIONS GLOBALES =====
     
-    // Rendre renderObjectifsGPS accessible globalement
-    window.renderObjectifsGPS = function(zoneObjectifs, sData, joueurActif, planifsGPS) {
-      if (!zoneObjectifs) return
-      
-      zoneObjectifs.innerHTML = ''
-
-      if (!planifsGPS || !planifsGPS.length) {
-        zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif de planification disponible.<br><span style="font-size:11px;color:#333;display:block;margin-top:6px;">Le staff n\'a pas encore défini d\'objectifs GPS.</span></div>'
-        return
-      }
-
-      // Afficher les objectifs GPS de la semaine
-      const semaineActuelle = planifsGPS[0] // Prendre la semaine la plus récente
-      
-      let html = '<div style="margin-bottom:16px;">'
-      html += '<div style="font-size:14px;font-weight:600;color:#FECC00;margin-bottom:8px;">🎯 Objectifs GPS - ' + (semaineActuelle.semaine || 'Semaine en cours') + '</div>'
-      
-      if (semaineActuelle.objectifs) {
-        html += '<div style="display:grid;gap:8px;">'
-        
-        // Distance totale
-        if (semaineActuelle.objectifs.distanceTotale) {
-          const realise = sData?.historique?.reduce((sum, h) => sum + (h.distTot || 0), 0) || 0
-          const pourcentage = semaineActuelle.objectifs.distanceTotale > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceTotale) * 100) : 0
-          html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
-            <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance totale</div>
-            <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceTotale} m</div>
-            <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
-          </div>`
-        }
-        
-        // Distance haute intensité
-        if (semaineActuelle.objectifs.distanceHI) {
-          const realise = sData?.historique?.reduce((sum, h) => sum + (h.distHI || 0), 0) || 0
-          const pourcentage = semaineActuelle.objectifs.distanceHI > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceHI) * 100) : 0
-          html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
-            <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance haute intensité</div>
-            <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceHI} m</div>
-            <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
-          </div>`
-        }
-        
-        html += '</div>'
-      }
-      
-      html += '</div>'
-      zoneObjectifs.innerHTML = html
-    }
+    // Pas de fonction renderObjectifsGPS globale ici, 
+    // on utilise celle qui est déjà définie dans le contexte GPS
 
     // ===== CACHE INTELLIGENT =====
     const playerCache = {
@@ -2095,11 +2049,21 @@
           filteredCreneauxLength: filtered.creneaux.length,
           planningScope: planningScope,
           joueurActifId: joueurActif?.id,
-          joueurActifStatut: joueurActif?.statut
+          joueurActifStatut: joueurActif?.statut,
+          planningAllSample: planningAll.slice(0, 2),
+          filteredPlanningSample: filtered.planning.slice(0, 2)
         })
         
-        buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
-        buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
+        // Si le planning est vide après filtrage, essayer sans filtrage pour debug
+        if (filtered.planning.length === 0 && planningAll.length > 0) {
+          console.log('Planning vide après filtrage, essai sans filtrage...')
+          buildWeekSlides(lundi, planningAll, [], nowStr)
+          buildWeekOverview(lundi, planningAll, [], nowStr)
+        } else {
+          buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
+          buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
+        }
+        
         buildLegend()
         goToSlide(selectedDayIdx, false)
         updateDaysPillSelection()
@@ -2635,7 +2599,7 @@
         const planifsGPS = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
         
         if (zoneObjectifs && planifsGPS.length > 0) {
-          renderObjectifsGPS(zoneObjectifs, cachedData.sData, cachedData.joueurActif, planifsGPS)
+          renderObjectifs() // Utiliser la fonction existante dans le contexte GPS
         } else if (zoneObjectifs) {
           zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif trouvé pour cette semaine.</div>'
         }
@@ -2745,7 +2709,7 @@
         
         // Mettre à jour uniquement la zone objectifs
         if (zoneObjectifs && planifsGPS.length > 0) {
-          renderObjectifsGPS(zoneObjectifs, sData, joueurActif, planifsGPS)
+          renderObjectifs() // Utiliser la fonction existante dans le contexte GPS
         } else if (zoneObjectifs) {
           zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif trouvé pour cette semaine.</div>'
         }
