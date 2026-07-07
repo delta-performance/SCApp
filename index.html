@@ -4382,6 +4382,14 @@
       }
 
       // ===== DÉTAIL SÉANCE =====
+      function renderMetricRow(label, val, unit, color) {
+        if (val == null) return ''
+        return `<div style="display:flex;justify-content:space-between;padding:6px 8px;background:#111;border-radius:6px;">
+          <span style="font-size:11px;color:#666;">${label}</span>
+          <span style="font-size:12px;font-weight:700;color:${color};">${val}${unit}</span>
+        </div>`
+      }
+
       function afficherDetailSeance(h, zone) {
         const existing = zone.querySelector('.sean-detail')
         if (existing) existing.remove()
@@ -4412,16 +4420,9 @@
         zone.insertBefore(d, zone.firstChild)
       }
 
-      function renderMetricRow(label, val, unit, color) {
-        if (val == null) return ''
-        return `<div style="display:flex;justify-content:space-between;padding:6px 8px;background:#111;border-radius:6px;">
-          <span style="font-size:11px;color:#666;">${label}</span>
-          <span style="font-size:12px;font-weight:700;color:${color};">${val}${unit}</span>
-        </div>`
-      }
-
       // Render initial
       renderAll()
+    
 
     // Fonctions auxiliaires
     function norm(s){return String(s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
