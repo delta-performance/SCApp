@@ -4374,7 +4374,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
       // Fonction pour tout re-render
       function renderAll() {
-        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        const hist = s.historique || []
         updateHero(hist)
         renderStats()
         renderObjectifs()
