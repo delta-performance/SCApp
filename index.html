@@ -1081,8 +1081,151 @@
 
     // ===== FONCTIONS GLOBALES =====
     
-    // Pas de fonction renderObjectifsGPS globale ici, 
-    // on utilise celle qui est déjà définie dans le contexte GPS
+    // Fonction globale pour les objectifs GPS
+    window.renderObjectifs = function() {
+      const zoneObjectifs = document.getElementById('gps-zone-objectifs')
+      if (!zoneObjectifs) return
+      
+      zoneObjectifs.innerHTML = ''
+
+      // Utiliser les variables globales définies dans le contexte GPS
+      if (typeof planifsGPS === 'undefined' || !planifsGPS || !planifsGPS.length) {
+        zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif de planification disponible.<br><span style="font-size:11px;color:#333;display:block;margin-top:6px;">Le staff n\'a pas encore défini d\'objectifs GPS.</span></div>'
+        return
+      }
+
+      // Toujours utiliser l'historique complet — les objectifs sont scopés
+      // à la semaine de la dernière séance, indépendamment du filtre global
+      const s = typeof joueurActif !== 'undefined' ? joueurActif : null
+      if (!s) {
+        zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Joueur non défini.</div>'
+        return
+      }
+      
+      const histComplete = s.historique || []
+      const hist = typeof historiqueFiltre !== 'undefined' && historiqueFiltre.length ? historiqueFiltre : histComplete
+
+      // Déterminer la date de la dernière séance (depuis l'historique complet)
+      const datesCompletes = histComplete.map(h => parseDate(String(h.date || '').trim())).filter(Boolean).sort((a,b) => a-b)
+      if (!datesCompletes.length) {
+        zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucune donnée GPS disponible.</div>'
+        return
+      }
+      // La date pivot est toujours celle de la dernière séance connue
+      const dateDerniereSeance = datesCompletes[datesCompletes.length - 1]
+
+      // Trouver les planifs pertinentes
+      const JOURS_OFF = {Lundi:0, Mardi:1, Mercredi:2, Jeudi:3, Vendredi:4, Samedi:5, Dimanche:6}
+
+      let planifsMatched = []
+      planifsGPS.forEach(planif => {
+        if (!planif.semaine || !planif.resultats) return
+        const lundi = new Date(planif.semaine + 'T00:00:00')
+        const dimanche = new Date(lundi)
+        dimanche.setDate(lundi.getDate() + 6)
+        if (dateDerniereSeance >= lundi && dateDerniereSeance <= dimanche) {
+          planifsMatched.push(planif)
+        }
+      })
+
+      if (!planifsMatched.length) {
+        zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif trouvé pour la semaine de ta dernière séance.</div>'
+        return
+      }
+
+      // Utiliser la première planif trouvée
+      const planif = planifsMatched[0]
+      const resultats = planif.resultats
+      
+      // Déterminer le mode d'affichage
+      const objMode = typeof window.objMode !== 'undefined' ? window.objMode : 'quotidien'
+      
+      if (objMode === 'quotidien') {
+        // Détail par jour
+        const jours = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
+        const joursData = []
+        
+        jours.forEach(jour => {
+          const idx = JOURS_OFF[jour]
+          const dateJour = new Date(planif.semaine + 'T00:00:00')
+          dateJour.setDate(dateJour.getDate() + idx)
+          const dateStr = dateStrLocal(dateJour)
+          
+          const objHI = resultats[jour]?.distanceHI || 0
+          const jourHist = hist.filter(h => h.date === dateStr)
+          const realHI = jourHist.reduce((sum, h) => sum + (h.distHI || 0), 0)
+          const hasData = jourHist.length > 0
+          
+          joursData.push({ jour, dateStr, objHI, realHI, hasData })
+        })
+        
+        let html = '<div style="margin-bottom:16px;">'
+        html += '<div style="font-size:14px;font-weight:600;color:#FECC00;margin-bottom:8px;">🎯 Objectifs GPS - ' + planif.semaine + '</div>'
+        
+        // Toggle quotidien/hebdomadaire
+        html += `<div style="display:flex;gap:4px;margin-bottom:12px;">
+          <button onclick="window.objMode='quotidien'; window.renderObjectifs()" style="flex:1;padding:6px;border:1px solid #444;background:${objMode==='quotidien'?'#FECC00;color:#000':'#1a1a1a;color:#fff'};border-radius:4px;font-size:11px;">Quotidien</button>
+          <button onclick="window.objMode='hebdomadaire'; window.renderObjectifs()" style="flex:1;padding:6px;border:1px solid #444;background:${objMode==='hebdomadaire'?'#FECC00;color:#000':'#1a1a1a;color:#fff'};border-radius:4px;font-size:11px;">Hebdomadaire</button>
+        </div>`
+        
+        const daySection = document.createElement('div')
+        daySection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
+        daySection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">📅 Détail par jour</div>`
+
+        joursData.forEach(d => {
+          const dayPct = d.objHI > 0 ? Math.round((d.realHI / d.objHI) * 100) : 0
+          const dayColor = dayPct >= 100 ? '#1D9E75' : dayPct >= 80 ? '#FECC00' : dayPct >= 50 ? '#EF9F27' : '#E24B4A'
+          const barW = Math.min(dayPct, 100)
+          const statusIcon = d.hasData ? (dayPct >= 100 ? '✅' : dayPct >= 80 ? '💪' : dayPct >= 50 ? '👍' : '🔥') : '⏳'
+
+          const row = document.createElement('div')
+          row.style.cssText = 'margin-bottom:10px;'
+          row.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} ${d.jour} <span style="color:#444;font-size:10px;">${d.dateStr}</span></span>
+              <span style="font-size:11px;color:${dayColor};font-weight:600;">${d.hasData ? dayPct + '%' : '—'}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
+                <div style="height:100%;width:${d.hasData ? barW : 0}%;background:${dayColor};border-radius:6px;transition:width .4s;"></div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
+              <span style="color:#E24B4A;">${d.hasData ? Math.round(d.realHI) + 'm' : 'Pas de données'}</span>
+              <span style="color:#555;">Obj: ${Math.round(d.objHI)}m</span>
+            </div>
+          `
+          daySection.appendChild(row)
+        })
+        
+        html += daySection.outerHTML
+        zoneObjectifs.innerHTML = html
+        
+      } else {
+        // Mode hebdomadaire - afficher un résumé simple
+        const totalObj = Object.values(resultats).reduce((sum, r) => sum + (r.distanceHI || 0), 0)
+        const totalReal = hist.reduce((sum, h) => sum + (h.distHI || 0), 0)
+        const pct = totalObj > 0 ? Math.round((totalReal / totalObj) * 100) : 0
+        const color = pct >= 100 ? '#1D9E75' : pct >= 80 ? '#FECC00' : pct >= 50 ? '#EF9F27' : '#E24B4A'
+        
+        let html = '<div style="margin-bottom:16px;">'
+        html += '<div style="font-size:14px;font-weight:600;color:#FECC00;margin-bottom:8px;">🎯 Objectifs GPS - ' + planif.semaine + '</div>'
+        
+        // Toggle quotidien/hebdomadaire
+        html += `<div style="display:flex;gap:4px;margin-bottom:12px;">
+          <button onclick="window.objMode='quotidien'; window.renderObjectifs()" style="flex:1;padding:6px;border:1px solid #444;background:${objMode==='quotidien'?'#FECC00;color:#000':'#1a1a1a;color:#fff'};border-radius:4px;font-size:11px;">Quotidien</button>
+          <button onclick="window.objMode='hebdomadaire'; window.renderObjectifs()" style="flex:1;padding:6px;border:1px solid #444;background:${objMode==='hebdomadaire'?'#FECC00;color:#000':'#1a1a1a;color:#fff'};border-radius:4px;font-size:11px;">Hebdomadaire</button>
+        </div>`
+        
+        html += `<div style="background:#1a1a1a;padding:16px;border-radius:8px;border:1px solid #2a2a2a;">
+          <div style="font-size:12px;color:#888;margin-bottom:8px;">Distance haute intensité - Semaine</div>
+          <div style="font-size:18px;font-weight:600;color:#fff;margin-bottom:8px;">${Math.round(totalReal)} m / ${Math.round(totalObj)} m</div>
+          <div style="font-size:12px;color:${color};font-weight:600;">${pct}%</div>
+        </div>`
+        
+        zoneObjectifs.innerHTML = html
+      }
+    }
 
     // ===== CACHE INTELLIGENT =====
     const playerCache = {
@@ -2732,6 +2875,11 @@
       let historiqueFiltre = s.historique || []
       let vueMode = 'derniere' // 'derniere' ou 'periode'
       let rangMode = 'equipe' // 'equipe' ou 'poste'
+      
+      // Rendre les variables accessibles globalement pour renderObjectifs
+      window.planifsGPS = planifsGPS
+      window.historiqueFiltre = historiqueFiltre
+      window.objMode = 'quotidien'
 
       // ===== HERO =====
       // Calculer vmax et %vmax sur la période filtrée
