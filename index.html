@@ -1104,53 +1104,26 @@
       return isCacheValid(key) ? playerCache[key] : null
     }
 
-    // ===== NAVIGATION — CHARGEMENT À LA DEMANDE =====
+    // ===== NAVIGATION — CHARGEMENT DIRECT INTELLIGENT =====
     window.allerVers=function(screen){
       document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
       const el=document.getElementById('screen-'+screen)
       if(!el){console.error('Screen manquant: screen-'+screen);return}
       el.classList.add('active');window.scrollTo(0,0)
       
-      // Plus de chargement automatique !
+      // Chargement direct intelligent selon le module
       if(screen==='seance'){
         const toggleEl=document.getElementById('seance-saisie-toggle')
         if(toggleEl)toggleEl.checked=saisieUniqueMode
         const labelEl=document.getElementById('seance-saisie-toggle-label')
         if(labelEl)labelEl.textContent=saisieUniqueMode?"Toutes les séries d'un coup":'Série par série'
-        // Afficher un message d'invite à charger
-        const c=document.getElementById('seance-content')
-        if(!c.innerHTML.includes('Charger mes séances')){
-          c.innerHTML=`<div style="padding:40px;text-align:center;">
-            <div style="font-size:48px;margin-bottom:16px;">🏋️</div>
-            <div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;">Mes séances de muscu</div>
-            <div style="font-size:12px;color:#888;margin-bottom:20px;">Chargement uniquement de tes données</div>
-            <button onclick="chargerSeance()" style="background:#FECC00;color:#000;border:none;padding:12px 24px;border-radius:8px;font-weight:600;cursor:pointer;">Charger mes séances</button>
-          </div>`
-        }
+        chargerSeance() // Chargement direct
       }
       if(screen==='planning'){
-        // Afficher un message d'invite à charger
-        const c=document.getElementById('planning-content')
-        if(!c.innerHTML.includes('Charger mon planning')){
-          c.innerHTML=`<div style="padding:40px;text-align:center;">
-            <div style="font-size:48px;margin-bottom:16px;">📅</div>
-            <div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;">Mon planning</div>
-            <div style="font-size:12px;color:#888;margin-bottom:20px;">Semaine en cours uniquement</div>
-            <button onclick="chargerPlanning()" style="background:#FECC00;color:#000;border:none;padding:12px 24px;border-radius:8px;font-weight:600;cursor:pointer;">Charger mon planning</button>
-          </div>`
-        }
+        chargerPlanning() // Chargement direct
       }
       if(screen==='gps'){
-        // Afficher un message d'invite à charger
-        const c=document.getElementById('gps-content')
-        if(!c.innerHTML.includes('Charger mes stats')){
-          c.innerHTML=`<div style="padding:40px;text-align:center;">
-            <div style="font-size:48px;margin-bottom:16px;">📡</div>
-            <div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;">Mes stats GPS</div>
-            <div style="font-size:12px;color:#888;margin-bottom:20px;">Uniquement tes données personnelles</div>
-            <button onclick="chargerGPS()" style="background:#FECC00;color:#000;border:none;padding:12px 24px;border-radius:8px;font-weight:600;cursor:pointer;">Charger mes stats</button>
-          </div>`
-        }
+        chargerGPS() // Chargement direct
       }
     }
 
@@ -1474,11 +1447,12 @@
       }
     }
 
-    async function chargerSeance(){
-      const c=document.getElementById('seance-content');
+    async function chargerSeance(options = {}) {
+      const c = document.getElementById('seance-content');
       
-      // Vérifier le cache d'abord
-      const cachedData = getCache('seances')
+      // Vérifier le cache d'abord avec clé spécifique aux options
+      const cacheKey = 'seances_' + JSON.stringify(options)
+      const cachedData = getCache(cacheKey)
       if (cachedData) {
         c.innerHTML = cachedData.html
         return
@@ -1487,14 +1461,15 @@
       c.innerHTML = '<div class="empty-msg">⏳ Chargement de tes séances...</div>'
       if(!joueurActif)return
       
-      // Mettre à jour le label de semaine
-      const lundi = new Date(currentWeekStart)
+      // Utiliser la semaine spécifiée dans les options ou la semaine courante
+      const semaineTarget = options.semaine || currentWeekStart
+      const lundi = new Date(semaineTarget)
       const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
       document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
       
       try{
-        // Optimisation : ne charger que les séances de la semaine en cours où le joueur est assigné
+        // Optimisation : ne charger que les séances de la semaine demandée où le joueur est assigné
         const lundiStr = dateStrLocal(lundi)
         const dimancheStr = dateStrLocal(dimanche)
         
@@ -1512,7 +1487,7 @@
         if(!seancesSemaine.length){
           const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏖️</div>Aucune séance publiée cette semaine.</div>'
           c.innerHTML = emptyHtml
-          setCache('seances', { html: emptyHtml })
+          setCache(cacheKey, { html: emptyHtml })
           return
         }
         
@@ -1529,7 +1504,7 @@
         if(!seancesJoueur.length){
           const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏋️</div>Tu n\'as pas de séance cette semaine.</div>'
           c.innerHTML = emptyHtml
-          setCache('seances', { html: emptyHtml })
+          setCache(cacheKey, { html: emptyHtml })
           return
         }
         
@@ -1675,8 +1650,8 @@
         
         if(!aUneSeance)c.innerHTML+='<div class="empty-msg">Tu n\'es assigné à aucune séance cette semaine.</div>'
         
-        // Mettre en cache le résultat HTML
-        setCache('seances', { html: c.innerHTML })
+        // Mettre en cache le résultat HTML avec clé spécifique
+        setCache(cacheKey, { html: c.innerHTML })
         
       }catch(e){console.error(e);c.innerHTML='<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'}
     }
@@ -1684,11 +1659,11 @@
     // Navigation semaine pour les séances
     window.semainePrecedenteSeance=function(){ 
       currentWeekStart=getLundi(new Date(currentWeekStart.getTime()-7*24*60*60*1000))
-      chargerSeance() 
+      chargerSeance({ semaine: currentWeekStart }) 
     }
     window.semaineSuivanteSeance=function(){ 
       currentWeekStart=getLundi(new Date(currentWeekStart.getTime()+7*24*60*60*1000))
-      chargerSeance() 
+      chargerSeance({ semaine: currentWeekStart }) 
     }
 
     window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId,reps){
@@ -2559,11 +2534,12 @@
     window.retourPlanningWeek=function(){ allerVers('planning') }
 
     // ===== GPS — chargement progressif intelligent =====
-    async function chargerGPS() {
+    async function chargerGPS(options = {}) {
   const c = document.getElementById('gps-content')
   
-  // Vérifier le cache d'abord
-  const cachedData = getCache('gps')
+  // Vérifier le cache d'abord avec clé spécifique aux options
+  const cacheKey = 'gps_' + JSON.stringify(options)
+  const cachedData = getCache(cacheKey)
   if (cachedData) {
     c.innerHTML = cachedData.html
     // Recréer la fonction __chargerPlanifsGPS si nécessaire
@@ -2611,7 +2587,7 @@
         </span>
       </div>`
       c.innerHTML = emptyHtml
-      setCache('gps', { html: emptyHtml })
+      setCache(cacheKey, { html: emptyHtml })
       return
     }
     
@@ -2668,8 +2644,8 @@
     // Rendu initial sans les planifs (chargées à la demande)
     renderGPSStats(c, sData, joueurActif, allJoueursData, [])
     
-    // Mettre en cache le HTML et les données essentielles
-    setCache('gps', { 
+    // Mettre en cache le HTML et les données essentielles avec clé spécifique
+    setCache(cacheKey, { 
       html: c.innerHTML, 
       sData: sData, 
       joueurActif: joueurActif 
