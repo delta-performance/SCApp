@@ -3751,6 +3751,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               const d = parseDate(h.date)
               return d && d >= lundi && d <= dimanche
             })
+            // Debug: voir exactement quelles entrées GPS sont dans la semaine
+            console.log('Objectifs hebdo debug:', { semaine: planif.semaine, lundi: lundi.toISOString(), dimanche: dimanche.toISOString(), nbEntrees: histSemaine.length, entrees: histSemaine.map(h => ({ date: h.date, distHI: h.distHI, seance: h.seance })) })
             const realHI = histSemaine.reduce((sum, h) => sum + (h.distHI || 0), 0)
             const realAcc = histSemaine.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
             const realVolHI = histSemaine.reduce((sum, h) => sum + (h.volHI || 0), 0)
@@ -3934,74 +3936,72 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           }
 
           // ===== DÉTAIL SELON LE MODE =====
-          if (objMode === 'quotidien') {
-            // Détail par jour
-            if (perDayData.length > 0) {
-              const daySection = document.createElement('div')
-              daySection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
-              daySection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">📅 Détail par jour</div>`
+          // En mode hebdomadaire, afficher d'abord le résumé par semaine puis le détail par jour
+          if (objMode === 'hebdomadaire' && perWeekData.length > 0) {
+            const weekSection = document.createElement('div')
+            weekSection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
+            weekSection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">🗓 Résumé par semaine</div>`
 
-              perDayData.forEach(d => {
-                const dayPct = d.objHI > 0 ? Math.round((d.realHI / d.objHI) * 100) : 0
-                const dayColor = dayPct >= 100 ? '#1D9E75' : dayPct >= 80 ? '#FECC00' : dayPct >= 50 ? '#EF9F27' : '#E24B4A'
-                const barW = Math.min(dayPct, 100)
-                const statusIcon = d.hasData ? (dayPct >= 100 ? '✅' : dayPct >= 80 ? '💪' : dayPct >= 50 ? '👍' : '🔥') : '⏳'
+            perWeekData.forEach(w => {
+              const wPct = w.objHI > 0 ? Math.round((w.realHI / w.objHI) * 100) : 0
+              const wColor = wPct >= 100 ? '#1D9E75' : wPct >= 80 ? '#FECC00' : wPct >= 50 ? '#EF9F27' : '#E24B4A'
+              const barW = Math.min(wPct, 100)
+              const statusIcon = w.hasData ? (wPct >= 100 ? '✅' : wPct >= 80 ? '💪' : wPct >= 50 ? '👍' : '🔥') : '⏳'
 
-                const row = document.createElement('div')
-                row.style.cssText = 'margin-bottom:10px;'
-                row.innerHTML = `
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} ${d.jour} <span style="color:#444;font-size:10px;">${d.dateStr}</span></span>
-                    <span style="font-size:11px;color:${dayColor};font-weight:600;">${d.hasData ? dayPct + '%' : '—'}</span>
+              const row = document.createElement('div')
+              row.style.cssText = 'margin-bottom:10px;'
+              row.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} Semaine ${w.semaine}</span>
+                  <span style="font-size:11px;color:${wColor};font-weight:600;">${w.hasData ? wPct + '%' : '—'}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
+                    <div style="height:100%;width:${w.hasData ? barW : 0}%;background:${wColor};border-radius:6px;transition:width .4s;"></div>
                   </div>
-                  <div style="display:flex;align-items:center;gap:6px;">
-                    <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
-                      <div style="height:100%;width:${d.hasData ? barW : 0}%;background:${dayColor};border-radius:6px;transition:width .4s;"></div>
-                    </div>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
-                    <span style="color:#E24B4A;">${d.hasData ? Math.round(d.realHI) + 'm' : 'Pas de données'}</span>
-                    <span style="color:#555;">Obj: ${Math.round(d.objHI)}m</span>
-                  </div>
-                `
-                daySection.appendChild(row)
-              })
-              objContent.appendChild(daySection)
-            }
-          } else {
-            // Détail par semaine
-            if (perWeekData.length > 0) {
-              const weekSection = document.createElement('div')
-              weekSection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
-              weekSection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">🗓 Détail par semaine</div>`
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
+                  <span style="color:#E24B4A;">${w.hasData ? Math.round(w.realHI) + 'm' : 'Pas de données'}</span>
+                  <span style="color:#555;">Obj: ${Math.round(w.objHI)}m</span>
+                </div>
+              `
+              weekSection.appendChild(row)
+            })
+            objContent.appendChild(weekSection)
+          }
 
-              perWeekData.forEach(w => {
-                const wPct = w.objHI > 0 ? Math.round((w.realHI / w.objHI) * 100) : 0
-                const wColor = wPct >= 100 ? '#1D9E75' : wPct >= 80 ? '#FECC00' : wPct >= 50 ? '#EF9F27' : '#E24B4A'
-                const barW = Math.min(wPct, 100)
-                const statusIcon = w.hasData ? (wPct >= 100 ? '✅' : wPct >= 80 ? '💪' : wPct >= 50 ? '👍' : '🔥') : '⏳'
+          // Détail par jour (affiché dans les deux modes)
+          if (perDayData.length > 0) {
+            const daySection = document.createElement('div')
+            daySection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
+            daySection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">📅 Détail par jour</div>`
 
-                const row = document.createElement('div')
-                row.style.cssText = 'margin-bottom:10px;'
-                row.innerHTML = `
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} Semaine ${w.semaine}</span>
-                    <span style="font-size:11px;color:${wColor};font-weight:600;">${w.hasData ? wPct + '%' : '—'}</span>
+            perDayData.forEach(d => {
+              const dayPct = d.objHI > 0 ? Math.round((d.realHI / d.objHI) * 100) : 0
+              const dayColor = dayPct >= 100 ? '#1D9E75' : dayPct >= 80 ? '#FECC00' : dayPct >= 50 ? '#EF9F27' : '#E24B4A'
+              const barW = Math.min(dayPct, 100)
+              const statusIcon = d.hasData ? (dayPct >= 100 ? '✅' : dayPct >= 80 ? '💪' : dayPct >= 50 ? '👍' : '🔥') : '⏳'
+
+              const row = document.createElement('div')
+              row.style.cssText = 'margin-bottom:10px;'
+              row.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} ${d.jour} <span style="color:#444;font-size:10px;">${d.dateStr}</span></span>
+                  <span style="font-size:11px;color:${dayColor};font-weight:600;">${d.hasData ? dayPct + '%' : '—'}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
+                    <div style="height:100%;width:${d.hasData ? barW : 0}%;background:${dayColor};border-radius:6px;transition:width .4s;"></div>
                   </div>
-                  <div style="display:flex;align-items:center;gap:6px;">
-                    <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
-                      <div style="height:100%;width:${w.hasData ? barW : 0}%;background:${wColor};border-radius:6px;transition:width .4s;"></div>
-                    </div>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
-                    <span style="color:#E24B4A;">${w.hasData ? Math.round(w.realHI) + 'm' : 'Pas de données'}</span>
-                    <span style="color:#555;">Obj: ${Math.round(w.objHI)}m</span>
-                  </div>
-                `
-                weekSection.appendChild(row)
-              })
-              objContent.appendChild(weekSection)
-            }
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
+                  <span style="color:#E24B4A;">${d.hasData ? Math.round(d.realHI) + 'm' : 'Pas de données'}</span>
+                  <span style="color:#555;">Obj: ${Math.round(d.objHI)}m</span>
+                </div>
+              `
+              daySection.appendChild(row)
+            })
+            objContent.appendChild(daySection)
           }
 
           // ===== RADAR CHARTS =====
