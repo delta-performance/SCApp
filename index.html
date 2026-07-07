@@ -1079,6 +1079,57 @@
       window.location.href = url.toString()
     }
 
+    // ===== FONCTIONS GLOBALES =====
+    
+    // Rendre renderObjectifsGPS accessible globalement
+    window.renderObjectifsGPS = function(zoneObjectifs, sData, joueurActif, planifsGPS) {
+      if (!zoneObjectifs) return
+      
+      zoneObjectifs.innerHTML = ''
+
+      if (!planifsGPS || !planifsGPS.length) {
+        zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif de planification disponible.<br><span style="font-size:11px;color:#333;display:block;margin-top:6px;">Le staff n\'a pas encore défini d\'objectifs GPS.</span></div>'
+        return
+      }
+
+      // Afficher les objectifs GPS de la semaine
+      const semaineActuelle = planifsGPS[0] // Prendre la semaine la plus récente
+      
+      let html = '<div style="margin-bottom:16px;">'
+      html += '<div style="font-size:14px;font-weight:600;color:#FECC00;margin-bottom:8px;">🎯 Objectifs GPS - ' + (semaineActuelle.semaine || 'Semaine en cours') + '</div>'
+      
+      if (semaineActuelle.objectifs) {
+        html += '<div style="display:grid;gap:8px;">'
+        
+        // Distance totale
+        if (semaineActuelle.objectifs.distanceTotale) {
+          const realise = sData?.historique?.reduce((sum, h) => sum + (h.distTot || 0), 0) || 0
+          const pourcentage = semaineActuelle.objectifs.distanceTotale > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceTotale) * 100) : 0
+          html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
+            <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance totale</div>
+            <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceTotale} m</div>
+            <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
+          </div>`
+        }
+        
+        // Distance haute intensité
+        if (semaineActuelle.objectifs.distanceHI) {
+          const realise = sData?.historique?.reduce((sum, h) => sum + (h.distHI || 0), 0) || 0
+          const pourcentage = semaineActuelle.objectifs.distanceHI > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceHI) * 100) : 0
+          html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
+            <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance haute intensité</div>
+            <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceHI} m</div>
+            <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
+          </div>`
+        }
+        
+        html += '</div>'
+      }
+      
+      html += '</div>'
+      zoneObjectifs.innerHTML = html
+    }
+
     // ===== CACHE INTELLIGENT =====
     const playerCache = {
       gps: null,
@@ -1217,9 +1268,13 @@
         const d=new Date()
         d.setDate(d.getDate()-21)
         const startStr=dateStrLocal(d)
-        const q=query(collection(db,'wellness'),where('joueurId','==',j.id),where('date','>=',startStr))
+        
+        // Éviter l'index composite en faisant une requête simple et filtrant côté client
+        const q=query(collection(db,'wellness'))
         const snap=await getDocs(q)
-        wellnessHistory=snap.docs.map(d=>d.data()).filter(w=>w.date!==aujourdhui).sort((a,b)=>b.date.localeCompare(a.date))
+        wellnessHistory=snap.docs.map(d=>d.data())
+          .filter(w=>w.joueurId === j.id && w.date >= startStr && w.date !== aujourdhui)
+          .sort((a,b)=>b.date.localeCompare(a.date))
       }catch(e){ console.error('Erreur historique wellness:', e) }
     }
     function getHistoryBaseline(metric){
@@ -2031,6 +2086,18 @@
         planningCache = { planningAll, creneauxAll, lundi, nowStr }
         
         const filtered = filterByScope(planningAll, creneauxAll)
+        
+        // Logs de débogage pour comprendre pourquoi le planning ne s'affiche pas
+        console.log('Planning Debug:', {
+          planningAllLength: planningAll.length,
+          creneauxAllLength: creneauxAll.length,
+          filteredPlanningLength: filtered.planning.length,
+          filteredCreneauxLength: filtered.creneaux.length,
+          planningScope: planningScope,
+          joueurActifId: joueurActif?.id,
+          joueurActifStatut: joueurActif?.statut
+        })
+        
         buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
         buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
         buildLegend()
@@ -3544,55 +3611,6 @@
           vmax,
           pctVmax
         }
-      }
-
-      // ===== RENDU OBJECTIFS GPS =====
-      function renderObjectifsGPS(zoneObjectifs, sData, joueurActif, planifsGPS) {
-        if (!zoneObjectifs) return
-        
-        zoneObjectifs.innerHTML = ''
-
-        if (!planifsGPS || !planifsGPS.length) {
-          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif de planification disponible.<br><span style="font-size:11px;color:#333;display:block;margin-top:6px;">Le staff n\'a pas encore défini d\'objectifs GPS.</span></div>'
-          return
-        }
-
-        // Afficher les objectifs GPS de la semaine
-        const semaineActuelle = planifsGPS[0] // Prendre la semaine la plus récente
-        
-        let html = '<div style="margin-bottom:16px;">'
-        html += '<div style="font-size:14px;font-weight:600;color:#FECC00;margin-bottom:8px;">🎯 Objectifs GPS - ' + (semaineActuelle.semaine || 'Semaine en cours') + '</div>'
-        
-        if (semaineActuelle.objectifs) {
-          html += '<div style="display:grid;gap:8px;">'
-          
-          // Distance totale
-          if (semaineActuelle.objectifs.distanceTotale) {
-            const realise = sData?.historique?.reduce((sum, h) => sum + (h.distTot || 0), 0) || 0
-            const pourcentage = semaineActuelle.objectifs.distanceTotale > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceTotale) * 100) : 0
-            html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
-              <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance totale</div>
-              <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceTotale} m</div>
-              <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
-            </div>`
-          }
-          
-          // Distance haute intensité
-          if (semaineActuelle.objectifs.distanceHI) {
-            const realise = sData?.historique?.reduce((sum, h) => sum + (h.distHI || 0), 0) || 0
-            const pourcentage = semaineActuelle.objectifs.distanceHI > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceHI) * 100) : 0
-            html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
-              <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance haute intensité</div>
-              <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceHI} m</div>
-              <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
-            </div>`
-          }
-          
-          html += '</div>'
-        }
-        
-        html += '</div>'
-        zoneObjectifs.innerHTML = html
       }
 
       // ===== RENDU OBJECTIFS =====
