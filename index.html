@@ -3587,7 +3587,14 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
         // Toujours utiliser l'historique complet — les objectifs sont scopés
         // à la semaine de la dernière séance, indépendamment du filtre global
-        const histComplete = s.historique || []
+        // Dédupliquer par date + seance pour éviter les doublons dans Firestore
+        const _seen = new Set()
+        const histComplete = (s.historique || []).filter(h => {
+          const key = String(h.date || '').trim() + '|' + String(h.seance || '').trim()
+          if (_seen.has(key)) return false
+          _seen.add(key)
+          return true
+        })
         const hist = historiqueFiltre.length ? historiqueFiltre : histComplete
 
         // Déterminer la date de la dernière séance (depuis l'historique complet)
