@@ -2736,27 +2736,28 @@
     c.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur.</div>'
   }
 }
-    // ===== RENDU GPS COMPLET =====
-    function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
-      c.innerHTML = ''
-      let historiqueFiltre = s.historique || []
-      let vueMode = 'derniere' // 'derniere' ou 'periode'
-      let rangMode = 'equipe' // 'equipe' ou 'poste'
-      
-      // Rendre les variables accessibles globalement pour renderObjectifs
-      window.planifsGPS = planifsGPS
-      window.historiqueFiltre = historiqueFiltre
-      window.objMode = 'quotidien'
 
-      // ===== HERO =====
-      // Calculer vmax et %vmax sur la période filtrée
-      function calculerVmaxFiltre(hist) {
-        if (!hist || hist.length === 0) return { vmax: 0, pctVmax: 0 }
-        const vmaxPeriode = Math.max(...hist.map(h => h.vmax || 0), 0)
-        // Vmax de référence = vmax 6 mois stockée (ou vmax période si plus élevée)
-        const vmaxRef = Math.max(s.vmax6m || s.vmaxSaison || 0, vmaxPeriode)
-        const pctVmax = vmaxRef > 0 ? Math.round((vmaxPeriode / vmaxRef) * 100) : 0
-        return { vmax: vmaxPeriode, vmaxRef, pctVmax }
+// ===== RENDU GPS COMPLET =====
+function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
+  c.innerHTML = ''
+  let historiqueFiltre = s.historique || []
+  let vueMode = 'derniere' // 'derniere' ou 'periode'
+  let rangMode = 'equipe' // 'equipe' ou 'poste'
+  
+  // Rendre les variables accessibles globalement pour renderObjectifs
+  window.planifsGPS = planifsGPS
+  window.historiqueFiltre = historiqueFiltre
+  window.objMode = 'quotidien'
+
+  // ===== HERO =====
+  // Calculer vmax et %vmax sur la période filtrée
+  function calculerVmaxFiltre(hist) {
+    if (!hist || hist.length === 0) return { vmax: 0, pctVmax: 0 }
+    const vmaxPeriode = Math.max(...hist.map(h => h.vmax || 0), 0)
+    // Vmax de référence = vmax 6 mois stockée (ou vmax période si plus élevée)
+    const vmaxRef = Math.max(s.vmax6m || s.vmaxSaison || 0, vmaxPeriode)
+    const pctVmax = vmaxRef > 0 ? Math.round((vmaxPeriode / vmaxRef) * 100) : 0
+    return { vmax: vmaxPeriode, vmaxRef, pctVmax }
       }
 
       const hero = document.createElement('div')
@@ -4420,11 +4421,11 @@
         zone.insertBefore(d, zone.firstChild)
       }
 
-      // Render initial
-      renderAll()
-    
+  // Render initial
+  renderAll()
+}
 
-    // Fonctions auxiliaires
+// Fonctions auxiliaires
     function norm(s){return String(s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
     function parseD(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
     function parseDate(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
