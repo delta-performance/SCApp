@@ -3587,14 +3587,20 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
         // Toujours utiliser l'historique complet — les objectifs sont scopés
         // à la semaine de la dernière séance, indépendamment du filtre global
-        // Dédupliquer par date + seance pour éviter les doublons dans Firestore
-        const _seen = new Set()
-        const histComplete = (s.historique || []).filter(h => {
-          const key = String(h.date || '').trim() + '|' + String(h.seance || '').trim()
-          if (_seen.has(key)) return false
-          _seen.add(key)
-          return true
+        // Dédupliquer par date : si un joueur blessé a Session + Rehab le même jour,
+        // garder uniquement l'entrée Rehab
+        const _byDate = {}
+        ;(s.historique || []).forEach(h => {
+          const d = String(h.date || '').trim()
+          const seance = String(h.seance || '').toLowerCase()
+          const isRehab = seance.includes('rehab')
+          if (!_byDate[d]) {
+            _byDate[d] = { entry: h, hasRehab: isRehab }
+          } else if (isRehab && !_byDate[d].hasRehab) {
+            _byDate[d] = { entry: h, hasRehab: true }
+          }
         })
+        const histComplete = Object.values(_byDate).map(v => v.entry)
         const hist = historiqueFiltre.length ? historiqueFiltre : histComplete
 
         // Déterminer la date de la dernière séance (depuis l'historique complet)
