@@ -837,19 +837,12 @@
         if (user) {
           startConfigListeners();
           try {
-            // Load configurations, players list, ratios, and exercises safely now that user is authenticated
-            const [jSnap, rSnap, eSnap] = await Promise.all([
-              getDocs(collection(db, 'joueurs')),
-              getDoc(doc(db, 'config', 'ratios')),
-              getDoc(doc(db, 'config', 'exercices'))
-            ]);
+            // Chargement minimal à l'ouverture : uniquement la liste des joueurs
+            // pour la sélection/association. Les configs (ratios, exercices, types
+            // d'événements) sont chargées à la demande dans chaque module.
+            const jSnap = await getDocs(collection(db, 'joueurs'));
             joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived);
-            ratios = rSnap.exists() ? rSnap.data() : {};
-            exercicesList = eSnap.exists() ? (eSnap.data().liste || []) : [];
-            
-            // Load custom event types from Firebase
-            await loadEventTypesFromFirebase();
-            
+
             renderMenuGrid();
             buildHooper();
             
@@ -1019,19 +1012,10 @@
       }
 
       const col=COUL[j.poste]||'#444'
-      try{const mx=await getDoc(doc(db,'maxTestes',j.id));maxTestes=mx.exists()?mx.data():{}}catch(e){maxTestes={}}
-      // Charger le poids du joueur (depuis collection 'poids' ou propriété du joueur)
-      try{
-        const pSnap=await getDocs(scopedQuery('poids'))
-        const pDocs=pSnap.docs.map(d=>d.data()).filter(p=>p.joueurId===j.id||p.joueurId===j.nom+'_'+j.prenom)
-        if(pDocs.length){
-          pDocs.sort((a,b)=>(b.date||'').localeCompare(a.date||''))
-          poidsJoueur=pDocs[0].poids||null
-        } else {
-          poidsJoueur=j.poids||null
-        }
-      }catch(e){poidsJoueur=j.poids||null}
-      await loadWellnessHistory(j)
+      // Réinitialiser les données de module pour qu'elles soient rechargées à la demande
+      maxTestes={}
+      poidsJoueur=null
+      wellnessHistory=[]
       const av=document.getElementById('menu-avatar')
       if (av) {
         av.textContent=(j.prenom||'?')[0]+(j.nom||'?')[0]
@@ -1116,7 +1100,12 @@
       if(!el){console.error('Screen manquant: screen-'+screen);return}
       el.classList.add('active');window.scrollTo(0,0)
       
-      // Chargement direct intelligent selon le module
+      // Chargement direct intelligent selon le module (aucune donnée n'est
+      // chargée à l'ouverture de l'app ; chaque module charge ses propres
+      // données de manière scopée au moment où on y entre).
+      if(screen==='wellness'){
+        if(joueurActif) loadWellnessHistory(joueurActif)
+      }
       if(screen==='seance'){
         const toggleEl=document.getElementById('seance-saisie-toggle')
         if(toggleEl)toggleEl.checked=saisieUniqueMode
@@ -1218,14 +1207,16 @@
       wellnessHistory=[]
       try{
         const d=new Date()
-        d.setDate(d.getDate()-21)
+        d.setDate(d.getDate()-30)
         const startStr=dateStrLocal(d)
-        
-        // Éviter l'index composite en faisant une requête simple et filtrant côté client
-        const q=query(collection(db,'wellness'))
+
+        // Requête scopée au joueur uniquement (index simple sur joueurId),
+        // puis filtrage côté client sur les 30 derniers jours.
+        // Cela charge uniquement les données du joueur, jamais celles des autres.
+        const q=query(collection(db,'wellness'), where('joueurId','==',j.id))
         const snap=await getDocs(q)
         wellnessHistory=snap.docs.map(d=>d.data())
-          .filter(w=>w.joueurId === j.id && w.date >= startStr && w.date !== aujourdhui)
+          .filter(w=> w.date >= startStr && w.date !== aujourdhui)
           .sort((a,b)=>b.date.localeCompare(a.date))
       }catch(e){ console.error('Erreur historique wellness:', e) }
     }
@@ -1473,30 +1464,55 @@
       
       c.innerHTML = '<div class="empty-msg">⏳ Chargement de tes séances...</div>'
       if(!joueurActif)return
-      
+
+      // Chargement à la demande des données nécessaires à Ma Séance
+      try{
+        if(!Object.keys(ratios).length){
+          const rSnap=await getDoc(doc(db,'config','ratios'))
+          if(rSnap.exists()) ratios=rSnap.data()
+        }
+        if(!exercicesList.length){
+          const eSnap=await getDoc(doc(db,'config','exercices'))
+          if(eSnap.exists()) exercicesList=eSnap.data().liste||[]
+        }
+        if(!Object.keys(maxTestes).length){
+          const mx=await getDoc(doc(db,'maxTestes',joueurActif.id))
+          maxTestes=mx.exists()?mx.data():{}
+        }
+        if(!poidsJoueur){
+          const pSnap=await getDocs(query(collection(db,'poids'), where('joueurId','==',joueurActif.id)))
+          const pDocs=pSnap.docs.map(d=>d.data()).filter(p=>p.date)
+          if(pDocs.length){
+            pDocs.sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+            poidsJoueur=pDocs[0].poids||null
+          } else {
+            poidsJoueur=joueurActif.poids||null
+          }
+        }
+      }catch(e){ console.error('Erreur chargement config séance:', e) }
+
       // Utiliser la semaine spécifiée dans les options ou la semaine courante
       const semaineTarget = options.semaine || currentWeekStart
       const lundi = new Date(semaineTarget)
       const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
       document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
-      
+
       try{
-        // Optimisation : ne charger que les séances de la semaine demandée où le joueur est assigné
+        // Scoper la requête à la semaine demandée (index simple sur date),
+        // puis filtrer statut + assignation côté client.
         const lundiStr = dateStrLocal(lundi)
         const dimancheStr = dateStrLocal(dimanche)
-        
+
         const q = query(
           collection(db, 'seances'),
-          where('statut', '==', 'publie')
+          where('date', '>=', lundiStr),
+          where('date', '<=', dimancheStr)
         )
-        
+
         const snap = await getDocs(q)
         const seancesSemaine = snap.docs.map(d => ({id: d.id, ...d.data()}))
-          .filter(s => {
-            const d = parseDate(s.date)
-            return d && d >= parseDate(lundiStr) && d <= parseDate(dimancheStr)
-          })
+          .filter(s => s.statut === 'publie')
           .sort((a,b) => (b.date || '').localeCompare(a.date || ''))
         
         if(!seancesSemaine.length){
@@ -1995,14 +2011,25 @@
         document.getElementById('planning-screen-title').textContent = 'Planning équipe'
       }
       
+      // Charger les types d'événements personnalisés uniquement à la demande
+      try{ await loadEventTypesFromFirebase() }catch(e){}
+
       try{
-        // Optimisation : charger uniquement la semaine en cours
+        // Scoper les requêtes à la semaine en cours (index simple sur date)
         const lundiStr = dateStrLocal(lundi)
         const dimancheStr = dateStrLocal(dimanche)
-        
+
         const [planSnap, bSnap] = await Promise.all([
-          getDocs(query(collection(db, 'planning'))),
-          getDocs(query(collection(db, 'creneauxBlesses')))
+          getDocs(query(
+            collection(db, 'planning'),
+            where('date', '>=', lundiStr),
+            where('date', '<=', dimancheStr)
+          )),
+          getDocs(query(
+            collection(db, 'creneauxBlesses'),
+            where('date', '>=', lundiStr),
+            where('date', '<=', dimancheStr)
+          ))
         ])
         
         const planningAll = planSnap.docs.map(d=>({id:d.id,...d.data()}))
