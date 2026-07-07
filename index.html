@@ -1117,13 +1117,19 @@
         if(toggleEl)toggleEl.checked=saisieUniqueMode
         const labelEl=document.getElementById('seance-saisie-toggle-label')
         if(labelEl)labelEl.textContent=saisieUniqueMode?"Toutes les séries d'un coup":'Série par série'
-        chargerSeance() // Chargement direct
+        // Vérifier que l'élément existe avant de charger
+        const seanceContent = document.getElementById('seance-content')
+        if(seanceContent) chargerSeance() // Chargement direct
       }
       if(screen==='planning'){
-        chargerPlanning() // Chargement direct
+        // Vérifier que l'élément existe avant de charger
+        const planningContent = document.getElementById('planning-content')
+        if(planningContent) chargerPlanning() // Chargement direct
       }
       if(screen==='gps'){
-        chargerGPS() // Chargement direct
+        // Vérifier que l'élément existe avant de charger
+        const gpsContent = document.getElementById('gps-content')
+        if(gpsContent) chargerGPS() // Chargement direct
       }
     }
 
@@ -1475,13 +1481,15 @@
         
         const q = query(
           collection(db, 'seances'),
-          where('date', '>=', lundiStr),
-          where('date', '<=', dimancheStr),
           where('statut', '==', 'publie')
         )
         
         const snap = await getDocs(q)
         const seancesSemaine = snap.docs.map(d => ({id: d.id, ...d.data()}))
+          .filter(s => {
+            const d = parseDate(s.date)
+            return d && d >= parseDate(lundiStr) && d <= parseDate(dimancheStr)
+          })
           .sort((a,b) => (b.date || '').localeCompare(a.date || ''))
         
         if(!seancesSemaine.length){
@@ -1957,6 +1965,10 @@
       if(!joueurActif) return
       
       const c = document.getElementById('planning-content')
+      if(!c) {
+        console.error('Element planning-content non trouvé')
+        return
+      }
       
       // Vérifier le cache d'abord
       const cachedData = getCache('planning')
@@ -2001,19 +2013,21 @@
         const dimancheStr = dateStrLocal(dimanche)
         
         const [planSnap, bSnap] = await Promise.all([
-          getDocs(query(
-            collection(db, 'planning'),
-            where('date', '>=', lundiStr),
-            where('date', '<=', dimancheStr)
-          )),
-          getDocs(query(
-            collection(db, 'creneauxBlesses'),
-            where('date', '>=', lundiStr),
-            where('date', '<=', dimancheStr)
-          ))
+          getDocs(query(collection(db, 'planning'))),
+          getDocs(query(collection(db, 'creneauxBlesses')))
         ])
+        
         const planningAll = planSnap.docs.map(d=>({id:d.id,...d.data()}))
+          .filter(p => {
+            const d = parseDate(p.date)
+            return d && d >= parseDate(lundiStr) && d <= parseDate(dimancheStr)
+          })
+        
         const creneauxAll = bSnap.docs.map(d=>({id:d.id,...d.data()}))
+          .filter(c => {
+            const d = parseDate(c.date)
+            return d && d >= parseDate(lundiStr) && d <= parseDate(dimancheStr)
+          })
         planningCache = { planningAll, creneauxAll, lundi, nowStr }
         
         const filtered = filterByScope(planningAll, creneauxAll)
@@ -3530,6 +3544,55 @@
           vmax,
           pctVmax
         }
+      }
+
+      // ===== RENDU OBJECTIFS GPS =====
+      function renderObjectifsGPS(zoneObjectifs, sData, joueurActif, planifsGPS) {
+        if (!zoneObjectifs) return
+        
+        zoneObjectifs.innerHTML = ''
+
+        if (!planifsGPS || !planifsGPS.length) {
+          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif de planification disponible.<br><span style="font-size:11px;color:#333;display:block;margin-top:6px;">Le staff n\'a pas encore défini d\'objectifs GPS.</span></div>'
+          return
+        }
+
+        // Afficher les objectifs GPS de la semaine
+        const semaineActuelle = planifsGPS[0] // Prendre la semaine la plus récente
+        
+        let html = '<div style="margin-bottom:16px;">'
+        html += '<div style="font-size:14px;font-weight:600;color:#FECC00;margin-bottom:8px;">🎯 Objectifs GPS - ' + (semaineActuelle.semaine || 'Semaine en cours') + '</div>'
+        
+        if (semaineActuelle.objectifs) {
+          html += '<div style="display:grid;gap:8px;">'
+          
+          // Distance totale
+          if (semaineActuelle.objectifs.distanceTotale) {
+            const realise = sData?.historique?.reduce((sum, h) => sum + (h.distTot || 0), 0) || 0
+            const pourcentage = semaineActuelle.objectifs.distanceTotale > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceTotale) * 100) : 0
+            html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
+              <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance totale</div>
+              <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceTotale} m</div>
+              <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
+            </div>`
+          }
+          
+          // Distance haute intensité
+          if (semaineActuelle.objectifs.distanceHI) {
+            const realise = sData?.historique?.reduce((sum, h) => sum + (h.distHI || 0), 0) || 0
+            const pourcentage = semaineActuelle.objectifs.distanceHI > 0 ? Math.round((realise / semaineActuelle.objectifs.distanceHI) * 100) : 0
+            html += `<div style="background:#1a1a1a;padding:12px;border-radius:8px;border:1px solid #2a2a2a;">
+              <div style="font-size:12px;color:#888;margin-bottom:4px;">Distance haute intensité</div>
+              <div style="font-size:16px;font-weight:600;color:#fff;">${realise.toFixed(1)} m / ${semaineActuelle.objectifs.distanceHI} m</div>
+              <div style="font-size:11px;color:${pourcentage >= 100 ? '#1D9E75' : '#FECC00'};margin-top:4px;">${pourcentage}%</div>
+            </div>`
+          }
+          
+          html += '</div>'
+        }
+        
+        html += '</div>'
+        zoneObjectifs.innerHTML = html
       }
 
       // ===== RENDU OBJECTIFS =====
