@@ -64,6 +64,14 @@
     .tap-chrono { font-size: 22px; font-weight: 600; color: #FECC00; }
     .tap-chrono.urgent { color: #E24B4A; }
     .tap-result { text-align: center; margin-top: 7px; }
+    .tap-rules { font-size: 11px; color: #888; margin-bottom: 10px; line-height: 1.4; }
+    .hooper-hint { font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4; }
+    .hooper-extremes-row { display: flex; justify-content: space-between; font-size: 9px; color: #666; margin-top: 2px; margin-bottom: 6px; }
+    .sleep-badge { background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 8px; line-height: 1.4; text-align: center; white-space: nowrap; border: 1px solid transparent; }
+    .sleep-badge.ok { color: #1D9E75; border-color: #1D9E75; }
+    .sleep-badge.warn { color: #EF9F27; border-color: #EF9F27; }
+    .sleep-badge.alert { color: #E24B4A; border-color: #E24B4A; }
+    .sleep-evol { font-size: 11px; margin-top: 6px; min-height: 16px; }
     .submit-btn { width: 100%; padding: 15px; border-radius: 12px; border: none; background: #FECC00; color: #0f0f0f; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; }
     .submit-btn:disabled { opacity: 0.3; cursor: default; }
     .seance-bloc { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
@@ -390,17 +398,20 @@
       <div class="wellness-card">
         <div class="wellness-card-title">Questionnaire Hooper</div>
         <div id="hooper-container"></div>
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:#333;margin-top:3px;"><span>Très bas</span><span>Très haut</span></div>
+        <div class="hooper-hint">Le score global affiché au staff est calculé uniquement à partir de ce questionnaire.</div>
       </div>
       <div class="wellness-card">
         <div class="wellness-card-title">Sommeil</div>
         <div class="sleep-row">
-          <input class="sleep-input" type="number" id="sleep-h" min="0" max="24" step="0.5" placeholder="7" oninput="majProgress()" />
+          <input class="sleep-input" type="number" id="sleep-h" min="0" max="24" step="1" placeholder="" oninput="majProgress();updateSleepColor(this)" />
+          <span id="sleep-badge" class="sleep-badge">—h</span>
           <div class="sleep-label">heures de sommeil</div>
         </div>
+        <div id="sleep-evol" class="sleep-evol" style="display:none"></div>
       </div>
       <div class="wellness-card">
         <div class="wellness-card-title">Tap test — 10 secondes</div>
+        <div class="tap-rules">Règles : téléphone posé sur une surface stable, tape le plus vite possible en n'utilisant que l'index.</div>
         <div class="tap-zone" id="tap-zone" ontouchstart="handleTap(event)" onmousedown="handleTap(event)">
           <div class="tap-count" id="tap-count">0</div>
           <div class="tap-info" id="tap-info">Appuie pour commencer</div>
@@ -413,7 +424,7 @@
       </div>
       <div class="wellness-card">
         <div class="wellness-card-title">Commentaire <span style="color:#555;font-weight:400;text-transform:none;">(optionnel)</span></div>
-        <textarea id="wellness-comment" placeholder="Une note pour le staff ?" style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:14px;outline:none;resize:none;font-family:inherit;min-height:60px;" oninput="majProgress()"></textarea>
+        <textarea id="wellness-comment" placeholder="Commentaires à transmettre : courbatures, gênes, etc..." style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:14px;outline:none;resize:none;font-family:inherit;min-height:60px;" oninput="majProgress()"></textarea>
       </div>
       <button class="submit-btn" id="submit-wellness" disabled onclick="soumettreWellness()">Valider mon wellness</button>
     </div>
@@ -583,7 +594,13 @@
       if (unsubscribeModules) { unsubscribeModules(); unsubscribeModules = null; }
     }
 
-    const HOOPER_Q=[{id:'fatigue',label:'Fatigue générale'},{id:'qualite_sommeil',label:'Qualité du sommeil'},{id:'stress',label:'Stress'},{id:'doms',label:'Douleurs musculaires'},{id:'humeur',label:'Humeur / motivation'}]
+    const HOOPER_Q=[
+      {id:'fatigue',label:'Fatigue générale',low:'Très fatigué',high:'Pas fatigué'},
+      {id:'qualite_sommeil',label:'Qualité du sommeil',low:'Mauvais',high:'Excellent'},
+      {id:'stress',label:'Stress',low:'Très stressé',high:'Pas stressé'},
+      {id:'doms',label:'Douleurs musculaires',low:'Douleurs intenses',high:'Aucune douleur'},
+      {id:'humeur',label:'Humeur / motivation',low:'Mauvaise humeur',high:'Humeur top'}
+    ]
     const COUL={'Pilier':'#8B3A3A','Talonneur':'#6B3A8B','2e Ligne':'#3A6B8B','3e Ligne':'#3A8B6B',"Demi de mêlée":'#8B6B3A',"Demi d'ouverture":'#6B8B3A','Centre':'#3A4A8B','Ailier':'#8B3A6B','Arrière':'#2A6B5B'}
     
     // Default colors - will be overridden by loaded types
@@ -595,6 +612,7 @@
     let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
     let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
     let tapCount=0,tapStarted=false,tapDone=false,tapRemaining=10,tapTimer=null
+    let wellnessHistory=[]
     // Même logique que planning.html : midi local pour éviter décalage DST/UTC
     function getLundi(date){
       const d=new Date(date)
@@ -1013,6 +1031,7 @@
           poidsJoueur=j.poids||null
         }
       }catch(e){poidsJoueur=j.poids||null}
+      await loadWellnessHistory(j)
       const av=document.getElementById('menu-avatar')
       if (av) {
         av.textContent=(j.prenom||'?')[0]+(j.nom||'?')[0]
@@ -1060,21 +1079,79 @@
       window.location.href = url.toString()
     }
 
-    // ===== NAVIGATION — UNE SEULE DÉFINITION =====
+    // ===== CACHE INTELLIGENT =====
+    const playerCache = {
+      gps: null,
+      seances: null,
+      planning: null,
+      wellness: null,
+      timestamps: {}
+    }
+    
+    const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+    
+    function isCacheValid(key) {
+      return playerCache[key] && playerCache.timestamps[key] && 
+             (Date.now() - playerCache.timestamps[key] < CACHE_DURATION)
+    }
+    
+    function setCache(key, data) {
+      playerCache[key] = data
+      playerCache.timestamps[key] = Date.now()
+    }
+    
+    function getCache(key) {
+      return isCacheValid(key) ? playerCache[key] : null
+    }
+
+    // ===== NAVIGATION — CHARGEMENT À LA DEMANDE =====
     window.allerVers=function(screen){
       document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
       const el=document.getElementById('screen-'+screen)
       if(!el){console.error('Screen manquant: screen-'+screen);return}
       el.classList.add('active');window.scrollTo(0,0)
+      
+      // Plus de chargement automatique !
       if(screen==='seance'){
         const toggleEl=document.getElementById('seance-saisie-toggle')
         if(toggleEl)toggleEl.checked=saisieUniqueMode
         const labelEl=document.getElementById('seance-saisie-toggle-label')
         if(labelEl)labelEl.textContent=saisieUniqueMode?"Toutes les séries d'un coup":'Série par série'
-        chargerSeance()
+        // Afficher un message d'invite à charger
+        const c=document.getElementById('seance-content')
+        if(!c.innerHTML.includes('Charger mes séances')){
+          c.innerHTML=`<div style="padding:40px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:16px;">🏋️</div>
+            <div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;">Mes séances de muscu</div>
+            <div style="font-size:12px;color:#888;margin-bottom:20px;">Chargement uniquement de tes données</div>
+            <button onclick="chargerSeance()" style="background:#FECC00;color:#000;border:none;padding:12px 24px;border-radius:8px;font-weight:600;cursor:pointer;">Charger mes séances</button>
+          </div>`
+        }
       }
-      if(screen==='planning')chargerPlanning()
-      if(screen==='gps')chargerGPS()
+      if(screen==='planning'){
+        // Afficher un message d'invite à charger
+        const c=document.getElementById('planning-content')
+        if(!c.innerHTML.includes('Charger mon planning')){
+          c.innerHTML=`<div style="padding:40px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:16px;">📅</div>
+            <div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;">Mon planning</div>
+            <div style="font-size:12px;color:#888;margin-bottom:20px;">Semaine en cours uniquement</div>
+            <button onclick="chargerPlanning()" style="background:#FECC00;color:#000;border:none;padding:12px 24px;border-radius:8px;font-weight:600;cursor:pointer;">Charger mon planning</button>
+          </div>`
+        }
+      }
+      if(screen==='gps'){
+        // Afficher un message d'invite à charger
+        const c=document.getElementById('gps-content')
+        if(!c.innerHTML.includes('Charger mes stats')){
+          c.innerHTML=`<div style="padding:40px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:16px;">📡</div>
+            <div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;">Mes stats GPS</div>
+            <div style="font-size:12px;color:#888;margin-bottom:20px;">Uniquement tes données personnelles</div>
+            <button onclick="chargerGPS()" style="background:#FECC00;color:#000;border:none;padding:12px 24px;border-radius:8px;font-weight:600;cursor:pointer;">Charger mes stats</button>
+          </div>`
+        }
+      }
     }
 
     // ===== HOOPER =====
@@ -1084,6 +1161,9 @@
         const row=document.createElement('div');row.className='hooper-row'
         row.innerHTML=`<span class="hooper-label">${q.label}</span><div class="hooper-scale">${[1,2,3,4,5,6,7].map(v=>`<button class="scale-btn" onclick="setHooper('${q.id}',${v},this)">${v}</button>`).join('')}</div>`
         c.appendChild(row)
+        const ext=document.createElement('div');ext.className='hooper-extremes-row'
+        ext.innerHTML=`<span>${q.low}</span><span>${q.high}</span>`
+        c.appendChild(ext)
       })
     }
     window.setHooper=function(id,val,btn){
@@ -1123,9 +1203,20 @@
       zone.classList.remove('active');zone.classList.add('done')
       document.getElementById('tap-info').textContent='Terminé !'
       document.getElementById('tap-chrono').style.display='none'
-      const col=tapCount>=70?'#1D9E75':tapCount>=55?'#EF9F27':'#E24B4A'
-      const lbl=tapCount>=70?'Excellent':tapCount>=55?'Correct':'Faible'
-      document.getElementById('tap-result').innerHTML=`<span style="display:inline-block;padding:5px 14px;border-radius:18px;font-size:13px;font-weight:700;background:${col}22;color:${col};border:1px solid ${col}44;">${lbl} · ${tapCount} taps</span>`
+      const baseline=getHistoryBaseline('tapCount')
+      let evolColor=null, evolText=''
+      if(baseline!=null && baseline>0){
+        const diff=(tapCount-baseline)/baseline
+        const pct=Math.round(diff*100)
+        if(diff>=0.10){ evolColor='#1D9E75'; evolText=`↑ +${pct}% vs tes 3 semaines` }
+        else if(diff<=-0.10){ evolColor='#E24B4A'; evolText=`↓ ${pct}% vs tes 3 semaines` }
+        else { evolColor='#EF9F27'; evolText=`≈ ta moyenne (${Math.round(baseline)} taps)` }
+      }
+      const absColor=tapCount>=70?'#1D9E75':tapCount>=55?'#EF9F27':'#E24B4A'
+      const absLbl=tapCount>=70?'Excellent':tapCount>=55?'Correct':'Faible'
+      const col=evolColor||absColor
+      const txt=evolText ? `${absLbl} · ${tapCount} taps — ${evolText}` : `${absLbl} · ${tapCount} taps`
+      document.getElementById('tap-result').innerHTML=`<span style="display:inline-block;padding:5px 14px;border-radius:18px;font-size:13px;font-weight:700;background:${col}22;color:${col};border:1px solid ${col}44;">${txt}</span>`
       majProgress()
     }
     window.resetTap=function(){
@@ -1140,12 +1231,55 @@
       majProgress()
     }
 
+    async function loadWellnessHistory(j){
+      if(!j) return
+      wellnessHistory=[]
+      try{
+        const d=new Date()
+        d.setDate(d.getDate()-21)
+        const startStr=dateStrLocal(d)
+        const q=query(collection(db,'wellness'),where('joueurId','==',j.id),where('date','>=',startStr))
+        const snap=await getDocs(q)
+        wellnessHistory=snap.docs.map(d=>d.data()).filter(w=>w.date!==aujourdhui).sort((a,b)=>b.date.localeCompare(a.date))
+      }catch(e){ console.error('Erreur historique wellness:', e) }
+    }
+    function getHistoryBaseline(metric){
+      const vals=wellnessHistory.filter(h=>h.date!==aujourdhui && h[metric]!=null && h[metric]>0).map(h=>h[metric])
+      if(vals.length<2) return null
+      return vals.reduce((a,b)=>a+b,0)/vals.length
+    }
+    window.updateSleepColor=function(input){
+      const badge=document.getElementById('sleep-badge')
+      const evolEl=document.getElementById('sleep-evol')
+      if(!badge) return
+      const val=parseFloat(input.value)
+      if(isNaN(val) || val<0){
+        badge.textContent='—h'; badge.className='sleep-badge'
+        if(evolEl){ evolEl.style.display='none'; evolEl.textContent='' }
+        return
+      }
+      badge.textContent=Math.round(val)+'h'
+      const baseline=getHistoryBaseline('sommeil')
+      if(baseline==null || baseline<=0){
+        badge.className='sleep-badge'
+        if(evolEl){ evolEl.style.display='none'; evolEl.textContent='' }
+        return
+      }
+      const diff=(val-baseline)/baseline
+      const pct=Math.round(diff*100)
+      let cls='sleep-badge warn', txt=`≈ ta moyenne (${baseline.toFixed(1)}h)`, col='#EF9F27'
+      if(diff>=0.10){ cls='sleep-badge ok'; txt=`↑ +${pct}% vs tes 3 semaines`; col='#1D9E75' }
+      else if(diff<=-0.10){ cls='sleep-badge alert'; txt=`↓ ${pct}% vs tes 3 semaines`; col='#E24B4A' }
+      badge.className=cls
+      if(evolEl){ evolEl.textContent=txt; evolEl.style.display='block'; evolEl.style.color=col }
+    }
+
     // ===== WELLNESS SOUMETTRE =====
     window.soumettreWellness=async function(){
       if(!joueurActif)return
       const sommeil=parseFloat(document.getElementById('sleep-h').value)
       const hooMoy=Object.values(hooperScores).reduce((a,b)=>a+b,0)/Object.values(hooperScores).length
-      const score=+((hooMoy*0.5+Math.min((sommeil/8)*7,7)*0.3+Math.min((tapCount/70)*7,7)*0.2).toFixed(2))
+      const score=+(hooMoy.toFixed(2))
       const comment=document.getElementById('wellness-comment')?.value?.trim()||''
       await setDoc(doc(db,'wellness',`${joueurActif.id}_${aujourdhui}`),{joueurId:joueurActif.id,date:aujourdhui,hooper:hooperScores,sommeil,tapCount,scoreGlobal:score,comment,createdAt:serverTimestamp()})
       const btn=document.getElementById('submit-wellness')
@@ -1341,7 +1475,16 @@
     }
 
     async function chargerSeance(){
-      const c=document.getElementById('seance-content');c.innerHTML='<div class="empty-msg">Chargement...</div>'
+      const c=document.getElementById('seance-content');
+      
+      // Vérifier le cache d'abord
+      const cachedData = getCache('seances')
+      if (cachedData) {
+        c.innerHTML = cachedData.html
+        return
+      }
+      
+      c.innerHTML = '<div class="empty-msg">⏳ Chargement de tes séances...</div>'
       if(!joueurActif)return
       
       // Mettre à jour le label de semaine
@@ -1351,19 +1494,42 @@
       document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
       
       try{
-        const snap=await getDocs(scopedQuery('seances'))
-        const seances=snap.docs.map(d=>({id:d.id,...d.data()}))
-          .filter(s=>s.statut === 'publie')
-          .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
-        
-        // Filtrer pour la semaine sélectionnée
+        // Optimisation : ne charger que les séances de la semaine en cours où le joueur est assigné
         const lundiStr = dateStrLocal(lundi)
         const dimancheStr = dateStrLocal(dimanche)
         
-        const seancesSemaine = seances.filter(s => s.date && s.date >= lundiStr && s.date <= dimancheStr)
+        const q = query(
+          collection(db, 'seances'),
+          where('date', '>=', lundiStr),
+          where('date', '<=', dimancheStr),
+          where('statut', '==', 'publie')
+        )
+        
+        const snap = await getDocs(q)
+        const seancesSemaine = snap.docs.map(d => ({id: d.id, ...d.data()}))
+          .sort((a,b) => (b.date || '').localeCompare(a.date || ''))
         
         if(!seancesSemaine.length){
-          c.innerHTML='<div class="empty-msg"><div class="empty-icon">🏖️</div>Aucune séance publiée cette semaine.</div>'
+          const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏖️</div>Aucune séance publiée cette semaine.</div>'
+          c.innerHTML = emptyHtml
+          setCache('seances', { html: emptyHtml })
+          return
+        }
+        
+        // Filtrer uniquement les séances où le joueur est assigné
+        const seancesJoueur = seancesSemaine.filter(seance => {
+          return seance.blocs?.some(bloc => 
+            bloc.groupes?.some(groupe => 
+              groupe.joueurs?.includes(joueurActif.id) || 
+              groupe.joueurs?.includes(joueurActif.nom + '_' + joueurActif.prenom)
+            )
+          )
+        })
+        
+        if(!seancesJoueur.length){
+          const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏋️</div>Tu n\'as pas de séance cette semaine.</div>'
+          c.innerHTML = emptyHtml
+          setCache('seances', { html: emptyHtml })
           return
         }
         
@@ -1482,8 +1648,9 @@
                     const sData=exo.variableSeries&&exo.seriesData?.[s-1]
                     const serieReco=sData?labelChargeRecoForSerie(exo,sData):reco
                     const serieRepsLabel=sData?` · ${sData.reps} reps`:''
+                    const serieReps=sData?sData.reps:null
                     const box=document.createElement('div');box.className='serie-box'
-                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="0.5" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="0.5" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                     gr.appendChild(box)
                   }
                 }
@@ -1507,6 +1674,10 @@
         }
         
         if(!aUneSeance)c.innerHTML+='<div class="empty-msg">Tu n\'es assigné à aucune séance cette semaine.</div>'
+        
+        // Mettre en cache le résultat HTML
+        setCache('seances', { html: c.innerHTML })
+        
       }catch(e){console.error(e);c.innerHTML='<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'}
     }
     
@@ -1520,11 +1691,13 @@
       chargerSeance() 
     }
 
-    window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId){
+    window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId,reps){
       if(!val)return
       chargesReelles[clef]=val;inp.style.color='#1D9E75'
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
-      try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[clef]:val,updatedAt:serverTimestamp()},{merge:true})}catch(e){console.error(e)}
+      const updates={[clef]:val,updatedAt:serverTimestamp()}
+      if(reps!=null&&reps!==undefined)updates[clef+'_reps']=reps
+      try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
     }
 
     window.sauverToutesLesSeries=async function(seanceId,clefBase,nbSets,joueurId,val,inp,ckId){
@@ -1807,6 +1980,22 @@
     // ───── Charge les données ─────
     async function chargerPlanning(){
       if(!joueurActif) return
+      
+      const c = document.getElementById('planning-content')
+      
+      // Vérifier le cache d'abord
+      const cachedData = getCache('planning')
+      if (cachedData) {
+        c.innerHTML = cachedData.html
+        // Restaurer les variables globales nécessaires
+        planningCache = cachedData.planningCache
+        currentWeekStart = new Date(cachedData.currentWeekStart)
+        selectedDayIdx = cachedData.selectedDayIdx
+        planningScope = cachedData.planningScope
+        return
+      }
+      
+      c.innerHTML = '<div class="empty-msg">⏳ Chargement de ton planning...</div>'
       planningCache = null
       
       const lundi = getLundi(new Date(currentWeekStart))
@@ -1832,10 +2021,21 @@
       }
       
       try{
-        // Toujours tout charger (planning collectif + TOUS les creneaux blesses)
+        // Optimisation : charger uniquement la semaine en cours
+        const lundiStr = dateStrLocal(lundi)
+        const dimancheStr = dateStrLocal(dimanche)
+        
         const [planSnap, bSnap] = await Promise.all([
-          getDocs(scopedQuery('planning')),
-          getDocs(scopedQuery('creneauxBlesses'))
+          getDocs(query(
+            collection(db, 'planning'),
+            where('date', '>=', lundiStr),
+            where('date', '<=', dimancheStr)
+          )),
+          getDocs(query(
+            collection(db, 'creneauxBlesses'),
+            where('date', '>=', lundiStr),
+            where('date', '<=', dimancheStr)
+          ))
         ])
         const planningAll = planSnap.docs.map(d=>({id:d.id,...d.data()}))
         const creneauxAll = bSnap.docs.map(d=>({id:d.id,...d.data()}))
@@ -1848,6 +2048,15 @@
         goToSlide(selectedDayIdx, false)
         updateDaysPillSelection()
         updateDotVisibility(lundi, filtered.planning, filtered.creneaux)
+        
+        // Mettre en cache le résultat et les variables nécessaires
+        setCache('planning', { 
+          html: c.innerHTML, 
+          planningCache: planningCache,
+          currentWeekStart: currentWeekStart,
+          selectedDayIdx: selectedDayIdx,
+          planningScope: planningScope
+        })
         
       }catch(e){ console.error(e) }
     }
@@ -2349,31 +2558,67 @@
     window.afficherJournee=function(dateStr){ openDayModal(dateStr) }
     window.retourPlanningWeek=function(){ allerVers('planning') }
 
-    // ===== GPS — lit le cache localStorage (pas Firestore, CSV trop lourd) =====
+    // ===== GPS — chargement progressif intelligent =====
     async function chargerGPS() {
   const c = document.getElementById('gps-content')
-  c.innerHTML = '<div class="empty-msg">⏳ Chargement...</div>'
+  
+  // Vérifier le cache d'abord
+  const cachedData = getCache('gps')
+  if (cachedData) {
+    c.innerHTML = cachedData.html
+    // Recréer la fonction __chargerPlanifsGPS si nécessaire
+    window.__chargerPlanifsGPS = async function() {
+      const zoneObjectifs = document.getElementById('gps-zone-objectifs')
+      if (zoneObjectifs) {
+        zoneObjectifs.innerHTML = '<div class="empty-msg">⏳ Chargement des objectifs...</div>'
+      }
+      
+      try {
+        const planifSnap = await getDocs(scopedQuery('planificationsGPS', 'semaine'))
+        const planifsGPS = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
+        
+        if (zoneObjectifs && planifsGPS.length > 0) {
+          renderObjectifsGPS(zoneObjectifs, cachedData.sData, cachedData.joueurActif, planifsGPS)
+        } else if (zoneObjectifs) {
+          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif trouvé pour cette semaine.</div>'
+        }
+      } catch(e) { 
+        console.warn('Impossible de charger les planifs GPS:', e)
+        if (zoneObjectifs) {
+          zoneObjectifs.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'
+        }
+      }
+    }
+    return
+  }
+  
+  c.innerHTML = '<div class="empty-msg">⏳ Chargement de tes stats GPS...</div>'
   if (!joueurActif) return
-  // Charger depuis Firestore (données pré-calculées par le staff)
+  
+  // Étape 1 : Charger uniquement les données essentielles du joueur (pas les planifs)
   try {
-    const [snap, collectifSnap, planifSnap] = await Promise.all([
+    const [snap, collectifSnap] = await Promise.all([
       getDoc(doc(db, 'statsGPS', joueurActif.id)),
-      getDoc(doc(db, 'statsGPS', '_collectif')),
-      getDocs(scopedQuery('planificationsGPS', 'semaine'))
+      getDoc(doc(db, 'statsGPS', '_collectif'))
     ])
+    
     if (!snap.exists()) {
-      c.innerHTML = `<div class="empty-msg">
+      const emptyHtml = `<div class="empty-msg">
         <div class="empty-icon">📡</div>
         Stats GPS pas encore disponibles.<br>
         <span style="font-size:11px;color:#333;display:block;margin-top:6px;">
           Le staff doit cliquer synchroniser les données GPS.
         </span>
       </div>`
+      c.innerHTML = emptyHtml
+      setCache('gps', { html: emptyHtml })
       return
     }
-    const allJoueursData = collectifSnap.exists() ? collectifSnap.data().joueurs || [] : []
     
-    // Correction à la volée des données GPS corrompues (m/min, hi/min et durée stockées en jours au lieu de minutes)
+    const allJoueursData = collectifSnap.exists() ? collectifSnap.data().joueurs || [] : []
+    const sData = snap.data()
+    
+    // Corriger les données si nécessaire
     function corrigerDonneesGPS(historique) {
       if (!historique) return []
       return historique.map(h => {
@@ -2391,8 +2636,7 @@
         return hCorr
       })
     }
-
-    const sData = snap.data()
+    
     if (sData) {
       sData.historique = corrigerDonneesGPS(sData.historique)
       if (sData.mMinMoy > 1000 && isFinite(sData.mMinMoy)) {
@@ -2405,7 +2649,7 @@
         return da - db
       })
     }
-
+    
     allJoueursData.forEach(j => {
       if (j.mMinMoy > 1000 && isFinite(j.mMinMoy)) {
         j.mMinMoy = +(j.mMinMoy / 1440).toFixed(1)
@@ -2420,14 +2664,42 @@
         })
       }
     })
-
-    // Charger les objectifs de planification GPS
-    let planifsGPS = []
-    try {
-      planifsGPS = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
-    } catch(e) { console.warn('Impossible de charger les planifs GPS:', e) }
-
-    renderGPSStats(c, sData, joueurActif, allJoueursData, planifsGPS)
+    
+    // Rendu initial sans les planifs (chargées à la demande)
+    renderGPSStats(c, sData, joueurActif, allJoueursData, [])
+    
+    // Mettre en cache le HTML et les données essentielles
+    setCache('gps', { 
+      html: c.innerHTML, 
+      sData: sData, 
+      joueurActif: joueurActif 
+    })
+    
+    // Étape 2 : Charger les planifs GPS uniquement si l'utilisateur clique sur l'onglet "Objectifs"
+    window.__chargerPlanifsGPS = async function() {
+      const zoneObjectifs = document.getElementById('gps-zone-objectifs')
+      if (zoneObjectifs) {
+        zoneObjectifs.innerHTML = '<div class="empty-msg">⏳ Chargement des objectifs...</div>'
+      }
+      
+      try {
+        const planifSnap = await getDocs(scopedQuery('planificationsGPS', 'semaine'))
+        const planifsGPS = planifSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.semaine || '').localeCompare(a.semaine || ''))
+        
+        // Mettre à jour uniquement la zone objectifs
+        if (zoneObjectifs && planifsGPS.length > 0) {
+          renderObjectifsGPS(zoneObjectifs, sData, joueurActif, planifsGPS)
+        } else if (zoneObjectifs) {
+          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif trouvé pour cette semaine.</div>'
+        }
+      } catch(e) { 
+        console.warn('Impossible de charger les planifs GPS:', e)
+        if (zoneObjectifs) {
+          zoneObjectifs.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'
+        }
+      }
+    }
+    
   } catch(e) {
     console.error(e)
     c.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur.</div>'
@@ -2622,6 +2894,11 @@
           const tab = btn.dataset.tab
           zoneStats.style.display = tab === 'stats' ? 'block' : 'none'
           zoneObjectifs.style.display = tab === 'objectifs' ? 'block' : 'none'
+          
+          // Charger les planifs GPS uniquement quand l'utilisateur clique sur "Objectifs"
+          if (tab === 'objectifs' && typeof window.__chargerPlanifsGPS === 'function') {
+            window.__chargerPlanifsGPS()
+          }
           zoneSeances.style.display = tab === 'seances' ? 'block' : 'none'
           zoneClassement.style.display = tab === 'classement' ? 'block' : 'none'
         })
@@ -3289,21 +3566,19 @@
           return
         }
 
-        // Utiliser l'historique complet pour les calculs hebdomadaires
-        // (même en mode "dernière séance", on veut les totaux de la semaine)
+        // Toujours utiliser l'historique complet — les objectifs sont scopés
+        // à la semaine de la dernière séance, indépendamment du filtre global
         const histComplete = s.historique || []
         const hist = historiqueFiltre.length ? historiqueFiltre : histComplete
-        const datesPresentes = new Set(hist.map(h => String(h.date || '').trim()).filter(Boolean))
-        if (!datesPresentes.size) {
-          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucune donnée GPS sur la période sélectionnée.</div>'
+
+        // Déterminer la date de la dernière séance (depuis l'historique complet)
+        const datesCompletes = histComplete.map(h => parseDate(String(h.date || '').trim())).filter(Boolean).sort((a,b) => a-b)
+        if (!datesCompletes.length) {
+          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucune donnée GPS disponible.</div>'
           return
         }
-
-        const datesSorted = [...datesPresentes].map(d => {
-          const p = d.split('/'); return p.length === 3 ? new Date(+p[2], +p[1]-1, +p[0]) : null
-        }).filter(Boolean).sort((a,b) => a-b)
-        const dateMin = datesSorted[0]
-        const dateMax = datesSorted[datesSorted.length - 1]
+        // La date pivot est toujours celle de la dernière séance connue
+        const dateDerniereSeance = datesCompletes[datesCompletes.length - 1]
 
         // Trouver les planifs pertinentes
         const JOURS_OFF = {Lundi:0, Mardi:1, Mercredi:2, Jeudi:3, Vendredi:4, Samedi:5, Dimanche:6}
@@ -3315,7 +3590,8 @@
           const dimanche = new Date(lundi)
           dimanche.setDate(lundi.getDate() + 6)
           dimanche.setHours(23,59,59,999)
-          if (lundi > dateMax || dimanche < dateMin) return
+          // Ne garder que la planif dont la semaine contient la dernière séance
+          if (lundi > dateDerniereSeance || dimanche < dateDerniereSeance) return
           const r = planif.resultats.find(r => {
             if (r.joueurId && joueur.id && r.joueurId === joueur.id) return true
             if (r.nomGPS && s.nomGPS && r.nomGPS.toLowerCase() === s.nomGPS.toLowerCase()) return true
@@ -3325,7 +3601,7 @@
         })
 
         if (!planifsMatched.length) {
-          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif trouvé pour toi sur cette période.</div>'
+          zoneObjectifs.innerHTML = '<div class="empty-msg"><div class="empty-icon">🎯</div>Aucun objectif trouvé pour la semaine de ta dernière séance.</div>'
           return
         }
 
@@ -3897,7 +4173,7 @@
           // ===== INFO PLANIFS =====
           const infoDiv = document.createElement('div')
           infoDiv.style.cssText = 'font-size:10px;color:#444;text-align:center;padding:8px;'
-          infoDiv.innerHTML = `📊 ${planifsMatched.length} planification(s) trouvée(s) sur la période`
+          infoDiv.innerHTML = `📊 Semaine du ${planifsMatched[0]?.planif?.semaine || '—'}`
           objContent.appendChild(infoDiv)
         }
 
