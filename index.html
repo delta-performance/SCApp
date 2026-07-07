@@ -2033,15 +2033,8 @@
           filteredPlanningSample: filtered.planning.slice(0, 2)
         })
         
-        // Si le planning est vide après filtrage, essayer sans filtrage pour debug
-        if (filtered.planning.length === 0 && planningAll.length > 0) {
-          console.log('Planning vide après filtrage, essai sans filtrage...')
-          buildWeekSlides(lundi, planningAll, [], nowStr)
-          buildWeekOverview(lundi, planningAll, [], nowStr)
-        } else {
-          buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
-          buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
-        }
+        buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
+        buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
         
         buildLegend()
         goToSlide(selectedDayIdx, false)
@@ -3624,6 +3617,16 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             return false
           })
           if (r) planifsMatched.push({ planif, resultat: r, lundi, dimanche })
+        })
+
+        // Dédupliquer par semaine (au cas où plusieurs documents de planif existeraient pour la même semaine)
+        // afin d'éviter tout double comptage des totaux hebdomadaires
+        const semainesVues = new Set()
+        planifsMatched = planifsMatched.filter(pm => {
+          const key = pm.lundi.getTime()
+          if (semainesVues.has(key)) return false
+          semainesVues.add(key)
+          return true
         })
 
         if (!planifsMatched.length) {
