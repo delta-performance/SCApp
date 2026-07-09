@@ -1475,8 +1475,8 @@
     async function chargerSeance(options = {}) {
       const c = document.getElementById('seance-content');
       
-      // Vérifier le cache d'abord avec clé spécifique aux options
-      const cacheKey = 'seances_' + JSON.stringify(options)
+      // Vérifier le cache d'abord avec clé spécifique aux options (v2 pour invalider l'ancien cache)
+      const cacheKey = 'seances_v2_' + JSON.stringify(options)
       const cachedData = getCache(cacheKey)
       if (cachedData) {
         c.innerHTML = cachedData.html
@@ -1553,7 +1553,16 @@
             )
           )
         })
-        
+
+        console.log('[Player-App] joueurActif.id:', joueurActif.id, 'seances semaine:', seancesSemaine.length, 'seances joueur:', seancesJoueur.length)
+        console.log('[Player-App] détail séances:', seancesSemaine.map(s => ({
+          id: s.id,
+          date: s.date,
+          blocs: s.blocs?.length || 0,
+          blocsBlesses: s.blocsBlesses?.length || 0,
+          present: seancesJoueur.some(sj => sj.id === s.id)
+        })))
+
         if(!seancesJoueur.length){
           const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏋️</div>Tu n\'as pas de séance cette semaine.</div>'
           c.innerHTML = emptyHtml
