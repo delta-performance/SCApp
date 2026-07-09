@@ -1543,9 +1543,10 @@
           return
         }
         
-        // Filtrer uniquement les séances où le joueur est assigné
+        // Filtrer uniquement les séances où le joueur est assigné (blocs normaux + blessés)
         const seancesJoueur = seancesSemaine.filter(seance => {
-          return seance.blocs?.some(bloc => 
+          const allBlocs = [...(seance.blocs || []), ...(seance.blocsBlesses || [])]
+          return allBlocs.some(bloc => 
             bloc.groupes?.some(groupe => 
               groupe.joueurs?.includes(joueurActif.id) || 
               groupe.joueurs?.includes(joueurActif.nom + '_' + joueurActif.prenom)
@@ -1565,7 +1566,8 @@
         
         let aUneSeance=false
         for(const sa of seancesSemaine){
-          const estAssigne = sa.blocs?.some(b=>b.groupes?.some(g=>g.joueurs?.includes(joueurActif.id)))
+          const estAssigne = [...(sa.blocs || []), ...(sa.blocsBlesses || [])]
+            .some(b=>b.groupes?.some(g=>g.joueurs?.includes(joueurActif.id)))
           if(!estAssigne) continue
           
           aUneSeance=true
@@ -1592,7 +1594,7 @@
           body.style.display='none'
           
           let aBlocPourMoi=false
-          sa.blocs?.forEach(bloc=>{
+          ;[...(sa.blocs || []), ...(sa.blocsBlesses || [])].forEach(bloc=>{
             const gJ=bloc.groupes?.find(g=>g.joueurs?.includes(joueurActif.id))
             if(!gJ)return;aBlocPourMoi=true
             const bEl=document.createElement('div');bEl.className='seance-bloc'
