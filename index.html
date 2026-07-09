@@ -3872,14 +3872,18 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
           if (objMode === 'quotidien') {
             // Score quotidien = moyenne des % journaliers (jours avec données seulement)
-            const daysWithData = perDayData.filter(d => d.hasData && d.objHI > 0)
-            if (daysWithData.length) {
-              scoreHI = Math.round(daysWithData.reduce((s, d) => s + Math.min((d.realHI / d.objHI) * 100, 150), 0) / daysWithData.length)
-              const daysAcc = daysWithData.filter(d => d.objAcc > 0)
-              if (daysAcc.length) {
-                scoreAcc = Math.round(daysAcc.reduce((s, d) => s + Math.min((d.realAcc / d.objAcc) * 100, 150), 0) / daysAcc.length)
-              } else { scoreAcc = 0 }
-            } else { scoreHI = 0; scoreAcc = 0 }
+            // Inclure aussi les jours où objHI = 0 (objectif adaptatif à 0) mais qui ont des données réelles
+            const daysWithData = perDayData.filter(d => d.hasData && (d.objHI > 0 || d.objHI === 0))
+            const daysWithObjHI = daysWithData.filter(d => d.objHI > 0)
+            if (daysWithObjHI.length) {
+              scoreHI = Math.round(daysWithObjHI.reduce((s, d) => s + Math.min((d.realHI / d.objHI) * 100, 150), 0) / daysWithObjHI.length)
+            } else if (daysWithData.length) {
+              scoreHI = 150 // Objectif dépassé quand obj = 0 et on a des données
+            } else { scoreHI = 0 }
+            const daysAcc = daysWithData.filter(d => d.objAcc > 0)
+            if (daysAcc.length) {
+              scoreAcc = Math.round(daysAcc.reduce((s, d) => s + Math.min((d.realAcc / d.objAcc) * 100, 150), 0) / daysAcc.length)
+            } else { scoreAcc = 0 }
 
             // Totaux pour KPIs = sommes journalières (jours avec données seulement)
             totalRealHI = daysWithData.reduce((s, d) => s + d.realHI, 0)
