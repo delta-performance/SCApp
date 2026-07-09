@@ -234,6 +234,27 @@
       background: #1a1a1a !important;
       border-color: #2a2a2a !important;
     }
+
+    /* ── DATE PICKER ICON ── */
+    input[type="date"] {
+      position: relative;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23FECC00' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 16px 16px;
+      padding-right: 34px !important;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 34px;
+      background: transparent;
+      color: transparent;
+      opacity: 0;
+      cursor: pointer;
+    }
   </style>
   <link rel="manifest" href="../manifest.json?v=20260706">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -3939,7 +3960,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             card.className = 'gps-kpi'
             const pct = k.obj > 0 ? Math.round((k.real / k.obj) * 100) : null
             const pctStr = pct !== null ? `<div style="font-size:10px;font-weight:600;color:${pct>=100?'#1D9E75':pct>=80?'#FECC00':pct>=50?'#EF9F27':'#E24B4A'};margin-top:4px;">${pct}% de l'objectif</div>` : ''
-            const objStr = k.obj !== null && k.obj > 0 ? `<div style="font-size:9px;color:#555;margin-top:2px;">Objectif: ${k.obj.toFixed(k.decimals)} ${k.unit}</div>` : ''
+            const objStr = k.obj !== null && k.obj > 0 ? `<div style="font-size:9px;color:#555;margin-top:2px;">Objectif: ${k.obj.toFixed(k.decimals)} ${k.unit}</div>` : (k.obj === 0 ? `<div style="font-size:9px;color:#555;margin-top:2px;">HI: ${Math.round(k.real)}${k.unit}/0</div>` : '')
             card.innerHTML = `
               <div class="gps-kpi-label">${k.label}</div>
               <div class="gps-hero-val" style="color:${k.color};font-size:20px;">${k.real.toFixed(k.decimals)}</div>
@@ -4001,8 +4022,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                   </div>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
-                  <span style="color:#E24B4A;">${w.hasData ? Math.round(w.realHI) + 'm' : 'Pas de données'}</span>
-                  <span style="color:#555;">Obj: ${Math.round(w.objHI)}m</span>
+                  <span style="color:#E24B4A;">${w.hasData ? (w.objHI > 0 ? Math.round(w.realHI) + 'm' : Math.round(w.realHI) + 'm/0') : 'Pas de données'}</span>
+                  <span style="color:#555;">${w.objHI > 0 ? 'Obj: ' + Math.round(w.objHI) + 'm' : 'Obj: 0'}</span>
                 </div>
               `
               weekSection.appendChild(row)
@@ -4035,8 +4056,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                   </div>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
-                  <span style="color:#E24B4A;">${d.hasData ? Math.round(d.realHI) + 'm' : 'Pas de données'}</span>
-                  <span style="color:#555;">Obj: ${Math.round(d.objHI)}m</span>
+                  <span style="color:#E24B4A;">${d.hasData ? (d.objHI > 0 ? Math.round(d.realHI) + 'm' : Math.round(d.realHI) + 'm/0') : 'Pas de données'}</span>
+                  <span style="color:#555;">${d.objHI > 0 ? 'Obj: ' + Math.round(d.objHI) + 'm' : 'Obj: 0'}</span>
                 </div>
               `
               daySection.appendChild(row)
@@ -4360,5 +4381,18 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       }
     </style>
   </div>
+
+  <script>
+    // Ouvre le sélecteur de date natif au clic dans n'importe quel input type="date"
+    document.addEventListener('click', function (e) {
+      const input = e.target.closest('input[type="date"]');
+      if (!input) return;
+      if (typeof input.showPicker === 'function') {
+        try { input.showPicker(); } catch (err) { input.focus(); }
+      } else {
+        input.focus();
+      }
+    });
+  </script>
 </body>
 </html>
