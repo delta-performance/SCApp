@@ -1,0 +1,21 @@
+{
+  "name": "SCA Albi Performance",
+  "short_name": "SCA Albi",
+  "description": "Application de performance pour le Sporting Club Albigeois",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0f0f",
+  "theme_color": "#FECC00",
+  "lang": "fr",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "https://www.sca-albi.fr/wp-content/uploads/2023/10/cropped-SCA-bis.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
