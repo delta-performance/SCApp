@@ -10,6 +10,18 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const req = e.request;
+  const url = new URL(req.url);
+
+  // Ignorer les extensions navigateur, les données inline, etc.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
+
+  // Les requêtes POST/PATCH/PUT ne sont pas cachables
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return;
+  }
+
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req).then(res => {
