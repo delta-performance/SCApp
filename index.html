@@ -3023,6 +3023,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const seance = hist[0]
           const kpis = [
             {l:'Dist HI',v:seance.distHI || 0,u:'m',c:'#E24B4A', d:0},
+            {l:'Dist totale',v:seance.distTot || 0,u:'m',c:'#7F77DD', d:0},
             {l:'m / min',v:seance.mMin || 0,u:'',c:'#FECC00', d:1},
             {l:'HI / min',v:seance.hiMin || 0,u:'',c:'#EF9F27', d:2},
             {l:'Volume HI',v:seance.volHI || 0,u:'UA',c:'#378ADD', d:0},
@@ -3044,6 +3045,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           // Mode période : afficher les moyennes calculées (alignées sur appli coach)
           const kpis = [
             {l:'Dist HI / séance',v:statsFiltre.distHI,u:'m',c:'#E24B4A', d:0},
+            {l:'Dist totale',v:statsFiltre.totalDist,u:'m',c:'#7F77DD', d:0},
             {l:'m / min',v:statsFiltre.mMin,u:'',c:'#FECC00', d:1},
             {l:'HI / min',v:statsFiltre.hiMin,u:'',c:'#EF9F27', d:2},
             {l:'Volume HI / séance',v:statsFiltre.volHI,u:'UA',c:'#378ADD', d:0},
@@ -3157,6 +3159,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           metricSelect.style.cssText = 'width:100%;padding:6px 10px;margin-bottom:10px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#fff;font-size:12px;'
           const metrics = [
             {k:'distHI',l:'Distance HI (m)',c:'#E24B4A'},
+            {k:'distTot',l:'Distance totale (m)',c:'#7F77DD'},
             {k:'volHI',l:'Volume HI (UA)',c:'#378ADD'},
             {k:'mMin',l:'m/min',c:'#FECC00'},
             {k:'hiMin',l:'HI/min',c:'#EF9F27'},
@@ -3259,6 +3262,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           <th>Date</th>
           <th>Période</th>
           <th style="color:#E24B4A;">HI</th>
+          <th style="color:#7F77DD;">Dist</th>
           <th style="color:#FECC00;">m/min</th>
           <th style="color:#378ADD;">Vol HI</th>
           <th style="color:#1D9E75;">Vmax</th>
@@ -3274,6 +3278,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             <td style="color:#555;">${h.date||'—'}</td>
             <td style="color:#666;font-size:10px;">${h.period||'—'}</td>
             <td style="color:#E24B4A;font-weight:600;">${Math.round(h.distHI||0)}</td>
+            <td style="color:#7F77DD;font-weight:600;">${Math.round(h.distTot||0)}</td>
             <td style="color:#FECC00;font-weight:600;">${(h.mMin||0).toFixed(1)}</td>
             <td style="color:#378ADD;font-weight:600;">${Math.round(h.volHI||0)}</td>
             <td style="color:#1D9E75;font-weight:600;">${(h.vmax||0).toFixed(1)}</td>
@@ -3567,16 +3572,18 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       // Calculer les stats sur la période filtrée (aligné sur l'appli coach)
       function calculerStatsFiltre(hist) {
         if (!hist || hist.length === 0) {
-          return { distHI: 0, mMin: 0, hiMin: 0, volHI: 0, vmax: 0, pctVmax: 0 }
+          return { distHI: 0, distTot: 0, totalDist: 0, mMin: 0, hiMin: 0, volHI: 0, vmax: 0, pctVmax: 0 }
         }
         
         const totalDistHI = hist.reduce((sum, h) => sum + (h.distHI || 0), 0)
         const distHI = totalDistHI / hist.length
         
+        const totalDist = hist.reduce((sum, h) => sum + (h.distTot || 0), 0)
+        const distTot = totalDist / hist.length
+        
         const totalVolHI = hist.reduce((sum, h) => sum + (h.volHI || 0), 0)
         const volHI = totalVolHI / hist.length
         
-        const totalDist = hist.reduce((sum, h) => sum + (h.distTot || 0), 0)
         const totalDur = hist.reduce((sum, h) => sum + (h.duree || 0), 0)
         const mMin = totalDur > 0 ? totalDist / totalDur : 0
         const hiMin = totalDur > 0 ? totalDistHI / totalDur : 0
@@ -3590,6 +3597,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         
         return {
           distHI,
+          distTot,
+          totalDist,
           mMin,
           hiMin,
           volHI,
@@ -4314,6 +4323,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           <div style="font-size:11px;color:#555;margin-bottom:12px;">${h.date} · ${h.duree} min · Période: ${h.period||'—'}</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             ${renderMetricRow('Distance HI', h.distHI, 'm', '#E24B4A')}
+            ${renderMetricRow('Distance totale', h.distTot, 'm', '#7F77DD')}
             ${renderMetricRow('m/min', h.mMin, '', '#FECC00')}
             ${renderMetricRow('HI/min', h.hiMin, '', '#EF9F27')}
             ${renderMetricRow('Volume HI', h.volHI, 'UA', '#378ADD')}
