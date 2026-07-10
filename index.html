@@ -554,6 +554,7 @@
     import{initializeApp}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js'
     import{getFirestore,collection,doc,setDoc,getDoc,getDocs,serverTimestamp,onSnapshot,query,where,enableIndexedDbPersistence}from'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js'
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js'
+    import { labelCharge } from '../renderer/seances-charges.js'
     const app=initializeApp({apiKey:"AIzaSyCvMs-5LX9Ivk3OkzUR3iz9Kk1E5b9_7Vk",authDomain:"delta-rugby-app.firebaseapp.com",projectId:"delta-rugby-app",storageBucket:"delta-rugby-app.firebasestorage.app",messagingSenderId:"61187079762",appId:"1:61187079762:web:56cd1eaa8beb9e1a2ee98b"})
     const db=getFirestore(app)
     try { enableIndexedDbPersistence(db).catch(() => {}) } catch(e) { console.warn('Persistence IndexedDB non disponible:', e) }
@@ -1292,50 +1293,27 @@
       const n=(nom||'').toLowerCase()
       return n.includes('traction')||n.includes('dips')||n.includes('dip ')
     }
-    // Calcule la charge prédicte selon l'unité d'intensité
-    function calculerChargeUnit(exo){
-      const unit=exo.intensityUnit||'RPE'
-      const val=parseFloat(exo.rpe)
-      if(!val)return null
-      let pct=0
-      if(unit==='%')pct=val/100
-      else if(unit==='Vitesse (m/s)'||unit==='VITESSE'){pct=Math.round(100-((val-0.2)/(1.3-0.2))*70);pct=Math.max(10,Math.min(100,pct))/100}
-      else if(unit==='PDC')return null // PDC = poids du corps, pas de charge calculée
-      else if(unit==='% PDC'){pct=val/100}
-      else if(unit==='kg'||unit==='W')return null // kg/W = valeur libre, pas de charge calculée
-      else pct=val/10 // RPE
-      // Chercher 1RM direct
-      const exoLower=(exo.exercice||'').toLowerCase().trim()
-      let oneRM=null
-      for(const[k,v]of Object.entries(maxTestes||{})){if(k.toLowerCase().trim()===exoLower){oneRM=parseFloat(v);break}}
-      if(!oneRM&&ratios){
-        const rd=ratios[exo.exercice]
-        if(rd){const{ratio,mvtRoi}=rd;const mr=(mvtRoi||'').toLowerCase().trim();for(const[k,v]of Object.entries(maxTestes||{})){if(k.toLowerCase().trim()===mr){oneRM=parseFloat(v)*ratio;break}}}
-        if(!oneRM){
-          const nl=exoLower
-          for(const[key,vr]of Object.entries(ratios)){const m=key.match(/^(.+)_vs_(.+)$/);if(!m)continue;if(m[1].toLowerCase().trim()===nl){const t=m[2].toLowerCase().trim();for(const[k,v]of Object.entries(maxTestes||{})){if(k.toLowerCase().trim()===t){oneRM=parseFloat(v)*vr;break}}}}
-        }
+    // Affiche le nombre de reps d'un exercice, y compris les clusters et les séries variables
+    function clusterRepsDisplay(exo){
+      if (exo.clusterSplit && exo.clusterSplit.length > 1) {
+        return exo.clusterSplit.map(s => s.type === 'time' ? s.value + 's' : s.value).join('+')
       }
-      if(!oneRM||oneRM<=0)return null
-      return Math.round(oneRM*pct/2.5)*2.5
+      if (exo.variableSeries && exo.seriesData?.length > 0) {
+        return exo.seriesData.map((s, i) => `S${i+1}:${s.reps ?? exo.nbReps}`).join(' ')
+      }
+      return exo.nbReps || ''
     }
+
     // Calcule la charge recommandée pour un exercice (label affiché)
     function labelChargeReco(exo){
-      const unit=exo.intensityUnit||'RPE'
+      const unit=exo.intensityUnit||exo.intensityType||'RPE'
       const traction=isTraction(exo.exercice)
-      // Pour les tractions: si on peut calculer une charge et qu'elle > PDC, afficher 'PDC + X kg', sinon 'PDC'
+      // Pour les tractions/dips: si on peut calculer une charge et qu'elle > PDC, afficher 'PDC + X kg', sinon 'PDC'
       if(traction){
-        const kg=calculerChargeUnit(exo)
+        const chargeStr=labelCharge(exo.exercice, exo.rpe, exo.nbReps, maxTestes, ratios, unit, poidsJoueur)
+        const charge=parseFloat(chargeStr)
         const pdc=poidsJoueur||0
-        if(kg!==null&&pdc>0){
-          if(kg>pdc){
-            const leste=Math.round((kg-pdc)/2.5)*2.5
-            return 'PDC + '+leste+' kg'
-          }
-          return 'PDC'
-        }
-        if(unit==='% PDC'&&pdc>0){
-          const charge=pdc*parseFloat(exo.rpe)/100
+        if(!isNaN(charge) && pdc>0){
           if(charge>pdc){
             const leste=Math.round((charge-pdc)/2.5)*2.5
             return 'PDC + '+leste+' kg'
@@ -1345,25 +1323,12 @@
         if(pdc>0)return 'PDC ('+pdc+' kg)'
         return 'PDC'
       }
-      if(unit==='PDC')return 'PDC'
-      if(unit==='% PDC'){
-        if(poidsJoueur){
-          const charge=poidsJoueur*parseFloat(exo.rpe)/100
-          return Math.round(charge/2.5)*2.5+' kg'
-        }
-        return exo.rpe+'% PDC'
-      }
-      const kg2=calculerChargeUnit(exo)
-      if(kg2!==null)return kg2+' kg'
-      if(unit==='%')return exo.rpe+'%'
-      if(unit==='Vitesse (m/s)'||unit==='VITESSE')return exo.rpe+' m/s'
-      if(unit==='kg')return exo.rpe+' kg'
-      if(unit==='W')return exo.rpe+' W'
-      return 'RPE '+exo.rpe
+      return labelCharge(exo.exercice, exo.rpe, exo.nbReps, maxTestes, ratios, unit, poidsJoueur)
     }
+
     // Calcule la charge recommandée pour une série variable spécifique
     function labelChargeRecoForSerie(exo, serieData){
-      const fakeExo=Object.assign({},exo,{rpe:serieData.intensity})
+      const fakeExo=Object.assign({},exo,{rpe:serieData.intensity, nbReps:serieData.reps})
       return labelChargeReco(fakeExo)
     }
     // Calcule la charge réelle à enregistrer selon le mode de traction
@@ -1496,10 +1461,8 @@
           const eSnap=await getDoc(doc(db,'config','exercices'))
           if(eSnap.exists()) exercicesList=eSnap.data().liste||[]
         }
-        if(!Object.keys(maxTestes).length){
-          const mx=await getDoc(doc(db,'maxTestes',joueurActif.id))
-          maxTestes=mx.exists()?mx.data():{}
-        }
+        const mx=await getDoc(doc(db,'maxTestes',joueurActif.id))
+        maxTestes=mx.exists()?mx.data():{}
         if(!poidsJoueur){
           const pSnap=await getDocs(query(collection(db,'poids'), where('joueurId','==',joueurActif.id)))
           const pDocs=pSnap.docs.map(d=>d.data()).filter(p=>p.date)
@@ -1616,11 +1579,11 @@
               const exoData=exercicesList.find(e=>e.nom===exo.exercice)
               const photoUrl=exoData?.photo||''
               
-              const unit=exo.intensityUnit||'RPE'
+              const unit=exo.intensityUnit||exo.intensityType||'RPE'
               const reco=labelChargeReco(exo)
               const traction=isTraction(exo.exercice)
-              const unitLabel=unit==='Vitesse (m/s)'?'m/s':unit
-              const hasInput=(unit!=='RPE'&&unit!=='kg'&&unit!=='W')||traction // RPE/kg/W = pas de saisie, sauf pour les tractions/dips
+              const unitLabel = unit === 'PCT' || unit === '%' ? '%' : unit === 'Vitesse (m/s)' || unit === 'VITESSE' ? 'm/s' : unit === 'PDC' ? 'PDC' : unit === '% PDC' ? '% PDC' : unit === 'kg' ? 'kg' : unit === 'W' ? 'W' : 'RPE'
+              const hasInput=(unit!=='RPE'&&unit!=='kg'&&unit!=='W'&&unit!=='PDC')||traction // RPE/kg/W/PDC = pas de saisie, sauf pour les tractions/dips
               
               const eEl=document.createElement('div');eEl.className='seance-exo'
               eEl.style.display='flex'
@@ -1632,11 +1595,18 @@
                 photoHtml=`<img src="${photoUrl}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'" />`
               }
               
+              const repsDisplay = clusterRepsDisplay(exo)
+              const clusterSuffix = exo.clusterSplit?.length > 1 ? ' (cluster)' : ''
+              const repsSuffix = (repsDisplay && !exo.variableSeries && !(exo.clusterSplit?.length > 1)) ? ' reps' : ''
+              const paramsText = unit === 'PDC'
+                ? `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix} · PDC`
+                : `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix}${repsSuffix} · ${unitLabel} ${exo.rpe}`
+              
               eEl.innerHTML=`
                 ${photoHtml}
                 <div style="flex:1;">
                   <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${exo.numExo||''}. ${exo.exercice}</div>
-                  <div class="seance-exo-params">${exo.variableSeries&&exo.seriesData?.length?exo.seriesData.map((s,i)=>`S${i+1}: ${s.reps}×${s.intensity}${unitLabel}`).join(' · '):`${exo.nbSets} séries × ${exo.nbReps} reps · ${unitLabel} ${exo.rpe}`}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
+                  <div class="seance-exo-params">${paramsText}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
                   <div class="seance-charge">${reco}</div>
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
                 </div>
