@@ -2407,11 +2407,14 @@
         } else if(planningScope==='equipe' && ev.source==='planning' && height>28){
           playerLine = `<div class="ev-player-tag" style="opacity:.5;">👥 Collectif</div>`
         }
+        const evDesc = ev.description || ev.notes || ''
+        const descShort = evDesc.length > 60 ? evDesc.substring(0,60)+'…' : evDesc
         block.innerHTML=`
           <div class="tl-event-title">${title}</div>
           ${height>32?`<div class="tl-event-time">${timeStr}</div>`:''}
           ${playerLine}
           ${height>60&&ev.lieu?`<div class="tl-event-lieu">📍 ${ev.lieu}</div>`:''}
+          ${height>75&&descShort?`<div class="tl-event-lieu" style="margin-top:2px;opacity:.7;">📝 ${descShort}</div>`:''}
         `
         block.onclick = () => openDayModal(dateStr)
         colsWrap.appendChild(block)
@@ -2544,6 +2547,7 @@
             (ev.lieu?'<div class="day-event-lieu" style="color:'+text+';opacity:.6;">📍 '+ev.lieu+'</div>':'')+
             joueursHtml+
             (ev.description?'<div class="day-event-desc" style="color:'+text+';opacity:.7;margin-top:6px;font-size:12px;line-height:1.5;">'+ev.description+'</div>':'')+
+            (ev.notes?'<div class="day-event-desc" style="color:'+text+';opacity:.7;margin-top:6px;font-size:12px;line-height:1.5;">📝 '+ev.notes+'</div>':'')+
             '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">'+
               '<span class="day-event-badge" style="background:'+base+'33;color:'+text+';border:1px solid '+base+'66;">'+typeName+'</span>'+
               (ev.intensity?'<span class="day-event-intensity" style="color:'+text+';opacity:.8;">'+(intensityLabels[ev.intensity]||'')+'</span>':'')+
