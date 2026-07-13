@@ -1027,7 +1027,9 @@
       }
 
       const col=COUL[j.poste]||'#444'
-      // Réinitialiser les données de module pour qu'elles soient rechargées à la demande
+      // Réinitialiser les caches et données de module pour qu'elles soient rechargées à la demande
+      clearPlayerCache()
+      planningCache=null
       maxTestes={}
       poidsJoueur=null
       wellnessHistory=[]
@@ -1084,28 +1086,18 @@
     // on utilise celle qui est déjà définie dans le contexte GPS
 
     // ===== CACHE INTELLIGENT =====
-    const playerCache = {
-      gps: null,
-      seances: null,
-      planning: null,
-      wellness: null,
-      timestamps: {}
-    }
-    
-    const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
-    
-    function isCacheValid(key) {
-      return playerCache[key] && playerCache.timestamps[key] && 
-             (Date.now() - playerCache.timestamps[key] < CACHE_DURATION)
-    }
+    const playerCache = {}
     
     function setCache(key, data) {
       playerCache[key] = data
-      playerCache.timestamps[key] = Date.now()
     }
     
     function getCache(key) {
-      return isCacheValid(key) ? playerCache[key] : null
+      return playerCache[key] || null
+    }
+    
+    function clearPlayerCache() {
+      Object.keys(playerCache).forEach(k => delete playerCache[k])
     }
 
     // ===== NAVIGATION — CHARGEMENT DIRECT INTELLIGENT =====
@@ -1119,24 +1111,31 @@
       // chargée à l'ouverture de l'app ; chaque module charge ses propres
       // données de manière scopée au moment où on y entre).
       if(screen==='wellness'){
-        if(joueurActif) loadWellnessHistory(joueurActif)
+        if(joueurActif){
+          const wKey='wellness_'+joueurActif.id+'_'+aujourdhui
+          if(!getCache(wKey)) loadWellnessHistory(joueurActif)
+        }
       }
       if(screen==='seance'){
         const toggleEl=document.getElementById('seance-saisie-toggle')
         if(toggleEl)toggleEl.checked=saisieUniqueMode
         const labelEl=document.getElementById('seance-saisie-toggle-label')
         if(labelEl)labelEl.textContent=saisieUniqueMode?"Toutes les séries d'un coup":'Série par série'
-        // Vérifier que l'élément existe avant de charger
         const seanceContent = document.getElementById('seance-content')
-        if(seanceContent) chargerSeance() // Chargement direct
+        if(seanceContent){
+          chargerSeance()
+          // Preload previous week in background (2 weeks of data available)
+          const prevWeek=getLundi(new Date(currentWeekStart.getTime()-7*24*60*60*1000))
+          const prevKey='seances_v3_'+(joueurActif?.id||'none')+'_'+JSON.stringify({semaine:prevWeek})
+          if(!getCache(prevKey)) chargerSeance({semaine:prevWeek,_silent:true})
+        }
       }
       if(screen==='planning'){
-        chargerPlanning() // Chargement direct
+        chargerPlanning()
       }
       if(screen==='gps'){
-        // Vérifier que l'élément existe avant de charger
         const gpsContent = document.getElementById('gps-content')
-        if(gpsContent) chargerGPS() // Chargement direct
+        if(gpsContent) chargerGPS()
       }
     }
 
@@ -1219,20 +1218,23 @@
 
     async function loadWellnessHistory(j){
       if(!j) return
+      const wKey='wellness_'+j.id+'_'+aujourdhui
+      if(getCache(wKey)){
+        wellnessHistory=getCache(wKey).history
+        return
+      }
       wellnessHistory=[]
       try{
         const d=new Date()
         d.setDate(d.getDate()-30)
         const startStr=dateStrLocal(d)
 
-        // Requête scopée au joueur uniquement (index simple sur joueurId),
-        // puis filtrage côté client sur les 30 derniers jours.
-        // Cela charge uniquement les données du joueur, jamais celles des autres.
         const q=query(collection(db,'wellness'), where('joueurId','==',j.id))
         const snap=await getDocs(q)
         wellnessHistory=snap.docs.map(d=>d.data())
           .filter(w=> w.date >= startStr && w.date !== aujourdhui)
           .sort((a,b)=>b.date.localeCompare(a.date))
+        setCache(wKey,{history:wellnessHistory})
       }catch(e){ console.error('Erreur historique wellness:', e) }
     }
     function getHistoryBaseline(metric){
@@ -1431,17 +1433,18 @@
     }
 
     async function chargerSeance(options = {}) {
-      const c = document.getElementById('seance-content');
+      const realC = document.getElementById('seance-content');
+      const silent = options._silent === true
+      const c = silent ? document.createElement('div') : realC
       
-      // Vérifier le cache d'abord avec clé spécifique aux options (v2 pour invalider l'ancien cache)
-      const cacheKey = 'seances_v2_' + JSON.stringify(options)
+      const cacheKey = 'seances_v3_' + (joueurActif?.id||'none') + '_' + JSON.stringify({...options, _silent: undefined})
       const cachedData = getCache(cacheKey)
       if (cachedData) {
-        c.innerHTML = cachedData.html
+        if (!silent) realC.innerHTML = cachedData.html
         return
       }
       
-      c.innerHTML = '<div class="empty-msg">⏳ Chargement de tes séances...</div>'
+      if(!silent) c.innerHTML = '<div class="empty-msg">⏳ Chargement de tes séances...</div>'
       if(!joueurActif)return
 
       // Chargement à la demande des données nécessaires à Ma Séance
@@ -1473,7 +1476,7 @@
       const lundi = new Date(semaineTarget)
       const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
-      document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
+      if(!silent) document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
 
       try{
         // Scoper la requête à la semaine demandée (index simple sur date),
@@ -1509,15 +1512,6 @@
             )
           )
         })
-
-        console.log('[Player-App] joueurActif.id:', joueurActif.id, 'seances semaine:', seancesSemaine.length, 'seances joueur:', seancesJoueur.length)
-        console.log('[Player-App] détail séances:', seancesSemaine.map(s => ({
-          id: s.id,
-          date: s.date,
-          blocs: s.blocs?.length || 0,
-          blocsBlesses: s.blocsBlesses?.length || 0,
-          present: seancesJoueur.some(sj => sj.id === s.id)
-        })))
 
         if(!seancesJoueur.length){
           const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏋️</div>Tu n\'as pas de séance cette semaine.</div>'
@@ -1982,8 +1976,6 @@
     async function chargerPlanning(){
       if(!joueurActif) return
       
-      planningCache = null
-      
       const lundi = getLundi(new Date(currentWeekStart))
       const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
@@ -1998,7 +1990,6 @@
       selectedDayIdx = defaultIdx
       buildDaysStrip(lundi, nowStr)
       
-      // Mettre à jour le titre selon statut
       const _estBlesse = joueurActif?.statut === 'blesse'
       if(planningScope==='moi'){
         document.getElementById('planning-screen-title').textContent = _estBlesse ? 'Mon programme rééducation' : 'Mon planning'
@@ -2006,7 +1997,21 @@
         document.getElementById('planning-screen-title').textContent = 'Planning équipe'
       }
       
-      // Charger les types d'événements personnalisés uniquement à la demande
+      // Vérifier le cache d'abord (clé incluant le joueur + semaine)
+      const pKey='planning_'+joueurActif.id+'_'+dateStrLocal(lundi)
+      const cached=getCache(pKey)
+      if(cached){
+        planningCache=cached
+        const filtered=filterByScope(cached.planningAll,cached.creneauxAll)
+        buildWeekSlides(lundi,filtered.planning,filtered.creneaux,nowStr)
+        buildWeekOverview(lundi,filtered.planning,filtered.creneaux,nowStr)
+        buildLegend()
+        goToSlide(selectedDayIdx,false)
+        updateDaysPillSelection()
+        updateDotVisibility(lundi,filtered.planning,filtered.creneaux)
+        return
+      }
+      
       try{ await loadEventTypesFromFirebase() }catch(e){}
 
       try{
@@ -2039,21 +2044,9 @@
             return d && d >= parseDate(lundiStr) && d <= parseDate(dimancheStr)
           })
         planningCache = { planningAll, creneauxAll, lundi, nowStr }
+        setCache(pKey, planningCache)
         
         const filtered = filterByScope(planningAll, creneauxAll)
-        
-        // Logs de débogage pour comprendre pourquoi le planning ne s'affiche pas
-        console.log('Planning Debug:', {
-          planningAllLength: planningAll.length,
-          creneauxAllLength: creneauxAll.length,
-          filteredPlanningLength: filtered.planning.length,
-          filteredCreneauxLength: filtered.creneaux.length,
-          planningScope: planningScope,
-          joueurActifId: joueurActif?.id,
-          joueurActifStatut: joueurActif?.statut,
-          planningAllSample: planningAll.slice(0, 2),
-          filteredPlanningSample: filtered.planning.slice(0, 2)
-        })
         
         buildWeekSlides(lundi, filtered.planning, filtered.creneaux, nowStr)
         buildWeekOverview(lundi, filtered.planning, filtered.creneaux, nowStr)
@@ -2572,7 +2565,7 @@
   const c = document.getElementById('gps-content')
   
   // Vérifier le cache d'abord avec clé spécifique aux options
-  const cacheKey = 'gps_' + JSON.stringify(options)
+  const cacheKey = 'gps_' + (joueurActif?.id||'none') + '_' + JSON.stringify(options)
   const cachedData = getCache(cacheKey)
   if (cachedData) {
     c.innerHTML = cachedData.html
