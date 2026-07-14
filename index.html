@@ -3584,8 +3584,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         const accB23 = totalAccB23 / hist.length
         
         const vmax = Math.max(...hist.map(h => h.vmax || 0), 0)
-        const vmaxRef = Math.max(s.vmax6m || s.vmaxSaison || 0, vmax)
-        const pctVmax = vmaxRef > 0 ? Math.round((vmax / vmaxRef) * 100) : 0
+        const vmaxPctVals = hist.map(h => h.vmaxPct).filter(v => v != null && v > 0)
+        const pctVmax = vmaxPctVals.length > 0 ? +(vmaxPctVals.reduce((s, v) => s + v, 0) / vmaxPctVals.length).toFixed(1) : 0
         
         return {
           distHI,
