@@ -3273,7 +3273,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             <td style="color:#FECC00;font-weight:600;">${(h.mMin||0).toFixed(1)}</td>
             <td style="color:#378ADD;font-weight:600;">${Math.round(h.volHI||0)}</td>
             <td style="color:#1D9E75;font-weight:600;">${(h.vmax||0).toFixed(1)}</td>
-            <td style="color:#5DCAA5;font-weight:600;">${h.vmaxPct != null ? h.vmaxPct.toFixed(1)+'%' : '—'}</td>
+            <td style="color:#5DCAA5;font-weight:600;">${h.vmaxPct > 0 ? h.vmaxPct.toFixed(1)+'%' : '—'}</td>
           `
           tr.onclick = () => afficherDetailSeance(h, zoneSeances)
           tbody.appendChild(tr)
@@ -4320,7 +4320,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             ${renderMetricRow('HI/min', h.hiMin, '', '#EF9F27')}
             ${renderMetricRow('Volume HI', h.volHI, 'UA', '#378ADD')}
             ${renderMetricRow('Vmax', h.vmax, 'km/h', '#1D9E75')}
-            ${renderMetricRow('% Vmax', h.vmaxPct, '%', '#5DCAA5')}
+            ${renderMetricRow('% Vmax', h.vmaxPct > 0 ? h.vmaxPct : null, '%', '#5DCAA5')}
             ${renderMetricRow('Acc B2', h.accB2, '', '#EF9F27')}
             ${renderMetricRow('Acc B3', h.accB3, '', '#EF9F27')}
             ${renderMetricRow('Load', h.load, 'UA', '#7F77DD')}
