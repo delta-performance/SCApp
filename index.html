@@ -522,6 +522,20 @@
       <div id="gps-content"><div class="empty-msg">Chargement...</div></div>
     </div>
 
+    <!-- ÉNERGÉTIQUE -->
+    <div class="screen" id="screen-energetique">
+      <div class="section-header">
+        <button class="back-btn" onclick="allerVers('menu')">← Retour</button>
+        <div class="section-title">Énergétique</div>
+      </div>
+      <div class="planning-nav" style="padding:8px 0;">
+        <button class="btn-nav-week" onclick="semainePrecedenteEnergetique()">‹</button>
+        <div class="planning-week-label" id="energetique-week-label">Cette semaine</div>
+        <button class="btn-nav-week" onclick="semaineSuivanteEnergetique()">›</button>
+      </div>
+      <div id="energetique-content"><div class="empty-msg">Chargement...</div></div>
+    </div>
+
   </div>
 
   <script type="module">
@@ -677,7 +691,8 @@
       { id: 'wellness', label: 'Wellness', sub: 'Du jour', icon: '💚', active: true },
       { id: 'seance', label: 'Ma séance', sub: 'Programme muscu', icon: '🏋️', active: true },
       { id: 'planning', label: 'Mon planning', sub: 'Semaine en cours', icon: '📅', active: false, comingSoonText: 'Cette fonctionnalité arrive bientôt ! Nous la préparons pour l\'équipe.' },
-      { id: 'gps', label: 'Stats GPS', sub: 'Mes données', icon: '📡', active: true }
+      { id: 'gps', label: 'Stats GPS', sub: 'Mes données', icon: '📡', active: true },
+      { id: 'energetique', label: 'Énergétique', sub: 'Course, vélo, ski...', icon: '🏃', active: false, comingSoonText: 'Cette fonctionnalité arrive bientôt ! Nous la préparons pour l\'équipe.' }
     ]
 
     window.renderMenuGrid = function() {
@@ -685,7 +700,7 @@
       if (!grid) return
       
       const data = window.__playerModulesData || {}
-      const defaultStates = { wellness: true, seance: true, planning: false, gps: true }
+      const defaultStates = { wellness: true, seance: true, planning: false, gps: true, energetique: false }
 
       grid.innerHTML = MODULES.map(m => {
         // 1. Déterminer si le module est actif globalement
@@ -1136,6 +1151,9 @@
       if(screen==='gps'){
         const gpsContent = document.getElementById('gps-content')
         if(gpsContent) chargerGPS()
+      }
+      if(screen==='energetique'){
+        chargerEnergetique()
       }
     }
 
@@ -1684,6 +1702,110 @@
     window.semaineSuivanteSeance=function(){ 
       currentWeekStart=getLundi(new Date(currentWeekStart.getTime()+7*24*60*60*1000))
       chargerSeance({ semaine: currentWeekStart }) 
+    }
+
+    // ===== ÉNERGÉTIQUE (course, vélo, ski...) =====
+    let currentWeekStartEnergetique=getLundi(new Date())
+    window.semainePrecedenteEnergetique=function(){
+      currentWeekStartEnergetique=getLundi(new Date(currentWeekStartEnergetique.getTime()-7*24*60*60*1000))
+      chargerEnergetique({ semaine: currentWeekStartEnergetique })
+    }
+    window.semaineSuivanteEnergetique=function(){
+      currentWeekStartEnergetique=getLundi(new Date(currentWeekStartEnergetique.getTime()+7*24*60*60*1000))
+      chargerEnergetique({ semaine: currentWeekStartEnergetique })
+    }
+
+    function fmtDistanceEnergetique(m){
+      if(!m) return '—'
+      if(m>=1000) return (m/1000).toFixed(2).replace(/\.00$/,'') + ' km'
+      return Math.round(m) + ' m'
+    }
+    function distancePerRepEnergetique(exo){
+      if(exo.type==='course' && exo.trace) return exo.trace.distanceParRep || 0
+      return exo.distanceManuelle || 0
+    }
+    function distanceTotaleEnergetique(exo){
+      return Math.round(distancePerRepEnergetique(exo) * (exo.nbReps||1) * (exo.nbSeries||1))
+    }
+    const TYPE_ICONS_ENERGETIQUE = { course:'🏃', velo:'🚴', ski:'⛷️', natation:'🏊', autre:'🔧' }
+
+    async function chargerEnergetique(options = {}) {
+      const c = document.getElementById('energetique-content')
+      if(!c || !joueurActif) return
+      c.innerHTML = '<div class="empty-msg">⏳ Chargement...</div>'
+
+      const semaineTarget = options.semaine || currentWeekStartEnergetique
+      const lundi = new Date(semaineTarget)
+      const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
+      const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
+      const labelEl = document.getElementById('energetique-week-label')
+      if(labelEl) labelEl.textContent = fmt(lundi) + ' – ' + fmt(dimanche)
+
+      try {
+        const lundiStr = dateStrLocal(lundi)
+        const dimancheStr = dateStrLocal(dimanche)
+        const q = query(collection(db, 'seancesEnergetique'), where('date', '>=', lundiStr), where('date', '<=', dimancheStr))
+        const snap = await getDocs(q)
+        const seancesSemaine = snap.docs.map(d => ({id: d.id, ...d.data()}))
+          .filter(s => s.statut === 'publie')
+          .sort((a,b) => (a.date || '').localeCompare(b.date || ''))
+
+        const estBlesse = joueurActif.statut === 'blesse'
+        const seancesJoueur = seancesSemaine.filter(sa => {
+          const blocs = estBlesse ? (sa.blocsBlesses || []) : (sa.blocs || [])
+          return blocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+        })
+
+        if(!seancesJoueur.length){
+          c.innerHTML = '<div class="empty-msg"><div class="empty-icon">🏃</div>Aucune séance énergétique cette semaine.</div>'
+          return
+        }
+
+        c.innerHTML = ''
+        seancesJoueur.forEach(sa => {
+          const blocs = estBlesse ? (sa.blocsBlesses || []) : (sa.blocs || [])
+          const card = document.createElement('div')
+          card.className = 'seance-bloc'
+          card.style.marginBottom = '16px'
+          const header = document.createElement('div')
+          header.className = 'seance-bloc-header'
+          header.style.background = '#222'
+          header.innerHTML = `<span>${sa.date?new Date(sa.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):''}${sa.theme?' · '+sa.theme:''}</span>`
+          card.appendChild(header)
+          blocs.forEach(bloc => {
+            const g = bloc.groupes?.find(g => g.joueurs?.includes(joueurActif.id))
+            if(!g) return
+            const bEl = document.createElement('div')
+            bEl.className = 'seance-bloc'
+            bEl.style.border = 'none'; bEl.style.borderRadius = '0'; bEl.style.marginBottom = '0'
+            bEl.innerHTML = `<div class="seance-bloc-header">${bloc.nom}<span class="seance-groupe-badge">${g.nom}</span></div>${bloc.comment?`<div class="seance-bloc-comment">📝 ${bloc.comment}</div>`:''}`
+            g.exercices?.forEach(exo => {
+              if(!exo.nom) return
+              const perRep = distancePerRepEnergetique(exo)
+              const total = distanceTotaleEnergetique(exo)
+              const distText = exo.type==='course'
+                ? (exo.trace ? `${fmtDistanceEnergetique(perRep)} / rép · ${fmtDistanceEnergetique(total)} total` : 'Parcours non tracé')
+                : (perRep ? `${fmtDistanceEnergetique(perRep)} / rép · ${fmtDistanceEnergetique(total)} total` : '')
+              const eEl = document.createElement('div')
+              eEl.className = 'seance-exo'
+              eEl.innerHTML = `
+                <div style="flex:1;">
+                  <div class="seance-exo-nom">${TYPE_ICONS_ENERGETIQUE[exo.type]||''} ${exo.nom}</div>
+                  <div class="seance-exo-params">${exo.nbSeries||1} séries × ${exo.nbReps||1} rép.${exo.recupInter?' · récup '+exo.recupInter:''}${exo.recupSeries?' · récup série '+exo.recupSeries:''}</div>
+                  ${distText?`<div class="seance-charge">${distText}</div>`:''}
+                  ${exo.intensite?`<div class="seance-exo-params">Intensité : ${exo.intensite}</div>`:''}
+                  ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
+                </div>`
+              bEl.appendChild(eEl)
+            })
+            card.appendChild(bEl)
+          })
+          c.appendChild(card)
+        })
+      } catch(e) {
+        console.error('Erreur chargement énergétique:', e)
+        c.innerHTML = '<div class="empty-msg">Erreur de chargement.</div>'
+      }
     }
 
     window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId,reps){
