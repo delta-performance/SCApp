@@ -3256,6 +3256,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           <th style="color:#FECC00;">m/min</th>
           <th style="color:#378ADD;">Vol HI</th>
           <th style="color:#1D9E75;">Vmax</th>
+          <th style="color:#5DCAA5;">% Vmax</th>
         </tr></thead>`
         const tbody = document.createElement('tbody')
         ;[...hist].sort((a,b) => {
@@ -3272,6 +3273,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             <td style="color:#FECC00;font-weight:600;">${(h.mMin||0).toFixed(1)}</td>
             <td style="color:#378ADD;font-weight:600;">${Math.round(h.volHI||0)}</td>
             <td style="color:#1D9E75;font-weight:600;">${(h.vmax||0).toFixed(1)}</td>
+            <td style="color:#5DCAA5;font-weight:600;">${h.vmaxPct != null ? h.vmaxPct.toFixed(1)+'%' : '—'}</td>
           `
           tr.onclick = () => afficherDetailSeance(h, zoneSeances)
           tbody.appendChild(tr)
