@@ -1731,7 +1731,7 @@
               const nrgQ = query(collection(db, 'seancesEnergetique'), where('date', '==', sa.date))
               const nrgSnap = await getDocs(nrgQ)
               const nrgSeances = nrgSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-                .filter(s => s.statut === 'publie')
+                .filter(s => s.statut === 'publie' && !s.masquee)
               const nrgJoueur = nrgSeances.filter(nrg => {
                 const allBlocs = [...(nrg.blocs || []), ...(nrg.blocsBlesses || [])]
                 return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
@@ -2003,6 +2003,15 @@
         const f = tToPx(c.p[0].x, c.p[0].y); ctx.moveTo(f.x, f.y)
         for(let i = 1; i < c.p.length; i++) { const p = tToPx(c.p[i].x, c.p[i].y); ctx.lineTo(p.x, p.y) }
         ctx.stroke()
+        // Distance label
+        if(c.d) {
+          const midIdx = Math.floor(c.p.length / 2)
+          const mid = tToPx(c.p[midIdx].x, c.p[midIdx].y)
+          const txt = c.d + 'm'
+          ctx.fillStyle = '#0f0f0f'; ctx.fillRect(mid.x - (txt.length * 3 + 3), mid.y - 7, txt.length * 6 + 6, 12)
+          ctx.fillStyle = c.c || '#3b82f6'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+          ctx.fillText(txt, mid.x, mid.y + 2); ctx.textAlign = 'left'
+        }
       })
       // Flèches
       trace.fleches?.forEach(f => {
@@ -2016,6 +2025,14 @@
         ctx.lineTo(b.x - 8 * Math.cos(angle - Math.PI / 7), b.y - 8 * Math.sin(angle - Math.PI / 7))
         ctx.lineTo(b.x - 8 * Math.cos(angle + Math.PI / 7), b.y - 8 * Math.sin(angle + Math.PI / 7))
         ctx.closePath(); ctx.fillStyle = f.c || '#16C784'; ctx.fill()
+        // Distance label
+        if(f.d) {
+          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+          const txt = f.d + 'm'
+          ctx.fillStyle = '#0f0f0f'; ctx.fillRect(mid.x - (txt.length * 3 + 3), mid.y - 7, txt.length * 6 + 6, 12)
+          ctx.fillStyle = f.c || '#16C784'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+          ctx.fillText(txt, mid.x, mid.y + 2); ctx.textAlign = 'left'
+        }
       })
       // Plots
       trace.plots?.forEach(p => {
@@ -2045,7 +2062,7 @@
         const q = query(collection(db, 'seancesEnergetique'), where('date', '>=', lundiStr), where('date', '<=', dimancheStr))
         const snap = await getDocs(q)
         const seancesSemaine = snap.docs.map(d => ({id: d.id, ...d.data()}))
-          .filter(s => s.statut === 'publie')
+          .filter(s => s.statut === 'publie' && !s.masquee)
           .sort((a,b) => (a.date || '').localeCompare(b.date || ''))
 
         const estBlesse = joueurActif.statut === 'blesse'
