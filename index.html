@@ -1357,6 +1357,16 @@
       return exo.nbReps || ''
     }
 
+    // Affiche les intensités/pourcentages de chaque série variable (ex: S1:80 % S2:75 %)
+    function variableSeriesIntensityDisplay(exo){
+      if (exo.variableSeries && exo.seriesData?.length > 0) {
+        const unit = exo.intensityUnit || exo.intensityType || 'RPE'
+        const unitLabel = unit === 'PCT' || unit === '%' ? '%' : unit === 'Vitesse (m/s)' || unit === 'VITESSE' ? 'm/s' : unit === '% PDC' ? '% PDC' : unit === 'kg' ? 'kg' : unit === 'W' ? 'W' : 'RPE'
+        return ' · ' + exo.seriesData.map((s, i) => `S${i+1}:${s.intensity ?? exo.rpe} ${unitLabel}`).join(' ')
+      }
+      return ''
+    }
+
     // Calcule la charge recommandée pour un exercice (label affiché)
     function labelChargeReco(exo){
       const unit=exo.intensityUnit||exo.intensityType||'RPE'
@@ -1645,7 +1655,7 @@
               const repsSuffix = (repsDisplay && !exo.variableSeries && !(exo.clusterSplit?.length > 1)) ? ' reps' : ''
               const paramsText = unit === 'PDC'
                 ? `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix} · PDC`
-                : `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix}${repsSuffix} · ${unitLabel} ${exo.rpe}`
+                : `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix}${repsSuffix} · ${unitLabel} ${exo.rpe}${variableSeriesIntensityDisplay(exo)}`
               
               eEl.innerHTML=`
                 ${photoHtml}
@@ -1684,8 +1694,8 @@
                       gr.appendChild(box)
                     }
                   }
-                } else if(saisieUniqueMode){
-                  // Saisie unique → un seul input pour toutes les séries
+                } else if(saisieUniqueMode && !exo.variableSeries){
+                  // Saisie unique → un seul input pour toutes les séries (sauf splits reps/pourcentage)
                   const clefS1=clefBase+'_s1'
                   const vs=chargesReelles[clefS1]||''
                   const ckId='ck_'+Math.random().toString(36).slice(2)
@@ -1700,7 +1710,8 @@
                     const ckId='ck_'+Math.random().toString(36).slice(2)
                     const sData=exo.variableSeries&&exo.seriesData?.[s-1]
                     const serieReco=sData?labelChargeRecoForSerie(exo,sData):reco
-                    const serieRepsLabel=sData?` · ${sData.reps} reps`:''
+                    const seriePctLabel=sData?` · ${sData.intensity ?? exo.rpe} ${unitLabel}`:''
+                    const serieRepsLabel=sData?` · ${sData.reps} reps${seriePctLabel}`:''
                     const serieReps=sData?sData.reps:null
                     const box=document.createElement('div');box.className='serie-box'
                     box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="0.5" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
@@ -1731,7 +1742,7 @@
               const nrgQ = query(collection(db, 'seancesEnergetique'), where('date', '==', sa.date))
               const nrgSnap = await getDocs(nrgQ)
               const nrgSeances = nrgSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-                .filter(s => s.statut === 'publie' && !s.masquee)
+                .filter(s => s.statut === 'publie')
               const nrgJoueur = nrgSeances.filter(nrg => {
                 const allBlocs = [...(nrg.blocs || []), ...(nrg.blocsBlesses || [])]
                 return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
@@ -2062,7 +2073,7 @@
         const q = query(collection(db, 'seancesEnergetique'), where('date', '>=', lundiStr), where('date', '<=', dimancheStr))
         const snap = await getDocs(q)
         const seancesSemaine = snap.docs.map(d => ({id: d.id, ...d.data()}))
-          .filter(s => s.statut === 'publie' && !s.masquee)
+          .filter(s => s.statut === 'publie')
           .sort((a,b) => (a.date || '').localeCompare(b.date || ''))
 
         const estBlesse = joueurActif.statut === 'blesse'
