@@ -2621,8 +2621,22 @@
                 if(exoTimerEl) eEl.appendChild(exoTimerEl)
               }
               bEl.appendChild(eEl)
+              // Récupération après cet exercice
+              if(exo.recupApres){
+                const recupEl = document.createElement('div')
+                recupEl.style.cssText = 'padding:6px 14px;text-align:center;font-size:11px;color:#FECC00;background:#FECC0008;border-bottom:1px solid #111;'
+                recupEl.innerHTML = `⏱ Récupération : ${formatMmSs(parseMmSs(String(exo.recupApres)+'s'))}`
+                bEl.appendChild(recupEl)
+              }
             })
             card.appendChild(bEl)
+            // Récupération après ce bloc
+            if(bloc.recupApres){
+              const blocRecupEl = document.createElement('div')
+              blocRecupEl.style.cssText = 'padding:8px 14px;text-align:center;font-size:12px;font-weight:600;color:#FECC00;background:#FECC0011;border:1px solid #FECC0033;border-radius:8px;margin:8px 0;'
+              blocRecupEl.innerHTML = `⏱ Récupération entre blocs : ${formatMmSs(parseMmSs(String(bloc.recupApres)+'s'))}`
+              card.appendChild(blocRecupEl)
+            }
           })
 
           if (sa.timer && sa.timer.dureeMin > 0) {
