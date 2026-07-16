@@ -2202,6 +2202,10 @@
         // If next phase is manual, stop the interval (wait for user)
         if(phases[phaseIdx].manual){
           clearTimer()
+        } else if(isRunning){
+          // Restart interval for countdown phases (e.g. recovery after manual distance)
+          clearTimer()
+          nrgExoTimers[timerKey] = setInterval(tick, 1000)
         }
       }
 
@@ -2573,6 +2577,15 @@
               else if(unite === 'calories' && calTotal) chargeText = `${fmtCalEnergetique(calTotal)} total`
               else if(unite === 'temps' && tTotal) chargeText = `${fmtTempsEnergetique(tTotal)} total`
 
+              // Objectif (unité inverse)
+              let objText = ''
+              if(unite === 'temps'){
+                if(exo.objectifDistance) objText = `🎯 Objectif : ${fmtDistanceEnergetique(exo.objectifDistance)}`
+                else if(exo.objectifCalories) objText = `🎯 Objectif : ${exo.objectifCalories} cal`
+              } else {
+                if(exo.objectifTemps) objText = `🎯 Objectif : ${formatMmSs(parseMmSs(String(exo.objectifTemps)+'s'))}`
+              }
+
               const typeLabel = TYPE_LABELS_ENERGETIQUE[exo.type] || 'Autre'
               const typeIcon = TYPE_ICONS_ENERGETIQUE[exo.type] || ''
               const timerConfigText = nrgResumeTimerExo(exo)
@@ -2584,6 +2597,7 @@
                   <div class="seance-exo-nom">${typeIcon} ${exo.nom}<span class="nrg-exo-type-badge ${exo.type||'autre'}">${typeLabel}</span></div>
                   <div class="seance-exo-params">${exo.nbSeries||1} séries × ${exo.nbReps||1} rép.${uniteVal?' × '+uniteVal:''}${recupInfo}</div>
                   ${chargeText?`<div class="seance-charge">${chargeText}</div>`:''}
+                  ${objText?`<div class="seance-exo-params">${objText}</div>`:''}
                   ${exo.intensite?`<div class="seance-exo-params">🎯 Intensité : ${exo.intensite}</div>`:''}
                   ${hasTrace?`<div class="seance-exo-params">🗺️ Terrain : parcours tracé</div>`:''}
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
@@ -3691,8 +3705,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
   function calculerVmaxFiltre(hist) {
     if (!hist || hist.length === 0) return { vmax: 0, pctVmax: 0 }
     const vmaxPeriode = Math.max(...hist.map(h => h.vmax || 0), 0)
-    // Vmax de référence = vmax 6 mois stockée (ou vmax période si plus élevée)
-    const vmaxRef = Math.max(s.vmax6m || s.vmaxSaison || 0, vmaxPeriode)
+    // Vmax de référence = vmax des 6 derniers mois (depuis Firestore), PAS la vmax de la période
+    const vmaxRef = s.vmax6m || s.vmaxSaison || 0
     const pctVmax = vmaxRef > 0 ? Math.round((vmaxPeriode / vmaxRef) * 100) : 0
     return { vmax: vmaxPeriode, vmaxRef, pctVmax }
       }
@@ -3703,8 +3717,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       hero.innerHTML = `
         <div class="gps-hero-item">
           <div class="gps-hero-label">% Vmax 6 mois</div>
-          <div class="gps-hero-val" id="hero-pctvmax" style="color:#FECC00;">${s.pctVmax6m != null ? s.pctVmax6m + '%' : '—%'}</div>
-          <div class="gps-hero-sub" id="hero-vmax">${s.vmax6m != null ? Number(s.vmax6m).toFixed(2) : '—'} km/h</div>
+          <div class="gps-hero-val" id="hero-pctvmax" style="color:#FECC00;">—%</div>
+          <div class="gps-hero-sub" id="hero-vmax">— km/h</div>
         </div>
         <div class="gps-hero-item">
           <div class="gps-hero-label">Vmax 6 mois</div>
@@ -3716,8 +3730,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
       // Mettre à jour les valeurs du hero selon le filtre
       function updateHero(hist) {
-        const { vmax } = calculerVmaxFiltre(hist)
-        // hero-pctvmax reste sur la valeur syncée pctVmax6m (ne change pas avec les filtres)
+        const { vmax, pctVmax } = calculerVmaxFiltre(hist)
+        document.getElementById('hero-pctvmax').textContent = pctVmax + '%'
         document.getElementById('hero-vmax').textContent = vmax.toFixed(2) + ' km/h'
         if (vueMode === 'derniere') {
           document.getElementById('hero-sub-nbseances').textContent = `km/h · dernière séance`
