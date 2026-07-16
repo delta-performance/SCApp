@@ -269,6 +269,34 @@
     .nrg-timer-btn.stop { background: #E24B4A; color: #fff; }
     .nrg-timer-btn.reset { background: #2a2a2a; color: #888; border: 1px solid #444; }
 
+    /* ====== EXO TIMER ÉNERGÉTIQUE ====== */
+    .nrg-exo-timer { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 12px; margin: 8px 0; }
+    .nrg-exo-timer-phase { font-size: 12px; font-weight: 700; text-align: center; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+    .nrg-exo-timer-phase.effort { color: #E24B4A; }
+    .nrg-exo-timer-phase.recup { color: #1D9E75; }
+    .nrg-exo-timer-phase.repos { color: #FECC00; }
+    .nrg-exo-timer-phase.done { color: #888; }
+    .nrg-exo-timer-count { font-size: 36px; font-weight: 700; color: #FECC00; text-align: center; font-variant-numeric: tabular-nums; line-height: 1; margin: 4px 0; }
+    .nrg-exo-timer-count.urgent { color: #E24B4A; animation: timerPulse 0.5s ease-in-out infinite alternate; }
+    .nrg-exo-timer-count.done { color: #1D9E75; }
+    .nrg-exo-timer-prog { display: flex; gap: 4px; justify-content: center; margin: 6px 0; flex-wrap: wrap; }
+    .nrg-exo-timer-rep-dot { width: 10px; height: 10px; border-radius: 50%; background: #2a2a2a; transition: background .15s; }
+    .nrg-exo-timer-rep-dot.active { background: #FECC00; }
+    .nrg-exo-timer-rep-dot.done { background: #1D9E75; }
+    .nrg-exo-timer-meta { font-size: 10px; color: #555; text-align: center; margin-bottom: 6px; }
+    .nrg-exo-timer-btns { display: flex; gap: 6px; justify-content: center; }
+    .nrg-exo-timer-btn { padding: 7px 16px; border-radius: 8px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .nrg-exo-timer-btn.start { background: #FECC00; color: #0f0f0f; }
+    .nrg-exo-timer-btn.stop { background: #E24B4A; color: #fff; }
+    .nrg-exo-timer-btn.reset { background: #2a2a2a; color: #888; border: 1px solid #444; }
+    .nrg-exo-timer-config { font-size: 10px; color: #666; margin-bottom: 6px; padding: 4px 8px; background: #0d0d0d; border-radius: 6px; }
+    .nrg-exo-type-badge { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 10px; font-weight: 600; margin-left: 6px; vertical-align: middle; }
+    .nrg-exo-type-badge.course { background: #16C78422; color: #16C784; border: 1px solid #16C78444; }
+    .nrg-exo-type-badge.velo { background: #378ADD22; color: #378ADD; border: 1px solid #378ADD44; }
+    .nrg-exo-type-badge.ski { background: #aaa22222; color: #aaa; border: 1px solid #aaa444; }
+    .nrg-exo-type-badge.natation { background: #378ADD22; color: #5d9ad6; border: 1px solid #378ADD44; }
+    .nrg-exo-type-badge.autre { background: #88822222; color: #888; border: 1px solid #888444; }
+
     /* ====== RPE ÉNERGÉTIQUE ====== */
     .rpe-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
     .rpe-card-title { font-size: 13px; font-weight: 700; color: #FECC00; margin-bottom: 10px; }
@@ -1896,6 +1924,252 @@
       return wrap
     }
 
+    // ===== HELPERS TIMER EXO (mm'ss parsing) =====
+    function parseMmSs(str){
+      if(!str) return 0
+      str = String(str).trim()
+      const m = str.match(/(?:(\d+)['''])?([0-5]?\d)\s*$/) || str.match(/^(\d+)$/)
+      if(m){
+        if(m[2]!==undefined) return parseInt(m[1]||0)*60 + parseInt(m[2])
+        return parseInt(m[1])
+      }
+      const parts = str.split(/[''']/)
+      if(parts.length>=2) return parseInt(parts[0]||0)*60 + parseInt(parts[1]||0)
+      return parseInt(str)||0
+    }
+    function formatMmSs(sec){
+      if(!sec || sec<=0) return ''
+      const m = Math.floor(sec/60), s = sec%60
+      return m + "'" + String(s).padStart(2,'0')
+    }
+
+    const TYPE_LABELS_ENERGETIQUE = { course:'Course', velo:'Vélo', ski:'Ski', natation:'Natation', autre:'Autre' }
+
+    function nrgResumeTimerExo(exo){
+      if(!exo.timerMode) return null
+      if(exo.timerMode==='effort_recup'){
+        let parts = []
+        if(exo.timerEffort) parts.push(formatMmSs(parseMmSs(exo.timerEffort)) + ' effort')
+        if(exo.timerRecupInter) parts.push('récup ' + formatMmSs(parseMmSs(exo.timerRecupInter)))
+        if(exo.timerRecupSeries) parts.push('récup série ' + formatMmSs(parseMmSs(exo.timerRecupSeries)))
+        return parts.length ? parts.join(' / ') : 'Effort/Récup'
+      }
+      if(exo.timerMode==='cadence'){
+        let parts = []
+        if(exo.timerCadence) parts.push('Départ /' + formatMmSs(parseMmSs(exo.timerCadence)))
+        if(exo.timerRecupSeries) parts.push('récup série ' + formatMmSs(parseMmSs(exo.timerRecupSeries)))
+        return parts.length ? parts.join(' / ') : 'Cadence'
+      }
+      if(exo.timerMode==='distance_recup'){
+        let parts = []
+        if(exo.timerDistance) parts.push(exo.timerDistance + 'm')
+        if(exo.timerRecupDist) parts.push('repos ' + formatMmSs(parseMmSs(exo.timerRecupDist)))
+        if(exo.timerRecupSeries) parts.push('récup série ' + formatMmSs(parseMmSs(exo.timerRecupSeries)))
+        return parts.length ? parts.join(' + ') : 'Dist+Repos'
+      }
+      return null
+    }
+
+    // ===== TIMER EXO FONCTIONNEL =====
+    const nrgExoTimers = {}
+
+    function nrgBuildExoPhases(exo){
+      const nbSeries = exo.nbSeries || 1
+      const nbReps = exo.nbReps || 1
+      const phases = []
+
+      if(exo.timerMode === 'effort_recup'){
+        const effortSec = parseMmSs(exo.timerEffort)
+        const recupInterSec = parseMmSs(exo.timerRecupInter)
+        const recupSeriesSec = parseMmSs(exo.timerRecupSeries)
+        for(let s = 0; s < nbSeries; s++){
+          for(let r = 0; r < nbReps; r++){
+            if(effortSec > 0) phases.push({ type:'effort', sec:effortSec, series:s, rep:r })
+            if(r < nbReps - 1 && recupInterSec > 0) phases.push({ type:'recup', sec:recupInterSec, series:s, rep:r })
+          }
+          if(s < nbSeries - 1 && recupSeriesSec > 0) phases.push({ type:'recup_series', sec:recupSeriesSec, series:s, rep:nbReps-1 })
+        }
+      } else if(exo.timerMode === 'cadence'){
+        const cadenceSec = parseMmSs(exo.timerCadence)
+        const recupSeriesSec = parseMmSs(exo.timerRecupSeries)
+        for(let s = 0; s < nbSeries; s++){
+          for(let r = 0; r < nbReps; r++){
+            phases.push({ type:'cadence', sec:cadenceSec, series:s, rep:r })
+          }
+          if(s < nbSeries - 1 && recupSeriesSec > 0) phases.push({ type:'recup_series', sec:recupSeriesSec, series:s, rep:nbReps-1 })
+        }
+      } else if(exo.timerMode === 'distance_recup'){
+        const reposSec = parseMmSs(exo.timerRecupDist)
+        const recupSeriesSec = parseMmSs(exo.timerRecupSeries)
+        for(let s = 0; s < nbSeries; s++){
+          for(let r = 0; r < nbReps; r++){
+            phases.push({ type:'distance', sec:reposSec, series:s, rep:r, distance:exo.timerDistance })
+            if(r < nbReps - 1 && reposSec > 0) phases.push({ type:'repos', sec:reposSec, series:s, rep:r })
+          }
+          if(s < nbSeries - 1 && recupSeriesSec > 0) phases.push({ type:'recup_series', sec:recupSeriesSec, series:s, rep:nbReps-1 })
+        }
+      }
+      return phases
+    }
+
+    function nrgBuildExoTimerCard(exo, exoId){
+      if(!exo.timerMode) return null
+      const phases = nrgBuildExoPhases(exo)
+      if(!phases.length) return null
+
+      const wrap = document.createElement('div')
+      wrap.className = 'nrg-exo-timer'
+
+      const configText = nrgResumeTimerExo(exo)
+      if(configText){
+        const cfg = document.createElement('div')
+        cfg.className = 'nrg-exo-timer-config'
+        cfg.textContent = '⏱ ' + configText
+        wrap.appendChild(cfg)
+      }
+
+      const phaseEl = document.createElement('div')
+      phaseEl.className = 'nrg-exo-timer-phase'
+      phaseEl.textContent = 'Prêt'
+      wrap.appendChild(phaseEl)
+
+      const countEl = document.createElement('div')
+      countEl.className = 'nrg-exo-timer-count'
+      countEl.textContent = '00:00'
+      wrap.appendChild(countEl)
+
+      const metaEl = document.createElement('div')
+      metaEl.className = 'nrg-exo-timer-meta'
+      metaEl.textContent = `${exo.nbSeries||1} séries · ${exo.nbReps||1} rép.`
+      wrap.appendChild(metaEl)
+
+      const progEl = document.createElement('div')
+      progEl.className = 'nrg-exo-timer-prog'
+      const totalReps = (exo.nbSeries||1) * (exo.nbReps||1)
+      const dots = []
+      for(let i = 0; i < totalReps; i++){
+        const dot = document.createElement('div')
+        dot.className = 'nrg-exo-timer-rep-dot'
+        progEl.appendChild(dot)
+        dots.push(dot)
+      }
+      wrap.appendChild(progEl)
+
+      const btns = document.createElement('div')
+      btns.className = 'nrg-exo-timer-btns'
+      const startBtn = document.createElement('button')
+      startBtn.className = 'nrg-exo-timer-btn start'
+      startBtn.textContent = '▶ Démarrer'
+      const stopBtn = document.createElement('button')
+      stopBtn.className = 'nrg-exo-timer-btn stop'
+      stopBtn.textContent = '⏸ Pause'
+      stopBtn.style.display = 'none'
+      const resetBtn = document.createElement('button')
+      resetBtn.className = 'nrg-exo-timer-btn reset'
+      resetBtn.textContent = '↻ Reset'
+      btns.appendChild(startBtn); btns.appendChild(stopBtn); btns.appendChild(resetBtn)
+      wrap.appendChild(btns)
+
+      const timerKey = 'exo_' + exoId
+      let phaseIdx = 0
+      let remaining = phases[0].sec
+      let repCount = 0
+
+      const phaseLabels = {
+        effort: 'EFFORT',
+        recup: 'RÉCUP',
+        recup_series: 'RÉCUP SÉRIE',
+        cadence: 'DÉPART',
+        distance: 'DISTANCE',
+        repos: 'REPOS'
+      }
+
+      function updateUI(){
+        const ph = phases[phaseIdx]
+        if(!ph){
+          phaseEl.textContent = 'TERMINÉ'
+          phaseEl.className = 'nrg-exo-timer-phase done'
+          countEl.textContent = '00:00'
+          countEl.className = 'nrg-exo-timer-count done'
+          metaEl.textContent = 'Séance terminée'
+          return
+        }
+        phaseEl.textContent = phaseLabels[ph.type] || ph.type
+        phaseEl.className = 'nrg-exo-timer-phase ' + (ph.type === 'effort' ? 'effort' : (ph.type === 'recup' || ph.type === 'recup_series' ? 'recup' : 'repos'))
+        countEl.textContent = nrgFormatTime(remaining)
+        countEl.classList.toggle('urgent', remaining <= 10 && remaining > 0)
+        countEl.classList.remove('done')
+        const curRep = ph.series * (exo.nbReps||1) + ph.rep + 1
+        metaEl.textContent = `Série ${ph.series + 1}/${exo.nbSeries||1} · Rép ${ph.rep + 1}/${exo.nbReps||1}`
+        if(ph.type === 'distance' && ph.distance){
+          metaEl.textContent += ` · ${ph.distance}m`
+        }
+        dots.forEach((d, i) => {
+          d.className = 'nrg-exo-timer-rep-dot' + (i < curRep - 1 ? ' done' : (i === curRep - 1 ? ' active' : ''))
+        })
+      }
+
+      function clearTimer(){
+        if(nrgExoTimers[timerKey]){ clearInterval(nrgExoTimers[timerKey]); delete nrgExoTimers[timerKey] }
+      }
+
+      function nextPhase(){
+        phaseIdx++
+        if(phaseIdx >= phases.length){
+          clearTimer()
+          nrgPlayAlarm()
+          stopBtn.style.display = 'none'
+          startBtn.style.display = 'inline-block'
+          startBtn.textContent = '✓ Terminé'
+          startBtn.disabled = true
+          phaseIdx = phases.length
+          updateUI()
+          return
+        }
+        remaining = phases[phaseIdx].sec
+        nrgPlayAlarm()
+        updateUI()
+      }
+
+      function tick(){
+        remaining--
+        if(remaining <= 0){
+          nextPhase()
+        } else {
+          updateUI()
+        }
+      }
+
+      startBtn.onclick = () => {
+        if(startBtn.disabled) return
+        clearTimer()
+        startBtn.style.display = 'none'
+        stopBtn.style.display = 'inline-block'
+        if(phaseIdx >= phases.length){ phaseIdx = 0; remaining = phases[0].sec }
+        updateUI()
+        nrgExoTimers[timerKey] = setInterval(tick, 1000)
+      }
+      stopBtn.onclick = () => {
+        clearTimer()
+        stopBtn.style.display = 'none'
+        startBtn.style.display = 'inline-block'
+        startBtn.textContent = '▶ Reprendre'
+      }
+      resetBtn.onclick = () => {
+        clearTimer()
+        phaseIdx = 0
+        remaining = phases[0].sec
+        stopBtn.style.display = 'none'
+        startBtn.style.display = 'inline-block'
+        startBtn.textContent = '▶ Démarrer'
+        startBtn.disabled = false
+        updateUI()
+      }
+
+      updateUI()
+      return wrap
+    }
+
     // ===== RPE ÉNERGÉTIQUE =====
     function nrgBuildRpeCard(sa, retourExistant) {
       const wrap = document.createElement('div')
@@ -2114,29 +2388,34 @@
             bEl.className = 'seance-bloc'
             bEl.style.border = 'none'; bEl.style.borderRadius = '0'; bEl.style.marginBottom = '0'
             bEl.innerHTML = `<div class="seance-bloc-header">${bloc.nom}<span class="seance-groupe-badge">${g.nom}</span></div>${bloc.comment?`<div class="seance-bloc-comment">📝 ${bloc.comment}</div>`:''}`
-            g.exercices?.forEach(exo => {
+            g.exercices?.forEach((exo, exoIdx) => {
               if(!exo.nom) return
               const perRep = distancePerRepEnergetique(exo)
               const total = distanceTotaleEnergetique(exo)
               const distText = exo.type==='course'
                 ? (exo.trace ? `${fmtDistanceEnergetique(perRep)} / rép · ${fmtDistanceEnergetique(total)} total` : 'Parcours non tracé')
                 : (perRep ? `${fmtDistanceEnergetique(perRep)} / rép · ${fmtDistanceEnergetique(total)} total` : '')
+              const typeLabel = TYPE_LABELS_ENERGETIQUE[exo.type] || 'Autre'
+              const typeIcon = TYPE_ICONS_ENERGETIQUE[exo.type] || ''
+              const timerConfigText = nrgResumeTimerExo(exo)
+              const hasTrace = exo.type==='course' && exo.trace && (exo.trace.plots?.length || exo.trace.courbes?.length || exo.trace.fleches?.length)
               const eEl = document.createElement('div')
               eEl.className = 'seance-exo'
               eEl.innerHTML = `
                 <div style="flex:1;">
-                  <div class="seance-exo-nom">${TYPE_ICONS_ENERGETIQUE[exo.type]||''} ${exo.nom}</div>
+                  <div class="seance-exo-nom">${typeIcon} ${exo.nom}<span class="nrg-exo-type-badge ${exo.type||'autre'}">${typeLabel}</span></div>
                   <div class="seance-exo-params">${exo.nbSeries||1} séries × ${exo.nbReps||1} rép.${exo.recupInter?' · récup '+exo.recupInter:''}${exo.recupSeries?' · récup série '+exo.recupSeries:''}</div>
                   ${distText?`<div class="seance-charge">${distText}</div>`:''}
-                  ${exo.intensite?`<div class="seance-exo-params">Intensité : ${exo.intensite}</div>`:''}
+                  ${exo.intensite?`<div class="seance-exo-params">🎯 Intensité : ${exo.intensite}</div>`:''}
+                  ${hasTrace?`<div class="seance-exo-params">🗺️ Terrain : parcours tracé</div>`:''}
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
                 </div>`
-              if(exo.type==='course' && exo.trace && (exo.trace.plots?.length || exo.trace.courbes?.length || exo.trace.fleches?.length)){
+              if(hasTrace){
                 const traceWrap = document.createElement('div')
                 traceWrap.style.cssText = 'margin-top:8px;border-radius:8px;overflow:hidden;'
                 const traceLabel = document.createElement('div')
                 traceLabel.style.cssText = 'font-size:10px;color:#16C784;margin-bottom:4px;font-weight:600;'
-                traceLabel.textContent = '🗺️ Parcours'
+                traceLabel.textContent = '🗺️ Terrain — Parcours'
                 const canvas = document.createElement('canvas')
                 canvas.width = 320; canvas.height = 200
                 canvas.style.cssText = 'width:100%;max-width:400px;border-radius:6px;border:1px solid #1e3a1e;'
@@ -2144,6 +2423,10 @@
                 traceWrap.appendChild(canvas)
                 eEl.appendChild(traceWrap)
                 setTimeout(() => renderTraceCanvas(canvas, exo.trace), 10)
+              }
+              if(timerConfigText){
+                const exoTimerEl = nrgBuildExoTimerCard(exo, exo.id || 'idx_' + exoIdx)
+                if(exoTimerEl) eEl.appendChild(exoTimerEl)
               }
               bEl.appendChild(eEl)
             })
