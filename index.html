@@ -3717,7 +3717,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       hero.innerHTML = `
         <div class="gps-hero-item">
           <div class="gps-hero-label">% Vmax 6 mois</div>
-          <div class="gps-hero-val" id="hero-pctvmax" style="color:#FECC00;">${s.pctVmax6m != null ? s.pctVmax6m + '%' : '—%'}</div>
+          <div class="gps-hero-val" id="hero-pctvmax" style="color:#FECC00;">${s.pctVmaxDerniereSeance != null ? s.pctVmaxDerniereSeance + '%' : '—%'}</div>
           <div class="gps-hero-sub" id="hero-vmax">${s.vmax6m != null ? Number(s.vmax6m).toFixed(2) : '—'} km/h</div>
         </div>
         <div class="gps-hero-item">
