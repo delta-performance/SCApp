@@ -3717,8 +3717,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       hero.innerHTML = `
         <div class="gps-hero-item">
           <div class="gps-hero-label">% Vmax 6 mois</div>
-          <div class="gps-hero-val" id="hero-pctvmax" style="color:#FECC00;">—%</div>
-          <div class="gps-hero-sub" id="hero-vmax">— km/h</div>
+          <div class="gps-hero-val" id="hero-pctvmax" style="color:#FECC00;">${s.pctVmax6m != null ? s.pctVmax6m + '%' : '—%'}</div>
+          <div class="gps-hero-sub" id="hero-vmax">${s.vmax6m != null ? Number(s.vmax6m).toFixed(2) : '—'} km/h</div>
         </div>
         <div class="gps-hero-item">
           <div class="gps-hero-label">Vmax 6 mois</div>
@@ -3730,9 +3730,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
       // Mettre à jour les valeurs du hero selon le filtre
       function updateHero(hist) {
-        const { vmax, pctVmax } = calculerVmaxFiltre(hist)
-        document.getElementById('hero-pctvmax').textContent = pctVmax + '%'
-        document.getElementById('hero-vmax').textContent = vmax.toFixed(2) + ' km/h'
+        // hero-pctvmax et hero-vmax = valeurs brutes de Firestore (pctVmax6m / vmax6m), non recalculées
         if (vueMode === 'derniere') {
           document.getElementById('hero-sub-nbseances').textContent = `km/h · dernière séance`
         } else {
