@@ -4304,7 +4304,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           tr.innerHTML = `
             <td style="color:#555;">${h.date||'—'}</td>
             <td style="color:#888;font-size:10px;">${h.seance||'—'}</td>
-            <td style="color:#666;font-size:10px;">${h.period||'—'}</td>
+            <td style="color:#666;font-size:10px;">${(h.periodNames||[]).length > 1 ? `${h.periodNames.length} périodes` : (h.period || h.periodNames?.[0] || '—')}</td>
             <td style="color:#E24B4A;font-weight:600;">${Math.round(h.distHI||0)}</td>
             <td style="color:#7F77DD;font-weight:600;">${Math.round(h.distTot||0)}</td>
             <td style="color:#FECC00;font-weight:600;">${(h.mMin||0).toFixed(1)}</td>
@@ -5330,6 +5330,36 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         </div>`
       }
 
+      function renderPerPeriodBreakdown(perPeriod) {
+        const periods = Object.keys(perPeriod)
+        if (periods.length <= 1) return ''
+        let html = '<div style="margin-top:6px;border-top:1px solid #2a2a2a;padding-top:12px;">'
+        html += '<div style="font-size:11px;font-weight:700;color:#FECC00;margin-bottom:10px;">📊 Détail par période</div>'
+        html += '<div style="display:flex;flex-direction:column;gap:8px;">'
+        periods.forEach(pn => {
+          const pp = perPeriod[pn]
+          html += `
+            <div style="background:#111;border-radius:8px;padding:10px;">
+              <div style="font-size:11px;font-weight:700;color:#FECC00;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #222;">${pn}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                ${renderMetricRow('Distance HI', pp.distHI, 'm', '#E24B4A')}
+                ${renderMetricRow('Distance totale', pp.distTot, 'm', '#7F77DD')}
+                ${renderMetricRow('Durée', pp.duree, ' min', '#888')}
+                ${renderMetricRow('m/min', pp.mMin, '', '#FECC00')}
+                ${renderMetricRow('HI/min', pp.hiMin, '', '#EF9F27')}
+                ${renderMetricRow('Volume HI', pp.volHI, ' UA', '#378ADD')}
+                ${renderMetricRow('Vmax', pp.vmax, ' km/h', '#1D9E75')}
+                ${renderMetricRow('% Vmax', pp.vmaxPct > 0 ? pp.vmaxPct : null, '%', '#5DCAA5')}
+                ${renderMetricRow('Acc B2', pp.accB2, '', '#EF9F27')}
+                ${renderMetricRow('Acc B3', pp.accB3, '', '#EF9F27')}
+              </div>
+            </div>
+          `
+        })
+        html += '</div></div>'
+        return html
+      }
+
       function afficherDetailSeance(h, zone) {
         const existing = zone.querySelector('.sean-detail')
         if (existing) existing.remove()
@@ -5343,8 +5373,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             <button onclick="this.closest('.sean-detail').remove()" style="padding:4px 8px;border-radius:6px;border:1px solid #2a2a2a;background:none;color:#888;font-size:11px;cursor:pointer;">✕</button>
             <div style="font-size:13px;font-weight:700;">${nom}</div>
           </div>
-          <div style="font-size:11px;color:#555;margin-bottom:12px;">${h.date} · ${h.duree} min · Période: ${h.period||'—'}</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="font-size:11px;color:#555;margin-bottom:12px;">${h.date} · ${h.duree} min · ${(h.periodNames||[]).length || 1} période${(h.periodNames||[]).length > 1 ? 's' : ''}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
             ${renderMetricRow('Distance HI', h.distHI, 'm', '#E24B4A')}
             ${renderMetricRow('Distance totale', h.distTot, 'm', '#7F77DD')}
             ${renderMetricRow('m/min', h.mMin, '', '#FECC00')}
@@ -5357,6 +5387,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             ${renderMetricRow('Load', h.load, 'UA', '#7F77DD')}
             ${renderMetricRow('RHIE', h.rhie, '', '#ED93B1')}
           </div>
+          ${(h.perPeriod && Object.keys(h.perPeriod).length > 1) ? renderPerPeriodBreakdown(h.perPeriod) : ''}
         `
         zone.insertBefore(d, zone.firstChild)
       }
