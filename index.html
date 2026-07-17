@@ -3746,7 +3746,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       function updateHero(hist) {
         // hero-pctvmax et hero-vmax = valeurs brutes de Firestore (pctVmax6m / vmax6m), non recalculées
         if (vueMode === 'derniere') {
-          document.getElementById('hero-sub-nbseances').textContent = `km/h · dernière séance`
+          document.getElementById('hero-sub-nbseances').textContent = `km/h · dernier jour`
         } else {
           document.getElementById('hero-sub-nbseances').textContent = `km/h · ${hist.length} séance${hist.length > 1 ? 's' : ''}`
         }
@@ -3763,13 +3763,20 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         const minDateStr = dateStrLocal(minDate)
         const maxDateStr = dateStrLocal(maxDate)
         const lastDateStr = lastDate.toLocaleDateString('fr-FR')
-        const lastSeance = s.historique[s.historique.length - 1]
-        const lastSeanceStr = lastSeance ? `${lastDateStr} — ${lastSeance.seance || 'Séance'}` : 'Aucune séance'
+        // Trouver toutes les activités du dernier jour
+        const lastDateStrNorm = lastDate ? `${lastDate.getFullYear()}-${String(lastDate.getMonth()+1).padStart(2,'0')}-${String(lastDate.getDate()).padStart(2,'0')}` : ''
+        const lastDayActivities = s.historique.filter(h => {
+          const d = parseDate(h.date)
+          return d && d.toDateString() === lastDate.toDateString()
+        })
+        const lastSeanceStr = lastDayActivities.length > 0
+          ? `${lastDateStr} — ${lastDayActivities.length} activité${lastDayActivities.length > 1 ? 's' : ''}`
+          : 'Aucune séance'
         const filtresDiv = document.createElement('div')
         filtresDiv.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:14px;'
         filtresDiv.innerHTML = `
           <div style="display:flex;gap:8px;margin-bottom:12px;">
-            <button id="btn-vue-derniere" class="vue-mode-btn active" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid #FECC00;background:#FECC00;color:#0f0f0f;font-size:11px;font-weight:600;cursor:pointer;">📅 Dernière séance</button>
+            <button id="btn-vue-derniere" class="vue-mode-btn active" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid #FECC00;background:#FECC00;color:#0f0f0f;font-size:11px;font-weight:600;cursor:pointer;">📅 Dernier jour</button>
             <button id="btn-vue-periode" class="vue-mode-btn" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#888;font-size:11px;cursor:pointer;">📊 Toute la période</button>
           </div>
           <div id="periode-filtres" style="display:none;">
@@ -3792,8 +3799,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         `
         c.appendChild(filtresDiv)
 
-        // Par défaut : afficher la dernière séance uniquement
-        historiqueFiltre = s.historique.length ? [s.historique[s.historique.length - 1]] : []
+        // Par défaut : afficher toutes les activités du dernier jour
+        historiqueFiltre = lastDayActivities
 
         // Gestion des modes de vue
         const btnDerniere = document.getElementById('btn-vue-derniere')
@@ -3813,8 +3820,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           btnPeriode.style.borderColor = '#2a2a2a'
           periodeFiltres.style.display = 'none'
           derniereInfo.style.display = 'block'
-          // Afficher la dernière séance uniquement
-          historiqueFiltre = s.historique.length ? [s.historique[s.historique.length - 1]] : []
+          // Afficher toutes les activités du dernier jour
+          historiqueFiltre = lastDayActivities
           renderAll()
         })
 
@@ -3975,17 +3982,24 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         const kpiDiv = document.createElement('div')
         kpiDiv.className = 'gps-kpi-grid'
         
-        if (vueMode === 'derniere' && hist.length === 1) {
-          // Mode dernière séance : afficher les valeurs brutes de la séance
-          const seance = hist[0]
+        if (vueMode === 'derniere') {
+          // Mode dernier jour : somme des valeurs de toutes les activités du jour
+          const sumDistHI = hist.reduce((s, h) => s + (h.distHI || 0), 0)
+          const sumDistTot = hist.reduce((s, h) => s + (h.distTot || 0), 0)
+          const sumDur = hist.reduce((s, h) => s + (h.duree || 0), 0)
+          const sumVolHI = hist.reduce((s, h) => s + (h.volHI || 0), 0)
+          const maxVmax = Math.max(...hist.map(h => h.vmax || 0), 0)
+          const maxVmaxPct = Math.max(...hist.map(h => h.vmaxPct || 0), 0)
+          const mMin = sumDur > 0 ? +(sumDistTot / sumDur).toFixed(1) : 0
+          const hiMin = sumDur > 0 ? +(sumDistHI / sumDur).toFixed(2) : 0
           const kpis = [
-            {l:'Dist HI',v:seance.distHI || 0,u:'m',c:'#E24B4A', d:0},
-            {l:'Dist totale',v:seance.distTot || 0,u:'m',c:'#7F77DD', d:0},
-            {l:'m / min',v:seance.mMin || 0,u:'',c:'#FECC00', d:1},
-            {l:'HI / min',v:seance.hiMin || 0,u:'',c:'#EF9F27', d:2},
-            {l:'Volume HI',v:seance.volHI || 0,u:'UA',c:'#378ADD', d:0},
-            {l:'Vmax',v:seance.vmax || 0,u:'km/h',c:'#1D9E75', d:1},
-            {l:'% Vmax',v:seance.vmaxPct || statsFiltre.pctVmax,u:'%',c:'#5DCAA5', d:1},
+            {l:'Dist HI',v:sumDistHI,u:'m',c:'#E24B4A', d:0},
+            {l:'Dist totale',v:sumDistTot,u:'m',c:'#7F77DD', d:0},
+            {l:'m / min',v:mMin,u:'',c:'#FECC00', d:1},
+            {l:'HI / min',v:hiMin,u:'',c:'#EF9F27', d:2},
+            {l:'Volume HI',v:sumVolHI,u:'UA',c:'#378ADD', d:0},
+            {l:'Vmax',v:maxVmax,u:'km/h',c:'#1D9E75', d:1},
+            {l:'% Vmax',v:maxVmaxPct || statsFiltre.pctVmax,u:'%',c:'#5DCAA5', d:1},
           ]
           kpis.forEach(k => {
             if (k.v == null) return
@@ -4207,7 +4221,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         const headerInfo = document.createElement('div')
         headerInfo.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;text-align:center;'
         if (vueMode === 'derniere') {
-          headerInfo.textContent = `Affichage: dernière séance (${hist[0]?.date || '—'})`
+          headerInfo.textContent = `Affichage: dernier jour (${hist[0]?.date || '—'}) — ${hist.length} activité${hist.length > 1 ? 's' : ''}`
         } else {
           headerInfo.textContent = `Affichage: ${hist.length} séance(s) sur la période`
         }
@@ -4217,6 +4231,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         tbl.className = 'gps-table'
         tbl.innerHTML = `<thead><tr>
           <th>Date</th>
+          <th>Séance</th>
           <th>Période</th>
           <th style="color:#E24B4A;">HI</th>
           <th style="color:#7F77DD;">Dist</th>
@@ -4234,6 +4249,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const tr = document.createElement('tr')
           tr.innerHTML = `
             <td style="color:#555;">${h.date||'—'}</td>
+            <td style="color:#888;font-size:10px;">${h.seance||'—'}</td>
             <td style="color:#666;font-size:10px;">${h.period||'—'}</td>
             <td style="color:#E24B4A;font-weight:600;">${Math.round(h.distHI||0)}</td>
             <td style="color:#7F77DD;font-weight:600;">${Math.round(h.distTot||0)}</td>
@@ -4584,20 +4600,11 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
         // Toujours utiliser l'historique complet — les objectifs sont scopés
         // à la semaine de la dernière séance, indépendamment du filtre global
-        // Dédupliquer par date : si un joueur blessé a Session + Rehab le même jour,
-        // garder uniquement l'entrée Rehab
-        const _byDate = {}
-        ;(s.historique || []).forEach(h => {
-          const d = String(h.date || '').trim()
-          const seance = String(h.seance || '').toLowerCase()
-          const isRehab = seance.includes('rehab')
-          if (!_byDate[d]) {
-            _byDate[d] = { entry: h, hasRehab: isRehab }
-          } else if (isRehab && !_byDate[d].hasRehab) {
-            _byDate[d] = { entry: h, hasRehab: true }
-          }
+        const histComplete = (s.historique || []).slice().sort((a,b) => {
+          const da = parseDate(String(a.date||'').trim()), db = parseDate(String(b.date||'').trim())
+          if (!da || !db) return 0
+          return da - db
         })
-        const histComplete = Object.values(_byDate).map(v => v.entry)
         const hist = historiqueFiltre.length ? historiqueFiltre : histComplete
 
         // Déterminer la date de la dernière séance (depuis l'historique complet)
