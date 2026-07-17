@@ -3983,34 +3983,35 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         kpiDiv.className = 'gps-kpi-grid'
         
         if (vueMode === 'derniere') {
-          // Mode dernier jour : somme des valeurs de toutes les activités du jour
-          const sumDistHI = hist.reduce((s, h) => s + (h.distHI || 0), 0)
-          const sumDistTot = hist.reduce((s, h) => s + (h.distTot || 0), 0)
-          const sumDur = hist.reduce((s, h) => s + (h.duree || 0), 0)
-          const sumVolHI = hist.reduce((s, h) => s + (h.volHI || 0), 0)
-          const maxVmax = Math.max(...hist.map(h => h.vmax || 0), 0)
-          const maxVmaxPct = Math.max(...hist.map(h => h.vmaxPct || 0), 0)
-          const mMin = sumDur > 0 ? +(sumDistTot / sumDur).toFixed(1) : 0
-          const hiMin = sumDur > 0 ? +(sumDistHI / sumDur).toFixed(2) : 0
-          const kpis = [
-            {l:'Dist HI',v:sumDistHI,u:'m',c:'#E24B4A', d:0},
-            {l:'Dist totale',v:sumDistTot,u:'m',c:'#7F77DD', d:0},
-            {l:'m / min',v:mMin,u:'',c:'#FECC00', d:1},
-            {l:'HI / min',v:hiMin,u:'',c:'#EF9F27', d:2},
-            {l:'Volume HI',v:sumVolHI,u:'UA',c:'#378ADD', d:0},
-            {l:'Vmax',v:maxVmax,u:'km/h',c:'#1D9E75', d:1},
-            {l:'% Vmax',v:maxVmaxPct || statsFiltre.pctVmax,u:'%',c:'#5DCAA5', d:1},
-          ]
-          kpis.forEach(k => {
-            if (k.v == null) return
-            const card = document.createElement('div')
-            card.className = 'gps-kpi'
-            card.innerHTML = `
-              <div class="gps-kpi-label">${k.l}</div>
-              <div class="gps-hero-val" style="color:${k.c};font-size:20px;">${Number(k.v).toFixed(k.d)}</div>
-              <div class="gps-kpi-unit">${k.u}</div>
-            `
-            kpiDiv.appendChild(card)
+          // Mode dernier jour : afficher chaque activité séparément avec ses propres cartes
+          hist.forEach((seance, idx) => {
+            // En-tête de l'activité si plusieurs
+            if (hist.length > 1) {
+              const actHeader = document.createElement('div')
+              actHeader.style.cssText = 'font-size:12px;font-weight:700;color:#FECC00;margin:14px 0 8px 0;'
+              actHeader.textContent = `Activité ${idx + 1} — ${seance.seance || 'Séance'}`
+              kpiDiv.appendChild(actHeader)
+            }
+            const kpis = [
+              {l:'Dist HI',v:seance.distHI || 0,u:'m',c:'#E24B4A', d:0},
+              {l:'Dist totale',v:seance.distTot || 0,u:'m',c:'#7F77DD', d:0},
+              {l:'m / min',v:seance.mMin || 0,u:'',c:'#FECC00', d:1},
+              {l:'HI / min',v:seance.hiMin || 0,u:'',c:'#EF9F27', d:2},
+              {l:'Volume HI',v:seance.volHI || 0,u:'UA',c:'#378ADD', d:0},
+              {l:'Vmax',v:seance.vmax || 0,u:'km/h',c:'#1D9E75', d:1},
+              {l:'% Vmax',v:seance.vmaxPct || 0,u:'%',c:'#5DCAA5', d:1},
+            ]
+            kpis.forEach(k => {
+              if (k.v == null) return
+              const card = document.createElement('div')
+              card.className = 'gps-kpi'
+              card.innerHTML = `
+                <div class="gps-kpi-label">${k.l}</div>
+                <div class="gps-hero-val" style="color:${k.c};font-size:20px;">${Number(k.v).toFixed(k.d)}</div>
+                <div class="gps-kpi-unit">${k.u}</div>
+              `
+              kpiDiv.appendChild(card)
+            })
           })
         } else {
           // Mode période : afficher les moyennes calculées (alignées sur appli coach)
@@ -4312,7 +4313,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         
         // Calculer les stats sur la période filtrée pour le joueur actuel
         const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
-        const statsFiltre = calculerStatsFiltre(hist)
+        const statsFiltre = calculerStatsFiltre(hist, vueMode === 'derniere')
         
         // Fonction pour parser une date
         const parseDate = (str) => {
@@ -4327,10 +4328,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         const dateFin = datesFiltre[datesFiltre.length - 1]
 
         const METRIQUES = [
-          {k:'distHI',sk:'distHIMoySean',hk:'distHI',l:'Distance HI / séance',u:'m',c:'#E24B4A', d:0},
+          {k:'distHI',sk:'distHIMoySean',hk:'distHI',l: vueMode === 'derniere' ? 'Distance HI' : 'Distance HI / séance',u:'m',c:'#E24B4A', d:0},
           {k:'mMin',sk:'mMinMoy',hk:'mMin',l:'m / min',u:'m/min',c:'#FECC00', d:1},
           {k:'hiMin',sk:'hiMinMoy',hk:'hiMin',l:'HI / min',u:'m/min',c:'#EF9F27', d:2},
-          {k:'volHI',sk:'volHIMoySean',hk:'volHI',l:'Volume HI / séance',u:'UA',c:'#378ADD', d:0},
+          {k:'volHI',sk:'volHIMoySean',hk:'volHI',l: vueMode === 'derniere' ? 'Volume HI' : 'Volume HI / séance',u:'UA',c:'#378ADD', d:0},
           {k:'vmax',sk:'vmaxSaison',hk:'vmax',l:'Vmax',u:'km/h',c:'#1D9E75', d:1},
           {k:'pctVmax',sk:'pctVmax6m',hk:'pctVmax',l:'% Vmax',u:'%',c:'#5DCAA5', d:1},
         ]
@@ -4356,10 +4357,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           }
           
           const totalDistHI = histJoueur.reduce((sum, h) => sum + (h.distHI || 0), 0)
-          const distHI = totalDistHI / histJoueur.length
+          const distHI = vueMode === 'derniere' ? totalDistHI : totalDistHI / histJoueur.length
           
           const totalVolHI = histJoueur.reduce((sum, h) => sum + (h.volHI || 0), 0)
-          const volHI = totalVolHI / histJoueur.length
+          const volHI = vueMode === 'derniere' ? totalVolHI : totalVolHI / histJoueur.length
           
           const totalDist = histJoueur.reduce((sum, h) => sum + (h.distTot || 0), 0)
           const totalDur = histJoueur.reduce((sum, h) => sum + (h.duree || 0), 0)
@@ -4368,7 +4369,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           
           const vmax = Math.max(...histJoueur.map(h => h.vmax || 0), 0)
           const vmaxRef = Math.max(j.vmax6m || j.vmaxSaison || 0, vmax)
-          const pctVmax = vmaxRef > 0 ? Math.round((vmax / vmaxRef) * 100) : 0
+          const vmaxPctVals = histJoueur.map(h => h.vmaxPct).filter(v => v != null && v > 0)
+          const pctVmax = vmaxPctVals.length > 0 ? Math.max(...vmaxPctVals) : 0
+          const pctVmaxRef = vmaxRef > 0 ? Math.round((vmax / vmaxRef) * 100) : 0
           
           return {
             nomGPS: j.nomGPS,
@@ -4379,7 +4382,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               hiMin,
               volHI,
               vmax,
-              pctVmax
+              pctVmax: pctVmaxRef
             }
           }
         }) // Garder tous les joueurs, même sans données (stats: null)
@@ -4392,7 +4395,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           : rangMode === 'ligne' 
             ? `joueurs de la même ligne (${normaliserPoste(s.posteGPS)})`
             : `joueurs du même poste (${s.posteGPS || '?'})`
-        infoRang.innerHTML = `📊 <b>Ta moyenne sur la période sélectionnée</b> comparée aux ${infoTexte}`
+        const motStats = vueMode === 'derniere' ? 'somme du jour' : 'moyenne sur la période sélectionnée'
+        infoRang.innerHTML = `📊 <b>Ta ${motStats}</b> comparée aux ${infoTexte}`
         zoneClassement.appendChild(infoRang)
 
         const monPoste = normaliserPoste(s.posteGPS)
@@ -4452,7 +4456,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             <span style="float:right;">${rangTexte}/${total}${infoManquante}</span>
           </div>
           <div style="font-size:10px;color:#666;margin-bottom:8px;padding:4px 8px;background:#FECC0011;border-radius:4px;">
-            Ta moyenne période: <b style="color:#FECC00;">${valeurFiltre.toFixed(m.d)} ${m.u}</b>
+            Ta ${vueMode === 'derniere' ? 'somme du jour' : 'moyenne période'}: <b style="color:#FECC00;">${valeurFiltre.toFixed(m.d)} ${m.u}</b>
           </div>`
 
           const MEDALS = ['🥇','🥈','🥉']
@@ -4545,30 +4549,30 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       }
       
       // Calculer les stats sur la période filtrée (aligné sur l'appli coach)
-      function calculerStatsFiltre(hist) {
+      function calculerStatsFiltre(hist, useSums = false) {
         if (!hist || hist.length === 0) {
           return { distHI: 0, distTot: 0, totalDist: 0, mMin: 0, hiMin: 0, volHI: 0, vmax: 0, pctVmax: 0 }
         }
         
         const totalDistHI = hist.reduce((sum, h) => sum + (h.distHI || 0), 0)
-        const distHI = totalDistHI / hist.length
+        const distHI = useSums ? totalDistHI : totalDistHI / hist.length
         
         const totalDist = hist.reduce((sum, h) => sum + (h.distTot || 0), 0)
-        const distTot = totalDist / hist.length
+        const distTot = useSums ? totalDist : totalDist / hist.length
         
         const totalVolHI = hist.reduce((sum, h) => sum + (h.volHI || 0), 0)
-        const volHI = totalVolHI / hist.length
+        const volHI = useSums ? totalVolHI : totalVolHI / hist.length
         
         const totalDur = hist.reduce((sum, h) => sum + (h.duree || 0), 0)
         const mMin = totalDur > 0 ? totalDist / totalDur : 0
         const hiMin = totalDur > 0 ? totalDistHI / totalDur : 0
         
         const totalAccB23 = hist.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
-        const accB23 = totalAccB23 / hist.length
+        const accB23 = useSums ? totalAccB23 : totalAccB23 / hist.length
         
         const vmax = Math.max(...hist.map(h => h.vmax || 0), 0)
         const vmaxPctVals = hist.map(h => h.vmaxPct).filter(v => v != null && v > 0)
-        const pctVmax = vmaxPctVals.length > 0 ? +(vmaxPctVals.reduce((s, v) => s + v, 0) / vmaxPctVals.length).toFixed(1) : 0
+        const pctVmax = vmaxPctVals.length > 0 ? Math.max(...vmaxPctVals) : 0
         
         return {
           distHI,
