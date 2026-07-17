@@ -3822,6 +3822,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           derniereInfo.style.display = 'block'
           // Afficher toutes les activités du dernier jour
           historiqueFiltre = lastDayActivities
+          seancePeriodFilter = 'all'
           renderAll()
         })
 
@@ -3839,6 +3840,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           derniereInfo.style.display = 'none'
           // Toute la période par défaut
           historiqueFiltre = s.historique
+          seancePeriodFilter = 'all'
           renderAll()
         })
 
@@ -3985,12 +3987,27 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         if (vueMode === 'derniere') {
           // Mode dernier jour : afficher chaque activité séparément avec ses propres cartes
           hist.forEach((seance, idx) => {
-            // En-tête de l'activité si plusieurs
+            // Séparateur moderne entre activités
             if (hist.length > 1) {
-              const actHeader = document.createElement('div')
-              actHeader.style.cssText = 'font-size:12px;font-weight:700;color:#FECC00;margin:14px 0 8px 0;'
-              actHeader.textContent = `Activité ${idx + 1} — ${seance.seance || 'Séance'}`
-              kpiDiv.appendChild(actHeader)
+              if (idx > 0) {
+                const sep = document.createElement('div')
+                sep.style.cssText = 'display:flex;align-items:center;gap:10px;margin:16px 0 12px 0;width:100%;'
+                sep.innerHTML = `
+                  <div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#2a2a2a,#2a2a2a,transparent);"></div>
+                  <div style="font-size:10px;font-weight:700;color:#FECC00;background:#1a1a1a;border:1px solid #FECC0033;border-radius:20px;padding:4px 12px;white-space:nowrap;">Activité ${idx + 1} — ${seance.seance || 'Séance'}</div>
+                  <div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#2a2a2a,#2a2a2a,transparent);"></div>
+                `
+                kpiDiv.appendChild(sep)
+              } else {
+                const sep = document.createElement('div')
+                sep.style.cssText = 'display:flex;align-items:center;gap:10px;margin:0 0 12px 0;width:100%;'
+                sep.innerHTML = `
+                  <div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#2a2a2a,#2a2a2a,transparent);"></div>
+                  <div style="font-size:10px;font-weight:700;color:#FECC00;background:#1a1a1a;border:1px solid #FECC0033;border-radius:20px;padding:4px 12px;white-space:nowrap;">Activité ${idx + 1} — ${seance.seance || 'Séance'}</div>
+                  <div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#2a2a2a,#2a2a2a,transparent);"></div>
+                `
+                kpiDiv.appendChild(sep)
+              }
             }
             const kpis = [
               {l:'Dist HI',v:seance.distHI || 0,u:'m',c:'#E24B4A', d:0},
@@ -4210,11 +4227,43 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       }
 
       // ===== RENDU SÉANCES =====
+      let seancePeriodFilter = 'all' // 'all' or a specific period name
       function renderSeances() {
         zoneSeances.innerHTML = ''
-        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        let hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
         if (!hist.length) {
           zoneSeances.innerHTML = '<div class="empty-msg"><div class="empty-icon">📋</div>Aucune séance pour la période sélectionnée</div>'
+          return
+        }
+
+        // Extraire les périodes disponibles
+        const periodsDispo = [...new Set(hist.map(h => h.period).filter(p => p && isValidPeriod(p)))].sort()
+
+        // Barre de filtre par période
+        if (periodsDispo.length > 1) {
+          const periodBar = document.createElement('div')
+          periodBar.style.cssText = 'display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;'
+          const allBtn = document.createElement('button')
+          allBtn.textContent = 'Toutes'
+          allBtn.style.cssText = `flex:0 0 auto;padding:6px 12px;border-radius:20px;border:1px solid ${seancePeriodFilter==='all'?'#FECC00':'#2a2a2a'};background:${seancePeriodFilter==='all'?'#FECC00':'#0f0f0f'};color:${seancePeriodFilter==='all'?'#0f0f0f':'#888'};font-size:10px;font-weight:600;cursor:pointer;`
+          allBtn.onclick = () => { seancePeriodFilter = 'all'; renderSeances() }
+          periodBar.appendChild(allBtn)
+          periodsDispo.forEach(p => {
+            const btn = document.createElement('button')
+            btn.textContent = p
+            btn.style.cssText = `flex:0 0 auto;padding:6px 12px;border-radius:20px;border:1px solid ${seancePeriodFilter===p?'#FECC00':'#2a2a2a'};background:${seancePeriodFilter===p?'#FECC00':'#0f0f0f'};color:${seancePeriodFilter===p?'#0f0f0f':'#888'};font-size:10px;font-weight:600;cursor:pointer;`
+            btn.onclick = () => { seancePeriodFilter = p; renderSeances() }
+            periodBar.appendChild(btn)
+          })
+          zoneSeances.appendChild(periodBar)
+        }
+
+        // Filtrer par période si sélectionnée
+        if (seancePeriodFilter !== 'all') {
+          hist = hist.filter(h => h.period === seancePeriodFilter)
+        }
+        if (!hist.length) {
+          zoneSeances.innerHTML = '<div class="empty-msg"><div class="empty-icon">📋</div>Aucune séance pour cette période</div>'
           return
         }
 
