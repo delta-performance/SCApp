@@ -3607,6 +3607,10 @@
       if (!historique) return []
       return historique.map(h => {
         const hCorr = { ...h }
+        // Fallback: dériver period depuis periodNames si manquant
+        if (!hCorr.period && Array.isArray(hCorr.periodNames) && hCorr.periodNames.length > 0) {
+          hCorr.period = hCorr.periodNames[0]
+        }
         if (hCorr.mMin > 1000 && isFinite(hCorr.mMin)) {
           hCorr.mMin = +(hCorr.mMin / 1440).toFixed(1)
           if (hCorr.hiMin > 1000 && isFinite(hCorr.hiMin)) {
