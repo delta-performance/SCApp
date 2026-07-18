@@ -2377,9 +2377,22 @@
       const W = canvas.width, H = canvas.height
       ctx.clearRect(0, 0, W, H)
       ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, H)
-      const zoom = Math.min(W / (T_LONG_P + 10), H / (T_LARG_P + 10))
-      const panX = 5 * zoom
-      const panY = (H - T_LARG_P * zoom) / 2
+      // Auto-zoom sur le bounding box du tracé (garde les lignes du terrain)
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      trace.plots?.forEach(p => { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y) })
+      trace.courbes?.forEach(c => { c.p?.forEach(pt => { minX = Math.min(minX, pt.x); maxX = Math.max(maxX, pt.x); minY = Math.min(minY, pt.y); maxY = Math.max(maxY, pt.y) }) })
+      if(!isFinite(minX)) { minX = 0; minY = 0; maxX = T_LONG_P; maxY = T_LARG_P }
+      const nFleches = trace.fleches?.length || 0
+      const offsetExtra = ((nFleches - 1) / 2) * 1.5 + 2
+      const bw = maxX - minX, bh = maxY - minY
+      const padX = Math.max(8 + offsetExtra, bw * 0.2)
+      const padY = Math.max(8 + offsetExtra, bh * 0.2)
+      minX = Math.max(0, minX - padX); maxX = Math.min(T_LONG_P, maxX + padX)
+      minY = Math.max(0, minY - padY); maxY = Math.min(T_LARG_P, maxY + padY)
+      const fitW = maxX - minX, fitH = maxY - minY
+      const zoom = Math.min(W / fitW, H / fitH)
+      const panX = (W - fitW * zoom) / 2 - minX * zoom
+      const panY = (H - fitH * zoom) / 2 - minY * zoom
       const tToPx = (mx, my) => ({ x: panX + mx * zoom, y: panY + my * zoom })
 
       // Fond gazon
@@ -2442,11 +2455,18 @@
           ctx.fillText(txt, mid.x, mid.y + 2); ctx.textAlign = 'left'
         }
       })
-      // Flèches
-      trace.fleches?.forEach(f => {
+      // Flèches — décalage perpendiculaire pour dissocier les tracés superposés (aller-retour)
+      const OFFSET_STEP = 1.5
+      trace.fleches?.forEach((f, fi) => {
         const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
         if(!p1 || !p2) return
-        const a = tToPx(p1.x, p1.y), b = tToPx(p2.x, p2.y)
+        const dx = p2.x - p1.x, dy = p2.y - p1.y
+        const len = Math.hypot(dx, dy)
+        if(len < 0.1) return
+        const nx = -dy / len, ny = dx / len
+        const offset = (fi - (nFleches - 1) / 2) * OFFSET_STEP
+        const ox = nx * offset, oy = ny * offset
+        const a = tToPx(p1.x + ox, p1.y + oy), b = tToPx(p2.x + ox, p2.y + oy)
         ctx.strokeStyle = f.c || '#16C784'; ctx.lineWidth = 2
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
         const angle = Math.atan2(b.y - a.y, b.x - a.x)
@@ -2454,6 +2474,14 @@
         ctx.lineTo(b.x - 8 * Math.cos(angle - Math.PI / 7), b.y - 8 * Math.sin(angle - Math.PI / 7))
         ctx.lineTo(b.x - 8 * Math.cos(angle + Math.PI / 7), b.y - 8 * Math.sin(angle + Math.PI / 7))
         ctx.closePath(); ctx.fillStyle = f.c || '#16C784'; ctx.fill()
+        // Badge numéroté à 15% du départ pour montrer l'ordre
+        const numPos = tToPx(p1.x + ox + dx * 0.15, p1.y + oy + dy * 0.15)
+        ctx.beginPath(); ctx.arc(numPos.x, numPos.y, 7, 0, Math.PI * 2)
+        ctx.fillStyle = '#FECC00'; ctx.fill()
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke()
+        ctx.fillStyle = '#000'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(String(fi + 1), numPos.x, numPos.y)
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
         if(f.d) {
           const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
           const txt = f.d + 'm'
@@ -2479,6 +2507,33 @@
         ctx.fillText(`${trace.distanceHI} m HI / rép`, W - 8, 6)
         ctx.restore()
       }
+    }
+
+    // Modal plein écran pour zoomer sur un tracé
+    window.openTraceFullscreen = function(trace, title) {
+      const overlay = document.createElement('div')
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;'
+      const header = document.createElement('div')
+      header.style.cssText = 'width:100%;max-width:600px;display:flex;align-items:center;gap:10px;margin-bottom:12px;'
+      const titleEl = document.createElement('div')
+      titleEl.style.cssText = 'font-size:14px;font-weight:700;color:#16C784;flex:1;font-family:system-ui,-apple-system,sans-serif;'
+      titleEl.textContent = '🗺️ ' + (title || 'Parcours terrain')
+      const closeBtn = document.createElement('button')
+      closeBtn.textContent = '✕'
+      closeBtn.style.cssText = 'background:none;border:none;color:#888;font-size:22px;cursor:pointer;padding:4px 8px;'
+      closeBtn.onclick = () => overlay.remove()
+      header.appendChild(titleEl)
+      header.appendChild(closeBtn)
+      overlay.appendChild(header)
+      const canvas = document.createElement('canvas')
+      const maxW = Math.min(window.innerWidth - 40, 600)
+      canvas.width = maxW
+      canvas.height = Math.round(maxW * 0.64)
+      canvas.style.cssText = `width:100%;max-width:${maxW}px;border-radius:8px;border:1px solid #1e3a1e;`
+      overlay.appendChild(canvas)
+      document.body.appendChild(overlay)
+      overlay.onclick = e => { if(e.target === overlay) overlay.remove() }
+      setTimeout(() => renderTraceCanvas(canvas, trace), 10)
     }
 
     async function chargerEnergetique(options = {}) {
@@ -2606,11 +2661,12 @@
                 const traceWrap = document.createElement('div')
                 traceWrap.style.cssText = 'margin-top:8px;border-radius:8px;overflow:hidden;'
                 const traceLabel = document.createElement('div')
-                traceLabel.style.cssText = 'font-size:10px;color:#16C784;margin-bottom:4px;font-weight:600;'
-                traceLabel.textContent = '🗺️ Terrain — Parcours'
+                traceLabel.style.cssText = 'font-size:10px;color:#16C784;margin-bottom:4px;font-weight:600;display:flex;align-items:center;gap:6px;'
+                traceLabel.innerHTML = '🗺️ Terrain — Parcours <span style="font-size:9px;color:#888;font-weight:400;">(tap pour zoomer)</span>'
                 const canvas = document.createElement('canvas')
                 canvas.width = 440; canvas.height = 280
-                canvas.style.cssText = 'width:100%;max-width:400px;border-radius:6px;border:1px solid #1e3a1e;'
+                canvas.style.cssText = 'width:100%;max-width:400px;border-radius:6px;border:1px solid #1e3a1e;cursor:pointer;'
+                canvas.onclick = () => openTraceFullscreen(exo.trace, exo.nom || 'Parcours')
                 traceWrap.appendChild(traceLabel)
                 traceWrap.appendChild(canvas)
                 eEl.appendChild(traceWrap)
