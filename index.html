@@ -2453,12 +2453,15 @@
           ctx.fillText(txt, mid.x, mid.y + 2); ctx.textAlign = 'left'
         }
       })
-      // Flèches — décalage perpendiculaire uniquement quand les segments se superposent vraiment
+      // Flèches — décalage perpendiculaire quand les segments sont colinéaires (même ligne)
+      // Détecte 3 cas : aller-retour (A→B, B→A), segments qui se chevauchent, segments bout-à-bout collinaires (AB puis BC sur la même ligne)
+      // Ne décale PAS les segments qui forment un angle (ex: triangle ABC)
       const OFFSET_STEP = 0.4
       const nFleches = trace.fleches?.length || 0
       const flecheOffsets = new Array(nFleches).fill(0)
       const flecheOverlapGroup = new Array(nFleches).fill(-1)
       if(nFleches > 1 && trace.plots) {
+        // Pour chaque segment : direction normalisée (canonique) + distance perpendiculaire à l'origine
         const meta = trace.fleches.map((f) => {
           const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
           if(!p1 || !p2) return null
@@ -2466,12 +2469,13 @@
           const len = Math.hypot(dx, dy)
           if(len < 0.1) return null
           let ux = dx/len, uy = dy/len
+          // Normalisation canonique : force ux > 0 (ou uy > 0 si ux ≈ 0) pour que A→B et B→A aient la même direction
           if(ux < -0.001 || (Math.abs(ux) < 0.001 && uy < 0)) { ux = -ux; uy = -uy }
           const perpDist = -uy * p1.x + ux * p1.y
-          const t1 = ux * p1.x + uy * p1.y
-          const t2 = ux * p2.x + uy * p2.y
-          return { ux, uy, perpDist, tMin: Math.min(t1,t2), tMax: Math.max(t1,t2) }
+          return { ux, uy, perpDist }
         })
+        // Regroupement : segments colinéaires = même direction + même distance perpendiculaire
+        // Pas besoin de vérifier le chevauchement des projections : on groupe tous les segments sur la même ligne
         const assigned = new Array(meta.length).fill(false)
         let groupId = 0
         for(let i = 0; i < meta.length; i++) {
@@ -2480,9 +2484,9 @@
           assigned[i] = true
           for(let j = i+1; j < meta.length; j++) {
             if(!meta[j] || assigned[j]) continue
-            if(Math.abs(meta[i].perpDist - meta[j].perpDist) < 1.0 &&
-               Math.abs(meta[i].ux * meta[j].ux + meta[i].uy * meta[j].uy) > 0.95 &&
-               meta[i].tMin < meta[j].tMax - 0.5 && meta[i].tMax > meta[j].tMin + 0.5) {
+            // Même ligne ? → même direction (produit scalaire > 0.95) + même distance perpendiculaire (< 0.8m)
+            if(Math.abs(meta[i].perpDist - meta[j].perpDist) < 0.8 &&
+               Math.abs(meta[i].ux * meta[j].ux + meta[i].uy * meta[j].uy) > 0.95) {
               group.push(j)
               assigned[j] = true
             }
