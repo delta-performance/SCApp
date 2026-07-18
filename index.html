@@ -2423,6 +2423,13 @@
       ctx.strokeStyle = '#1f441f'; ctx.lineWidth = 1; ctx.setLineDash([4, 4])
       ;[T_ENBUT_P + T_JEU_P/2 - 10, T_ENBUT_P + T_JEU_P/2 + 10].forEach(xm => { const a = tToPx(xm, 0), b = tToPx(xm, T_LARG_P); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke() })
       ctx.setLineDash([])
+      // Lignes à 5m et 15m de la touche (pointillés)
+      ctx.strokeStyle = '#3a7a3a'; ctx.lineWidth = 1; ctx.setLineDash([3, 3])
+      ;[5, 15, T_LARG_P - 5, T_LARG_P - 15].forEach(ym => {
+        const a = tToPx(0, ym), b = tToPx(T_LONG_P, ym)
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+      })
+      ctx.setLineDash([])
       // Points de drop
       ;[[T_ENBUT_P, T_LARG_P/2], [T_ENBUT_P + T_JEU_P, T_LARG_P/2], [T_ENBUT_P + 22, T_LARG_P/2], [T_ENBUT_P + T_JEU_P - 22, T_LARG_P/2], [T_ENBUT_P + T_JEU_P/2, T_LARG_P/2]].forEach(([xm, ym]) => { const c = tToPx(xm, ym); ctx.beginPath(); ctx.arc(c.x, c.y, 3, 0, Math.PI * 2); ctx.fillStyle = '#3a7a3a'; ctx.fill() })
       // Poteaux
@@ -2655,8 +2662,19 @@
           const header = document.createElement('div')
           header.className = 'seance-bloc-header'
           header.style.background = '#222'
-          header.innerHTML = `<span>${sa.date?new Date(sa.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):''}${sa.theme?' · '+sa.theme:''}</span>`
+          header.style.cursor = 'pointer'
+          header.innerHTML = `<span>${sa.date?new Date(sa.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):''}${sa.theme?' · '+sa.theme:''}</span><span style="margin-left:auto;font-size:14px;transition:transform .2s;" class="seance-chevron">▾</span>`
           card.appendChild(header)
+          const body = document.createElement('div')
+          body.className = 'seance-card-body'
+          body.style.display = 'none'
+          header.onclick = () => {
+            const isOpen = body.style.display !== 'none'
+            body.style.display = isOpen ? 'none' : 'block'
+            const chevron = header.querySelector('.seance-chevron')
+            if(chevron) chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)'
+          }
+          card.appendChild(body)
           blocs.forEach(bloc => {
             const g = bloc.groupes?.find(g => g.joueurs?.includes(joueurActif.id))
             if(!g) return
@@ -2756,23 +2774,23 @@
                 bEl.appendChild(recupEl)
               }
             })
-            card.appendChild(bEl)
+            body.appendChild(bEl)
             // Récupération après ce bloc
             if(bloc.recupApres){
               const blocRecupEl = document.createElement('div')
               blocRecupEl.style.cssText = 'padding:8px 14px;text-align:center;font-size:12px;font-weight:600;color:#FECC00;background:#FECC0011;border:1px solid #FECC0033;border-radius:8px;margin:8px 0;'
               blocRecupEl.innerHTML = `⏱ Récupération entre blocs : ${formatMmSs(parseMmSs(String(bloc.recupApres)+'s'))}`
-              card.appendChild(blocRecupEl)
+              body.appendChild(blocRecupEl)
             }
           })
 
           if (sa.timer && sa.timer.dureeMin > 0) {
             const timerEl = nrgBuildTimerCard(sa)
-            card.appendChild(timerEl)
+            body.appendChild(timerEl)
           }
 
           const rpeEl = nrgBuildRpeCard(sa, retoursMap[sa.id])
-          card.appendChild(rpeEl)
+          body.appendChild(rpeEl)
 
           c.appendChild(card)
         })
