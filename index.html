@@ -2454,12 +2454,11 @@
         }
       })
       // Flèches — décalage perpendiculaire quand les segments sont colinéaires (même ligne)
-      // Détecte 3 cas : aller-retour (A→B, B→A), segments qui se chevauchent, segments bout-à-bout collinaires (AB puis BC sur la même ligne)
+      // Détecte 3 cas : aller-retour (A→B, B→A), segments qui se chevauchent, segments bout-à-bout collinéaires (AB puis BC sur la même ligne)
       // Ne décale PAS les segments qui forment un angle (ex: triangle ABC)
       const OFFSET_STEP = 0.4
       const nFleches = trace.fleches?.length || 0
-      const flecheOffsets = new Array(nFleches).fill(0)
-      const flecheOverlapGroup = new Array(nFleches).fill(-1)
+      const flecheOffsets = new Array(nFleches).fill(null).map(() => ({ x:0, y:0, inGroup:false }))
       if(nFleches > 1 && trace.plots) {
         // Pour chaque segment : direction normalisée (canonique) + distance perpendiculaire à l'origine
         const meta = trace.fleches.map((f) => {
@@ -2477,7 +2476,6 @@
         // Regroupement : segments colinéaires = même direction + même distance perpendiculaire
         // Pas besoin de vérifier le chevauchement des projections : on groupe tous les segments sur la même ligne
         const assigned = new Array(meta.length).fill(false)
-        let groupId = 0
         for(let i = 0; i < meta.length; i++) {
           if(!meta[i] || assigned[i]) continue
           const group = [i]
@@ -2492,10 +2490,12 @@
             }
           }
           if(group.length > 1) {
-            const gid = groupId++
+            // Normale canonique unique pour tout le groupe (permet de séparer aller-retour correctement)
+            const canUx = meta[i].ux, canUy = meta[i].uy
+            const canNx = -canUy, canNy = canUx
             group.forEach((fi, idx) => {
-              flecheOffsets[fi] = (idx - (group.length - 1) / 2) * OFFSET_STEP
-              flecheOverlapGroup[fi] = gid
+              const off = (idx - (group.length - 1) / 2) * OFFSET_STEP
+              flecheOffsets[fi] = { x: canNx * off, y: canNy * off, inGroup: true }
             })
           }
         }
@@ -2506,9 +2506,7 @@
         const dx = p2.x - p1.x, dy = p2.y - p1.y
         const len = Math.hypot(dx, dy)
         if(len < 0.1) return
-        const nx = -dy / len, ny = dx / len
-        const offset = flecheOffsets[fi]
-        const ox = nx * offset, oy = ny * offset
+        const ox = flecheOffsets[fi].x, oy = flecheOffsets[fi].y
         const a = tToPx(p1.x + ox, p1.y + oy), b = tToPx(p2.x + ox, p2.y + oy)
         ctx.strokeStyle = f.c || '#16C784'; ctx.lineWidth = 2
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
@@ -2517,8 +2515,8 @@
         ctx.lineTo(b.x - 8 * Math.cos(angle - Math.PI / 7), b.y - 8 * Math.sin(angle - Math.PI / 7))
         ctx.lineTo(b.x - 8 * Math.cos(angle + Math.PI / 7), b.y - 8 * Math.sin(angle + Math.PI / 7))
         ctx.closePath(); ctx.fillStyle = f.c || '#16C784'; ctx.fill()
-        // Badge numéroté uniquement pour les segments qui se superposent
-        if(flecheOverlapGroup[fi] >= 0) {
+        // Badge numéroté uniquement pour les segments dans un groupe colinéaire
+        if(flecheOffsets[fi].inGroup) {
           const numPos = tToPx(p1.x + ox + dx * 0.15, p1.y + oy + dy * 0.15)
           ctx.beginPath(); ctx.arc(numPos.x, numPos.y, 6, 0, Math.PI * 2)
           ctx.fillStyle = '#FECC00'; ctx.fill()
