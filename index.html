@@ -523,8 +523,14 @@
         <div class="planning-week-label" id="seance-week-label">Cette semaine</div>
         <button class="btn-nav-week" onclick="semaineSuivanteSeance()">›</button>
       </div>
-      <div id="seance-recap"></div>
-      <div style="display:flex;align-items:center;justify-content:flex-end;padding:4px 0 8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0 8px;flex-wrap:wrap;gap:8px;">
+        <div class="switch-container">
+          <span class="switch-label">📅 Planif. semaine</span>
+          <label class="switch-tv">
+            <input type="checkbox" id="seance-recap-toggle" onchange="toggleRecap(this.checked)">
+            <span class="slider-tv"></span>
+          </label>
+        </div>
         <div class="switch-container">
           <span class="switch-label" id="seance-saisie-toggle-label">Toutes les séries d'un coup</span>
           <label class="switch-tv">
@@ -533,6 +539,7 @@
           </label>
         </div>
       </div>
+      <div id="seance-recap"></div>
       
       <div id="seance-content"><div class="empty-msg">Chargement...</div></div>
     </div>
@@ -618,6 +625,15 @@
         <button class="btn-nav-week" onclick="semainePrecedenteEnergetique()">‹</button>
         <div class="planning-week-label" id="energetique-week-label">Cette semaine</div>
         <button class="btn-nav-week" onclick="semaineSuivanteEnergetique()">›</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-start;padding:4px 0 8px;">
+        <div class="switch-container">
+          <span class="switch-label">📅 Planif. semaine</span>
+          <label class="switch-tv">
+            <input type="checkbox" id="energetique-recap-toggle" onchange="toggleRecap(this.checked)">
+            <span class="slider-tv"></span>
+          </label>
+        </div>
       </div>
       <div id="energetique-recap"></div>
       <div id="energetique-content"><div class="empty-msg">Chargement...</div></div>
@@ -727,6 +743,7 @@
 
     let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
     let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
+    let recapVisible = localStorage.getItem('player_recap_visible') === 'true'
     let tapCount=0,tapStarted=false,tapDone=false,tapRemaining=10,tapTimer=null
     let wellnessHistory=[]
     // Même logique que planning.html : midi local pour éviter décalage DST/UTC
@@ -1223,6 +1240,8 @@
         if(toggleEl)toggleEl.checked=saisieUniqueMode
         const labelEl=document.getElementById('seance-saisie-toggle-label')
         if(labelEl)labelEl.textContent=saisieUniqueMode?"Toutes les séries d'un coup":'Série par série'
+        const recapToggle=document.getElementById('seance-recap-toggle')
+        if(recapToggle)recapToggle.checked=recapVisible
         const seanceContent = document.getElementById('seance-content')
         if(seanceContent){
           chargerSeance({ targetSeanceId: opts.targetSeanceId })
@@ -1236,6 +1255,8 @@
         if(gpsContent) chargerGPS()
       }
       if(screen==='energetique'){
+        const recapToggle=document.getElementById('energetique-recap-toggle')
+        if(recapToggle)recapToggle.checked=recapVisible
         chargerEnergetique({ targetSeanceId: opts.targetSeanceId })
       }
     }
@@ -1658,7 +1679,8 @@
       const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
       if(!silent) document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
-      if(!silent) afficherRecapSemaine('seance-recap', semaineTarget, 'muscu')
+      if(!silent && recapVisible) afficherRecapSemaine('seance-recap', semaineTarget, 'muscu')
+      if(!silent && !recapVisible) { const rc=document.getElementById('seance-recap'); if(rc) rc.innerHTML='' }
 
       try{
         // Scoper la requête à la semaine demandée (index simple sur date),
@@ -2718,7 +2740,8 @@
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
       const labelEl = document.getElementById('energetique-week-label')
       if(labelEl) labelEl.textContent = fmt(lundi) + ' – ' + fmt(dimanche)
-      afficherRecapSemaine('energetique-recap', semaineTarget, 'nrg')
+      if(recapVisible) afficherRecapSemaine('energetique-recap', semaineTarget, 'nrg')
+      else { const rc=document.getElementById('energetique-recap'); if(rc) rc.innerHTML='' }
 
       try {
         const lundiStr = dateStrLocal(lundi)
@@ -2940,6 +2963,21 @@
       const label=document.getElementById('seance-saisie-toggle-label')
       if(label){label.textContent=checked?"Toutes les séries d'un coup":'Série par série'}
       chargerSeance()
+    }
+
+    window.toggleRecap=function(checked){
+      recapVisible=checked
+      localStorage.setItem('player_recap_visible',checked)
+      const seanceToggle=document.getElementById('seance-recap-toggle')
+      if(seanceToggle) seanceToggle.checked=checked
+      const nrgToggle=document.getElementById('energetique-recap-toggle')
+      if(nrgToggle) nrgToggle.checked=checked
+      const activeScreen=document.querySelector('.screen.active')
+      if(activeScreen){
+        const id=activeScreen.id
+        if(id==='screen-seance') chargerSeance()
+        else if(id==='screen-energetique') chargerEnergetique()
+      }
     }
 
     window.ouvrirModalTractionToutesSeries=function(seanceId,clefBase,nbSets,joueurId,exoKey,ckId){
