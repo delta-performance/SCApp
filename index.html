@@ -126,6 +126,18 @@
     .gps-table td { padding: 5px 7px; border-bottom: 1px solid #111; }
     .gps-table tr:hover td { background: #1a1a1a; }
     .empty-msg { text-align: center; padding: 40px 16px; color: #444; font-size: 13px; line-height: 1.7; }
+    .recap-week { background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+    .recap-week-title { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+    .recap-week-list { display: flex; flex-direction: column; gap: 8px; }
+    .recap-pill { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #2a2a2a; background: #1a1a1a; cursor: pointer; transition: border-color .15s; }
+    .recap-pill:active { border-color: #FECC00; }
+    .recap-pill.muscu { border-left: 3px solid #FECC00; }
+    .recap-pill.nrg { border-left: 3px solid #378ADD; }
+    .recap-pill-day { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: .04em; min-width: 42px; }
+    .recap-pill-info { flex: 1; min-width: 0; }
+    .recap-pill-label { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recap-pill-sub { font-size: 10px; color: #666; margin-top: 2px; }
+    .recap-pill-arrow { font-size: 14px; color: #555; flex-shrink: 0; }
     .empty-icon { font-size: 36px; margin-bottom: 10px; }
     
     /* ====== PLANNING MOBILE ====== */
@@ -511,7 +523,7 @@
         <div class="planning-week-label" id="seance-week-label">Cette semaine</div>
         <button class="btn-nav-week" onclick="semaineSuivanteSeance()">›</button>
       </div>
-      
+      <div id="seance-recap"></div>
       <div style="display:flex;align-items:center;justify-content:flex-end;padding:4px 0 8px;">
         <div class="switch-container">
           <span class="switch-label" id="seance-saisie-toggle-label">Toutes les séries d'un coup</span>
@@ -607,6 +619,7 @@
         <div class="planning-week-label" id="energetique-week-label">Cette semaine</div>
         <button class="btn-nav-week" onclick="semaineSuivanteEnergetique()">›</button>
       </div>
+      <div id="energetique-recap"></div>
       <div id="energetique-content"><div class="empty-msg">Chargement...</div></div>
     </div>
 
@@ -1190,7 +1203,7 @@
     }
 
     // ===== NAVIGATION — CHARGEMENT DIRECT INTELLIGENT =====
-    window.allerVers=function(screen){
+    window.allerVers=function(screen, opts = {}){
       document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
       const el=document.getElementById('screen-'+screen)
       if(!el){console.error('Screen manquant: screen-'+screen);return}
@@ -1212,11 +1225,7 @@
         if(labelEl)labelEl.textContent=saisieUniqueMode?"Toutes les séries d'un coup":'Série par série'
         const seanceContent = document.getElementById('seance-content')
         if(seanceContent){
-          chargerSeance()
-          // Preload previous week in background (2 weeks of data available)
-          const prevWeek=getLundi(new Date(currentWeekStart.getTime()-7*24*60*60*1000))
-          const prevKey='seances_v3_'+(joueurActif?.id||'none')+'_'+JSON.stringify({semaine:prevWeek})
-          if(!getCache(prevKey)) chargerSeance({semaine:prevWeek,_silent:true})
+          chargerSeance({ targetSeanceId: opts.targetSeanceId })
         }
       }
       if(screen==='planning'){
@@ -1227,7 +1236,7 @@
         if(gpsContent) chargerGPS()
       }
       if(screen==='energetique'){
-        chargerEnergetique()
+        chargerEnergetique({ targetSeanceId: opts.targetSeanceId })
       }
     }
 
@@ -1534,17 +1543,87 @@
       }
     }
 
+    async function afficherRecapSemaine(containerId, semaineTarget, currentType) {
+      const container = document.getElementById(containerId)
+      if (!container || !joueurActif) return
+      const lundi = new Date(semaineTarget)
+      const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
+      const lundiStr = dateStrLocal(lundi)
+      const dimancheStr = dateStrLocal(dimanche)
+      try {
+        const [muscuSnap, nrgSnap] = await Promise.all([
+          getDocs(query(collection(db, 'seances'), where('date', '>=', lundiStr), where('date', '<=', dimancheStr))),
+          getDocs(query(collection(db, 'seancesEnergetique'), where('date', '>=', lundiStr), where('date', '<=', dimancheStr)))
+        ])
+        const muscuSeances = muscuSnap.docs.map(d => ({ id: d.id, ...d.data(), _type: 'muscu' }))
+          .filter(s => s.statut === 'publie')
+          .filter(s => {
+            const allBlocs = [...(s.blocs || []), ...(s.blocsBlesses || [])]
+            return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+          })
+        const estBlesse = joueurActif.statut === 'blesse'
+        const nrgSeances = nrgSnap.docs.map(d => ({ id: d.id, ...d.data(), _type: 'nrg' }))
+          .filter(s => s.statut === 'publie')
+          .filter(s => {
+            const blocs = estBlesse ? (s.blocsBlesses || []) : (s.blocs || [])
+            return blocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+          })
+        const allSeances = [...muscuSeances, ...nrgSeances].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        if (allSeances.length === 0) { container.innerHTML = ''; return }
+        const hasOtherType = allSeances.some(s => s._type !== currentType)
+        if (!hasOtherType) { container.innerHTML = ''; return }
+        container.innerHTML = '<div class="recap-week-title">📅 Séances de la semaine</div>'
+        const list = document.createElement('div')
+        list.className = 'recap-week-list'
+        allSeances.forEach(sa => {
+          const isCurrent = sa._type === currentType
+          const pill = document.createElement('div')
+          pill.className = 'recap-pill ' + sa._type
+          const icon = sa._type === 'muscu' ? '🏋️' : '🏃'
+          const dateShort = sa.date ? new Date(sa.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }) : ''
+          const theme = sa.theme || ''
+          const label = sa._type === 'muscu' ? 'Musculation' : 'Énergétique'
+          pill.innerHTML = '<span class="recap-pill-day">' + dateShort + '</span><div class="recap-pill-info"><div class="recap-pill-label">' + icon + ' ' + label + (theme ? ' · ' + theme : '') + '</div></div><span class="recap-pill-arrow">' + (isCurrent ? '▼' : '→') + '</span>'
+          pill.onclick = () => {
+            if (isCurrent) {
+              const bodyId = sa._type === 'muscu' ? 'seance-' + sa.id + '-body' : 'nrg-' + sa.id + '-body'
+              const body = document.getElementById(bodyId)
+              if (body) {
+                body.style.display = 'block'
+                const card = body.closest('.seance-bloc')
+                if (card) {
+                  if (sa._type === 'muscu') {
+                    const chevron = card.querySelector('.seance-bloc-header span:last-child')
+                    if (chevron) chevron.textContent = '▲'
+                  } else {
+                    const chevron = card.querySelector('.seance-chevron')
+                    if (chevron) chevron.style.transform = 'rotate(180deg)'
+                  }
+                }
+                body.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              }
+            } else {
+              const targetScreen = sa._type === 'muscu' ? 'seance' : 'energetique'
+              allerVers(targetScreen, { targetSeanceId: sa.id })
+            }
+          }
+          list.appendChild(pill)
+        })
+        const wrap = document.createElement('div')
+        wrap.className = 'recap-week'
+        wrap.appendChild(list)
+        container.innerHTML = ''
+        container.appendChild(wrap)
+      } catch(e) {
+        console.warn('Erreur recap semaine:', e)
+        container.innerHTML = ''
+      }
+    }
+
     async function chargerSeance(options = {}) {
       const realC = document.getElementById('seance-content');
       const silent = options._silent === true
       const c = silent ? document.createElement('div') : realC
-      
-      const cacheKey = 'seances_v3_' + (joueurActif?.id||'none') + '_' + JSON.stringify({...options, _silent: undefined})
-      const cachedData = getCache(cacheKey)
-      if (cachedData) {
-        if (!silent) realC.innerHTML = cachedData.html
-        return
-      }
       
       if(!silent) c.innerHTML = '<div class="empty-msg">⏳ Chargement de tes séances...</div>'
       if(!joueurActif)return
@@ -1579,6 +1658,7 @@
       const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate()+6)
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
       if(!silent) document.getElementById('seance-week-label').textContent = fmt(lundi) + ' – ' + fmt(dimanche)
+      if(!silent) afficherRecapSemaine('seance-recap', semaineTarget, 'muscu')
 
       try{
         // Scoper la requête à la semaine demandée (index simple sur date),
@@ -1600,7 +1680,6 @@
         if(!seancesSemaine.length){
           const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏖️</div>Aucune séance publiée cette semaine.</div>'
           c.innerHTML = emptyHtml
-          setCache(cacheKey, { html: emptyHtml })
           return
         }
         
@@ -1618,7 +1697,6 @@
         if(!seancesJoueur.length){
           const emptyHtml = '<div class="empty-msg"><div class="empty-icon">🏋️</div>Tu n\'as pas de séance cette semaine.</div>'
           c.innerHTML = emptyHtml
-          setCache(cacheKey, { html: emptyHtml })
           return
         }
         
@@ -1785,7 +1863,7 @@
                 const nrgLink = document.createElement('div')
                 nrgLink.style.cssText = 'margin-top:8px;padding:10px 14px;border-radius:10px;border:1px solid #378ADD44;background:#378ADD0a;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px;color:#378ADD;font-weight:600;'
                 nrgLink.innerHTML = '🏃 Séance énergétique prévue aujourd\'hui — Voir →'
-                nrgLink.onclick = () => allerVers('energetique')
+                nrgLink.onclick = () => allerVers('energetique', { targetSeanceId: nrgJoueur[0].id })
                 seanceCard.appendChild(nrgLink)
               }
             } catch(e) { /* silencieux */ }
@@ -1794,8 +1872,16 @@
         
         if(!aUneSeance)c.innerHTML+='<div class="empty-msg">Tu n\'es assigné à aucune séance cette semaine.</div>'
         
-        // Mettre en cache le résultat HTML avec clé spécifique
-        setCache(cacheKey, { html: c.innerHTML })
+        // Auto-expand target séance
+        if(!silent && options.targetSeanceId) {
+          const targetBody = document.getElementById('seance-' + options.targetSeanceId + '-body')
+          if(targetBody) {
+            targetBody.style.display = 'block'
+            const chevron = targetBody.closest('.seance-bloc')?.querySelector('.seance-bloc-header span:last-child')
+            if(chevron) chevron.textContent = '▲'
+            setTimeout(() => targetBody.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
+          }
+        }
         
       }catch(e){console.error(e);c.innerHTML='<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'}
     }
@@ -2632,6 +2718,7 @@
       const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
       const labelEl = document.getElementById('energetique-week-label')
       if(labelEl) labelEl.textContent = fmt(lundi) + ' – ' + fmt(dimanche)
+      afficherRecapSemaine('energetique-recap', semaineTarget, 'nrg')
 
       try {
         const lundiStr = dateStrLocal(lundi)
@@ -2676,6 +2763,7 @@
           card.appendChild(header)
           const body = document.createElement('div')
           body.className = 'seance-card-body'
+          body.id = 'nrg-' + sa.id + '-body'
           body.style.display = 'none'
           header.onclick = () => {
             const isOpen = body.style.display !== 'none'
@@ -2803,6 +2891,20 @@
 
           c.appendChild(card)
         })
+
+        // Auto-expand target séance
+        if (options.targetSeanceId) {
+          const targetBody = document.getElementById('nrg-' + options.targetSeanceId + '-body')
+          if (targetBody) {
+            targetBody.style.display = 'block'
+            const card = targetBody.closest('.seance-bloc')
+            if (card) {
+              const chevron = card.querySelector('.seance-chevron')
+              if (chevron) chevron.style.transform = 'rotate(180deg)'
+            }
+            setTimeout(() => targetBody.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
+          }
+        }
       } catch(e) {
         console.error('Erreur chargement énergétique:', e)
         c.innerHTML = '<div class="empty-msg">Erreur de chargement.</div>'
