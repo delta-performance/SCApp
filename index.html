@@ -1582,12 +1582,11 @@
             const allBlocs = [...(s.blocs || []), ...(s.blocsBlesses || [])]
             return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
           })
-        const estBlesse = joueurActif.statut === 'blesse'
         const nrgSeances = nrgSnap.docs.map(d => ({ id: d.id, ...d.data(), _type: 'nrg' }))
           .filter(s => s.statut === 'publie')
           .filter(s => {
-            const blocs = estBlesse ? (s.blocsBlesses || []) : (s.blocs || [])
-            return blocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+            const allBlocs = [...(s.blocs || []), ...(s.blocsBlesses || [])]
+            return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
           })
         const allSeances = [...muscuSeances, ...nrgSeances].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
         if (allSeances.length === 0) { container.innerHTML = ''; return }
@@ -2752,10 +2751,9 @@
           .filter(s => s.statut === 'publie')
           .sort((a,b) => (a.date || '').localeCompare(b.date || ''))
 
-        const estBlesse = joueurActif.statut === 'blesse'
         const seancesJoueur = seancesSemaine.filter(sa => {
-          const blocs = estBlesse ? (sa.blocsBlesses || []) : (sa.blocs || [])
-          return blocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+          const allBlocs = [...(sa.blocs || []), ...(sa.blocsBlesses || [])]
+          return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
         })
 
         if(!seancesJoueur.length){
@@ -2774,7 +2772,7 @@
 
         c.innerHTML = ''
         seancesJoueur.forEach(sa => {
-          const blocs = estBlesse ? (sa.blocsBlesses || []) : (sa.blocs || [])
+          const allBlocs = [...(sa.blocs || []), ...(sa.blocsBlesses || [])]
           const card = document.createElement('div')
           card.className = 'seance-bloc'
           card.style.marginBottom = '16px'
@@ -2795,7 +2793,7 @@
             if(chevron) chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)'
           }
           card.appendChild(body)
-          blocs.forEach(bloc => {
+          allBlocs.forEach(bloc => {
             const g = bloc.groupes?.find(g => g.joueurs?.includes(joueurActif.id))
             if(!g) return
             const bEl = document.createElement('div')
@@ -3111,6 +3109,18 @@
       const estBlesse = joueurActif?.statut === 'blesse'
       const jid = joueurActif?.id
 
+      // Check if player is in a given group
+      function isPlayerInGroup(groupeId) {
+        if (!groupeId || !window.__groupesConfig) return false
+        for (const cat of window.__groupesConfig) {
+          if (cat.sousGroupes) {
+            const sg = cat.sousGroupes.find(s => s.id === groupeId)
+            if (sg && sg.joueurs && sg.joueurs.includes(jid)) return true
+          }
+        }
+        return false
+      }
+
       if(planningScope === 'equipe'){
         // Vue équipe : tout le planning collectif visible par au moins un joueur
         // Exclure seulement visible:false (staff only)
@@ -3134,6 +3144,21 @@
           return {
             planning: planningAll.filter(e => {
               if(e.visible === false) return false         // masqué staff
+              if(e.visible === 'groupe'){
+                // Check if this is the HG group — visible to everyone
+                const allGroupIds = e.groupeIds || (e.groupeId ? [e.groupeId] : [])
+                const isHGGroup = window.__groupesConfig && window.__groupesConfig.some(cat =>
+                  cat.sousGroupes && cat.sousGroupes.some(s =>
+                    allGroupIds.includes(s.id) && s.nom === 'HG'
+                  )
+                )
+                if (isHGGroup) return true
+                // Créneau assigné à un ou plusieurs groupes : visible si le joueur est dans l'un d'eux
+                if (allGroupIds.length > 0) {
+                  return allGroupIds.some(gid => isPlayerInGroup(gid))
+                }
+                return false
+              }
               if(e.visiblePlayers && e.visiblePlayers.length > 0){
                 return e.visiblePlayers.includes(jid)     // créneau pour joueurs sélectionnés
               }
@@ -3265,6 +3290,18 @@
       const cached=getCache(pKey)
       if(cached){
         planningCache=cached
+        // Ensure groupesConfig is loaded for filtering
+        if(!window.__groupesConfig){
+          const grpCache = getCache('groupesConfig_player')
+          if(grpCache) window.__groupesConfig = grpCache
+          else {
+            try {
+              const grpSnap = await getDocs(collection(db, 'groupesConfiguration'))
+              window.__groupesConfig = grpSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+              setCache('groupesConfig_player', window.__groupesConfig)
+            } catch(e) {}
+          }
+        }
         const filtered=filterByScope(cached.planningAll,cached.creneauxAll)
         buildWeekSlides(lundi,filtered.planning,filtered.creneaux,nowStr)
         buildWeekOverview(lundi,filtered.planning,filtered.creneaux,nowStr)
@@ -3282,7 +3319,7 @@
         const lundiStr = dateStrLocal(lundi)
         const dimancheStr = dateStrLocal(dimanche)
 
-        const [planSnap, bSnap] = await Promise.all([
+        const [planSnap, bSnap, grpSnap] = await Promise.all([
           getDocs(query(
             collection(db, 'planning'),
             where('date', '>=', lundiStr),
@@ -3292,8 +3329,13 @@
             collection(db, 'creneauxBlesses'),
             where('date', '>=', lundiStr),
             where('date', '<=', dimancheStr)
-          ))
+          )),
+          getDocs(collection(db, 'groupesConfiguration'))
         ])
+        
+        // Store groups config for filtering
+        window.__groupesConfig = grpSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        setCache('groupesConfig_player', window.__groupesConfig)
         
         const planningAll = planSnap.docs.map(d=>({id:d.id,...d.data()}))
           .filter(p => {
