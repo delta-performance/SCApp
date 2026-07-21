@@ -2763,10 +2763,10 @@
 
         const retoursMap = {}
         try {
-          const retoursSnap = await getDocs(collection(db, 'retoursEnergetique'))
+          const retoursSnap = await getDocs(query(collection(db, 'retoursEnergetique'), where('joueurId', '==', joueurActif.id)))
           retoursSnap.docs.forEach(d => {
             const r = d.data()
-            if (r.joueurId === joueurActif.id) retoursMap[r.seanceId] = r
+            retoursMap[r.seanceId] = r
           })
         } catch(e) { console.warn('Erreur chargement retours:', e) }
 
