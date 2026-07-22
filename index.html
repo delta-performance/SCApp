@@ -2923,51 +2923,41 @@
         ctx.restore()
       }
 
-      // Dessine un "pop" (bulle flottante) au point de départ du segment
-      // - Type/legende : visible pendant TOUT le segment
-      // - Passage au sol : visible plus longtemps (60%), et continu si le segment suivant commence au même plot
+      // Dessine un "pop" (bulle flottante)
+      // - Type/legende : affiché sur le côté droit du canvas, en gros, pendant tout le segment
+      // - Passage au sol : affiché au plot concerné, avec un fade in/out simple
       function drawPopLabel(step, progress, idx) {
         const segType = step.type === 'fleche' ? step.segType : 'course'
         const segColor = step.type === 'fleche' ? (SEG_TYPE_COLORS[segType] || step.color) : step.color
-        const SOL_DURATION = 0.6 // passage_sol pop visible sur 60% du segment
 
-        // Helper pour dessiner une bulle pop
-        function drawBubble(bx, by, text, color, opacity) {
-          if(opacity <= 0) return
+        // Détermine le texte du type/légende
+        let typeText = ''
+        let typeColor = segColor
+        if(step.label) { typeText = step.label }
+        else if(segType !== 'course') { typeText = SEG_TYPE_LABELS[segType] || '' }
+
+        // 1. Type/légende : affiché sur le côté droit, en gros, pendant tout le segment
+        if(typeText) {
           ctx.save()
-          ctx.globalAlpha = opacity
-          ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
-          ctx.textBaseline = 'middle'; ctx.textAlign = 'center'
-          const tw = ctx.measureText(text).width
-          const bw = tw + 16, bh = 22
-          const bxx = bx - bw / 2, byy = by - bh / 2
-          ctx.fillStyle = 'rgba(0,0,0,0.9)'
-          ctx.beginPath(); ctx.roundRect(bxx, byy, bw, bh, 6); ctx.fill()
-          ctx.strokeStyle = color; ctx.lineWidth = 1.5
-          ctx.beginPath(); ctx.roundRect(bxx, byy, bw, bh, 6); ctx.stroke()
-          ctx.fillStyle = 'rgba(0,0,0,0.9)'
-          ctx.beginPath(); ctx.moveTo(bx - 5, byy + bh); ctx.lineTo(bx + 5, byy + bh); ctx.lineTo(bx, byy + bh + 5); ctx.closePath(); ctx.fill()
-          ctx.fillStyle = color
-          ctx.fillText(text, bx, by)
+          ctx.font = 'bold 14px system-ui, -apple-system, sans-serif'
+          ctx.textBaseline = 'middle'; ctx.textAlign = 'right'
+          const tw = ctx.measureText(typeText).width
+          const padX = 12, padY = 8
+          const bw = tw + padX * 2, bh = 28
+          const bx = W - bw - 12, by = H / 2 - bh / 2
+          // Fond arrondi
+          ctx.fillStyle = 'rgba(0,0,0,0.88)'
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill()
+          // Bordure colorée à gauche
+          ctx.strokeStyle = typeColor; ctx.lineWidth = 3
+          ctx.beginPath(); ctx.moveTo(bx + 1.5, by + 4); ctx.lineTo(bx + 1.5, by + bh - 4); ctx.stroke()
+          // Texte
+          ctx.fillStyle = typeColor
+          ctx.fillText(typeText, bx + bw - padX, by + bh / 2)
           ctx.restore()
         }
 
-        // Opacité : fade in rapide (10%) puis plein, fade out en fin (10%)
-        function fullOpacity(p) {
-          if(p < 0.1) return p / 0.1
-          if(p > 0.9) return 1 - (p - 0.9) / 0.1
-          return 1
-        }
-        // Opacité sur une fenêtre [start, start+dur], avec fade in/out
-        function windowOpacity(p, start, dur) {
-          if(p < start || p > start + dur) return 0
-          const local = (p - start) / dur
-          if(local < 0.15) return local / 0.15
-          if(local > 0.85) return 1 - (local - 0.85) / 0.15
-          return 1
-        }
-
-        // Récupère le plot de départ/arrivée
+        // 2. Passage au sol : affiché au plot, fade in quand on arrive, fade out quand on repart
         let startPt, endPt
         if(step.type === 'fleche') { startPt = step.p1; endPt = step.p2 }
         else { startPt = step.pts[0]; endPt = step.pts[step.pts.length - 1] }
@@ -2975,55 +2965,70 @@
         const startPlot = trace.plots?.find(p => p.x === startPt.x && p.y === startPt.y)
         const endPlot = trace.plots?.find(p => p.x === endPt.x && p.y === endPt.y)
 
-        // Vérifie si le segment précédent finit au même passage_sol que le départ
+        // Vérifie continuité avec segment précédent/suivant
         const prevStep = idx > 0 ? steps[idx - 1] : null
         let prevEndPt = null
-        if(prevStep) {
-          if(prevStep.type === 'fleche') prevEndPt = prevStep.p2
-          else prevEndPt = prevStep.pts[prevStep.pts.length - 1]
-        }
+        if(prevStep) { prevEndPt = prevStep.type === 'fleche' ? prevStep.p2 : prevStep.pts[prevStep.pts.length - 1] }
         const startSolContinues = startPlot?.ty === 'passage_sol' && prevEndPt && prevEndPt.x === startPt.x && prevEndPt.y === startPt.y
 
-        // Vérifie si le segment suivant commence au même passage_sol que l'arrivée
         const nextStep = idx < steps.length - 1 ? steps[idx + 1] : null
         let nextStartPt = null
-        if(nextStep) {
-          if(nextStep.type === 'fleche') nextStartPt = nextStep.p1
-          else nextStartPt = nextStep.pts[0]
-        }
+        if(nextStep) { nextStartPt = nextStep.type === 'fleche' ? nextStep.p1 : nextStep.pts[0] }
         const endSolContinues = endPlot?.ty === 'passage_sol' && nextStartPt && nextStartPt.x === endPt.x && nextStartPt.y === endPt.y
 
-        // 1. Pop au DÉPART
-        const startPos = tToPx(startPt.x, startPt.y)
+        // Helper pour dessiner le pop passage au sol
+        function drawSolPop(px, py, opacity) {
+          if(opacity <= 0) return
+          ctx.save()
+          ctx.globalAlpha = opacity
+          ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
+          ctx.textBaseline = 'middle'; ctx.textAlign = 'center'
+          const text = '🔻 Passage au sol'
+          const tw = ctx.measureText(text).width
+          const bw = tw + 16, bh = 22
+          const bx = px - bw / 2, by = py - 22 - bh / 2
+          ctx.fillStyle = 'rgba(0,0,0,0.9)'
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill()
+          ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.stroke()
+          ctx.fillStyle = 'rgba(0,0,0,0.9)'
+          ctx.beginPath(); ctx.moveTo(px - 5, by + bh); ctx.lineTo(px + 5, by + bh); ctx.lineTo(px, by + bh + 5); ctx.closePath(); ctx.fill()
+          ctx.fillStyle = '#f59e0b'
+          ctx.fillText(text, px, by + bh / 2)
+          ctx.restore()
+        }
+
+        // Fade simple : fade in sur 15%, plein, fade out sur 15%
+        function simpleFade(p, start, dur, noFadeOut) {
+          if(p < start || p > start + dur) return 0
+          const local = (p - start) / dur
+          if(local < 0.15) return local / 0.15
+          if(!noFadeOut && local > 0.85) return 1 - (local - 0.85) / 0.15
+          return 1
+        }
+
+        // Pop au départ (passage_sol)
         if(startPlot?.ty === 'passage_sol') {
-          // Passage au sol au départ
-          // Si continu depuis le segment précédent → visible sur tout le segment
-          // Sinon → visible sur les premiers 60%
-          const dur = startSolContinues ? 1.0 : SOL_DURATION
-          const op = startSolContinues ? fullOpacity(progress) : windowOpacity(progress, 0, dur)
-          if(op > 0) drawBubble(startPos.x, startPos.y - 22, '🔻 Passage au sol', '#f59e0b', op)
-        } else {
-          // Type de segment ou légende de couleur → visible pendant TOUT le segment
-          let popText = ''
-          let popColor = segColor
-          if(step.label) { popText = step.label }
-          else if(segType !== 'course') { popText = SEG_TYPE_LABELS[segType] || '' }
-          if(popText) {
-            const op = fullOpacity(progress)
-            if(op > 0) drawBubble(startPos.x, startPos.y - 22, popText, popColor, op)
+          const startPos = tToPx(startPt.x, startPt.y)
+          // Si continu : visible tout le segment sans fade out
+          // Sinon : visible sur les premiers 50%
+          if(startSolContinues) {
+            drawSolPop(startPos.x, startPos.y, simpleFade(progress, 0, 1.0, true))
+          } else {
+            drawSolPop(startPos.x, startPos.y, simpleFade(progress, 0, 0.5, false))
           }
         }
 
-        // 2. Pop à l'ARRIVÉE (passage au sol seulement)
+        // Pop à l'arrivée (passage_sol)
         if(endPlot?.ty === 'passage_sol') {
           const endPos = tToPx(endPt.x, endPt.y)
-          // Si continu vers le segment suivant → visible sur les derniers 60% (et continuera)
-          // Sinon → visible sur les derniers 60%
-          const start = 1 - SOL_DURATION
-          const op = windowOpacity(progress, start, SOL_DURATION)
-          // Si continue, pas de fade out en fin
-          const finalOp = endSolContinues ? (progress >= start ? (progress > 0.9 ? 1 : Math.min(1, (progress - start) / 0.15)) : 0) : op
-          if(finalOp > 0) drawBubble(endPos.x, endPos.y - 22, '🔻 Passage au sol', '#f59e0b', finalOp)
+          // Si continu : visible sur les derniers 50% sans fade out
+          // Sinon : visible sur les derniers 50%
+          if(endSolContinues) {
+            drawSolPop(endPos.x, endPos.y, simpleFade(progress, 0.5, 0.5, true))
+          } else {
+            drawSolPop(endPos.x, endPos.y, simpleFade(progress, 0.5, 0.5, false))
+          }
         }
       }
 
