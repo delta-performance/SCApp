@@ -2659,8 +2659,8 @@
           }
         }
       }
-      const SEG_TYPE_ICONS_P = { course:'🏃', passage_sol:'🔻', course_arriere:'↩️' }
-      const SEG_TYPE_COLORS_P = { course:null, passage_sol:'#f59e0b', course_arriere:'#ef4444' }
+      const SEG_TYPE_ICONS_P = { course:'🏃', course_arriere:'↩️' }
+      const SEG_TYPE_COLORS_P = { course:null, course_arriere:'#ef4444' }
       trace.fleches?.forEach((f, fi) => {
         const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
         if(!p1 || !p2) return
@@ -2672,9 +2672,7 @@
         const segType = f.ty || 'course'
         const segColor = SEG_TYPE_COLORS_P[segType] || f.c || '#16C784'
         ctx.strokeStyle = segColor; ctx.lineWidth = 2
-        if(segType==='passage_sol'){ ctx.setLineDash([5,3]) }
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
-        ctx.setLineDash([])
         const angle = Math.atan2(b.y - a.y, b.x - a.x)
         if(segType==='course_arriere'){
           ctx.beginPath(); ctx.moveTo(a.x, a.y)
@@ -2709,9 +2707,19 @@
       // Plots
       trace.plots?.forEach(p => {
         const c = tToPx(p.x, p.y)
-        ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI * 2)
-        ctx.fillStyle = '#ff6633'; ctx.fill()
-        ctx.strokeStyle = '#cc4411'; ctx.lineWidth = 1; ctx.stroke()
+        const isSol = p.ty === 'passage_sol'
+        if(isSol){
+          // Passage au sol : triangle orange vers le bas
+          const r = 7
+          ctx.beginPath(); ctx.moveTo(c.x, c.y + r); ctx.lineTo(c.x - r, c.y - r); ctx.lineTo(c.x + r, c.y - r); ctx.closePath()
+          ctx.fillStyle = '#f59e0b'; ctx.fill()
+          ctx.strokeStyle = '#cc4411'; ctx.lineWidth = 1.5; ctx.stroke()
+          ctx.beginPath(); ctx.arc(c.x, c.y - 2, 2, 0, Math.PI * 2); ctx.fillStyle = '#0f0f0f'; ctx.fill()
+        } else {
+          ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI * 2)
+          ctx.fillStyle = '#ff6633'; ctx.fill()
+          ctx.strokeStyle = '#cc4411'; ctx.lineWidth = 1; ctx.stroke()
+        }
         if(p.l) { ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.l, c.x, c.y); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic' }
       })
       // HI info overlay
@@ -2763,8 +2771,8 @@
       // Trier : fleches d'abord par index, puis courbes
       steps.sort((a, b) => (a.type === 'fleche' ? a.fi : 1000 + a.ci) - (b.type === 'fleche' ? b.fi : 1000 + b.ci))
 
-      const SEG_TYPE_LABELS = { course: '🏃 Course', passage_sol: '🔻 Passage au sol', course_arriere: '↩️ Course arrière' }
-      const SEG_TYPE_COLORS = { course: '#16C784', passage_sol: '#f59e0b', course_arriere: '#ef4444' }
+      const SEG_TYPE_LABELS = { course: '🏃 Course', course_arriere: '↩️ Course arrière' }
+      const SEG_TYPE_COLORS = { course: '#16C784', course_arriere: '#ef4444' }
 
       // Fonction pour dessiner le fond (terrain)
       function drawBackground() {
@@ -2797,9 +2805,18 @@
         trace.plots?.forEach((p, i) => {
           const c = tToPx(p.x, p.y)
           const isStart = highlightIdx === i
-          ctx.beginPath(); ctx.arc(c.x, c.y, isStart ? 7 : 5, 0, Math.PI * 2)
-          ctx.fillStyle = isStart ? '#FECC00' : '#ff6633'; ctx.fill()
-          ctx.strokeStyle = isStart ? '#fff' : '#cc4411'; ctx.lineWidth = isStart ? 2 : 1; ctx.stroke()
+          const isSol = p.ty === 'passage_sol'
+          if(isSol){
+            const r = isStart ? 9 : 7
+            ctx.beginPath(); ctx.moveTo(c.x, c.y + r); ctx.lineTo(c.x - r, c.y - r); ctx.lineTo(c.x + r, c.y - r); ctx.closePath()
+            ctx.fillStyle = isStart ? '#FECC00' : '#f59e0b'; ctx.fill()
+            ctx.strokeStyle = isStart ? '#fff' : '#cc4411'; ctx.lineWidth = isStart ? 2 : 1.5; ctx.stroke()
+            ctx.beginPath(); ctx.arc(c.x, c.y - 2, 2, 0, Math.PI * 2); ctx.fillStyle = '#0f0f0f'; ctx.fill()
+          } else {
+            ctx.beginPath(); ctx.arc(c.x, c.y, isStart ? 7 : 5, 0, Math.PI * 2)
+            ctx.fillStyle = isStart ? '#FECC00' : '#ff6633'; ctx.fill()
+            ctx.strokeStyle = isStart ? '#fff' : '#cc4411'; ctx.lineWidth = isStart ? 2 : 1; ctx.stroke()
+          }
           if(p.l) { ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.l, c.x, c.y); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic' }
         })
       }
@@ -2809,9 +2826,7 @@
         if(step.type === 'fleche') {
           const a = tToPx(step.p1.x, step.p1.y), b = tToPx(step.p2.x, step.p2.y)
           ctx.strokeStyle = step.color + '44'; ctx.lineWidth = 2
-          if(step.segType === 'passage_sol') ctx.setLineDash([5, 3])
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
-          ctx.setLineDash([])
         } else {
           ctx.strokeStyle = step.color + '44'; ctx.lineWidth = 2
           ctx.beginPath()
@@ -2828,16 +2843,12 @@
           const a = tToPx(step.p1.x, step.p1.y), b = tToPx(step.p2.x, step.p2.y)
           // Ligne complète en semi-transparent
           ctx.strokeStyle = segColor + '44'; ctx.lineWidth = 2
-          if(step.segType === 'passage_sol') ctx.setLineDash([5, 3])
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
-          ctx.setLineDash([])
           // Ligne animée (progression)
           const curX = a.x + (b.x - a.x) * progress
           const curY = a.y + (b.y - a.y) * progress
           ctx.strokeStyle = segColor; ctx.lineWidth = 3
-          if(step.segType === 'passage_sol') ctx.setLineDash([5, 3])
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(curX, curY); ctx.stroke()
-          ctx.setLineDash([])
           // Point qui se déplace
           ctx.beginPath(); ctx.arc(curX, curY, 6, 0, Math.PI * 2)
           ctx.fillStyle = segColor; ctx.fill()
@@ -2914,67 +2925,104 @@
 
       // Dessine un "pop" (bulle flottante) au point de départ du segment
       // Affiche la légende de couleur si elle existe, sinon le type de segment
+      // Affiche aussi un pop "Passage au sol" au moment où l'animation arrive sur un plot passage_sol
       function drawPopLabel(step, progress) {
-        // Le pop reste visible pendant les premiers 40% de la progression
         const popDuration = 0.4
-        if(progress > popDuration) return
-        // Opacité qui fade out
-        const opacity = progress < popDuration * 0.7 ? 1 : 1 - (progress - popDuration * 0.7) / (popDuration * 0.3)
-
-        // Détermine le texte à afficher : légende de couleur prioritaire, sinon type
         const segType = step.type === 'fleche' ? step.segType : 'course'
         const segColor = step.type === 'fleche' ? (SEG_TYPE_COLORS[segType] || step.color) : step.color
-        let popText = ''
-        if(step.label) {
-          popText = step.label
-        } else if(segType !== 'course') {
-          popText = SEG_TYPE_LABELS[segType] || ''
-        }
-        if(!popText) return
 
-        // Position : point de départ du segment
-        let px, py
+        // Helper pour calculer l'opacité : fade in puis fade out sur une fenêtre de popDuration
+        function popOpacity(p, windowStart) {
+          const pStart = windowStart
+          const pEnd = windowStart + popDuration
+          if(p < pStart || p > pEnd) return 0
+          const local = (p - pStart) / popDuration
+          return local < 0.3 ? local / 0.3 : 1 - (local - 0.3) / 0.7
+        }
+
+        // Helper pour dessiner une bulle pop
+        function drawBubble(bx, by, text, color, opacity) {
+          if(opacity <= 0) return
+          ctx.save()
+          ctx.globalAlpha = opacity
+          ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
+          ctx.textBaseline = 'middle'; ctx.textAlign = 'center'
+          const tw = ctx.measureText(text).width
+          const bw = tw + 16, bh = 22
+          const bxx = bx - bw / 2, byy = by - bh / 2
+          ctx.fillStyle = 'rgba(0,0,0,0.9)'
+          ctx.beginPath(); ctx.roundRect(bxx, byy, bw, bh, 6); ctx.fill()
+          ctx.strokeStyle = color; ctx.lineWidth = 1.5
+          ctx.beginPath(); ctx.roundRect(bxx, byy, bw, bh, 6); ctx.stroke()
+          // Petit triangle pointant vers le bas
+          ctx.fillStyle = 'rgba(0,0,0,0.9)'
+          ctx.beginPath(); ctx.moveTo(bx - 5, byy + bh); ctx.lineTo(bx + 5, byy + bh); ctx.lineTo(bx, byy + bh + 5); ctx.closePath(); ctx.fill()
+          ctx.fillStyle = color
+          ctx.fillText(text, bx, by)
+          ctx.restore()
+        }
+
         if(step.type === 'fleche') {
-          const p = tToPx(step.p1.x, step.p1.y)
-          px = p.x; py = p.y
+          const startPos = tToPx(step.p1.x, step.p1.y)
+          const startPlot = trace.plots?.find(p => p.x === step.p1.x && p.y === step.p1.y)
+
+          // Pop au DÉPART : légende de couleur > type de segment > passage_sol plot
+          // Fenêtre : 0 → popDuration (début du segment)
+          const startOpacity = popOpacity(progress, 0)
+          if(startOpacity > 0) {
+            let popText = ''
+            let popColor = segColor
+            if(step.label) {
+              popText = step.label
+            } else if(segType !== 'course') {
+              popText = SEG_TYPE_LABELS[segType] || ''
+            } else if(startPlot?.ty === 'passage_sol') {
+              popText = '🔻 Passage au sol'
+              popColor = '#f59e0b'
+            }
+            if(popText) drawBubble(startPos.x, startPos.y - 22, popText, popColor, startOpacity)
+          }
+
+          // Pop à l'ARRIVÉE : seulement si le plot d'arrivée est un passage_sol
+          // Fenêtre : (1 - popDuration) → 1.0 (fin du segment, quand le point arrive sur le plot)
+          const endPlot = trace.plots?.find(p => p.x === step.p2.x && p.y === step.p2.y)
+          if(endPlot?.ty === 'passage_sol') {
+            const endOpacity = popOpacity(progress, 1 - popDuration)
+            if(endOpacity > 0) {
+              const endPos = tToPx(step.p2.x, step.p2.y)
+              drawBubble(endPos.x, endPos.y - 22, '🔻 Passage au sol', '#f59e0b', endOpacity)
+            }
+          }
         } else {
-          const p = tToPx(step.pts[0].x, step.pts[0].y)
-          px = p.x; py = p.y
+          // Courbe
+          const startPos = tToPx(step.pts[0].x, step.pts[0].y)
+          const startPlot = trace.plots?.find(p => p.x === step.pts[0].x && p.y === step.pts[0].y)
+
+          // Pop au départ
+          const startOpacity = popOpacity(progress, 0)
+          if(startOpacity > 0) {
+            let popText = ''
+            let popColor = segColor
+            if(step.label) {
+              popText = step.label
+            } else if(startPlot?.ty === 'passage_sol') {
+              popText = '🔻 Passage au sol'
+              popColor = '#f59e0b'
+            }
+            if(popText) drawBubble(startPos.x, startPos.y - 22, popText, popColor, startOpacity)
+          }
+
+          // Pop à l'arrivée
+          const lastPt = step.pts[step.pts.length - 1]
+          const endPlot = trace.plots?.find(p => p.x === lastPt.x && p.y === lastPt.y)
+          if(endPlot?.ty === 'passage_sol') {
+            const endOpacity = popOpacity(progress, 1 - popDuration)
+            if(endOpacity > 0) {
+              const endPos = tToPx(lastPt.x, lastPt.y)
+              drawBubble(endPos.x, endPos.y - 22, '🔻 Passage au sol', '#f59e0b', endOpacity)
+            }
+          }
         }
-
-        // Décalage vers le haut pour ne pas chevaucher le plot
-        const offsetY = -22
-
-        ctx.save()
-        ctx.globalAlpha = opacity
-        ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
-        ctx.textBaseline = 'middle'; ctx.textAlign = 'center'
-        const tw = ctx.measureText(popText).width
-        const bw = tw + 16, bh = 22
-        const bx = px - bw / 2, by = py + offsetY - bh / 2
-
-        // Fond arrondi
-        ctx.fillStyle = 'rgba(0,0,0,0.9)'
-        ctx.beginPath()
-        ctx.roundRect(bx, by, bw, bh, 6)
-        ctx.fill()
-        // Bordure colorée
-        ctx.strokeStyle = segColor; ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.roundRect(bx, by, bw, bh, 6)
-        ctx.stroke()
-        // Petit triangle pointant vers le bas (vers le plot)
-        ctx.fillStyle = 'rgba(0,0,0,0.9)'
-        ctx.beginPath()
-        ctx.moveTo(px - 5, by + bh)
-        ctx.lineTo(px + 5, by + bh)
-        ctx.lineTo(px, by + bh + 5)
-        ctx.closePath()
-        ctx.fill()
-        // Texte
-        ctx.fillStyle = segColor
-        ctx.fillText(popText, px, py + offsetY)
-        ctx.restore()
       }
 
       // Animation
