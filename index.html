@@ -670,6 +670,34 @@
     try { enableIndexedDbPersistence(db).catch(() => {}) } catch(e) { console.warn('Persistence IndexedDB non disponible:', e) }
     const auth=getAuth(app)
 
+    // Notifier le shell (iPad/desktop) qu'une écriture a eu lieu depuis le player-app
+    // Écrit dans changeLog (pour sync incrémentale + rattrapage) et met à jour config/lastWrite (pour notification temps réel)
+    async function _notifyShellChange(collectionName, docId, opType='setDoc'){
+      try{
+        const token='p_'+Date.now()+'_'+Math.random().toString(36).slice(2)
+        const myEmail=(auth.currentUser&&auth.currentUser.email)||'player-app'
+        // changeLog pour sync incrémentale et rattrapage au redémarrage
+        await setDoc(doc(db,'changeLog','cl_'+token),{
+          collection:collectionName,
+          docId:docId,
+          op:opType,
+          by:myEmail,
+          at:Date.now(),
+          writeToken:token
+        })
+        // config/lastWrite pour notification temps réel (sentinelle du shell)
+        await setDoc(doc(db,'config','lastWrite'),{
+          collection:collectionName,
+          docId:docId,
+          op:opType,
+          by:myEmail,
+          writeToken:token,
+          at:serverTimestamp(),
+          page:'player-app'
+        })
+      }catch(e){/* best-effort */}
+    }
+
     function getDataScopeStart() {
       const d = new Date()
       d.setDate(d.getDate() - 30)
@@ -1398,6 +1426,7 @@
       const score=+(hooMoy.toFixed(2))
       const comment=document.getElementById('wellness-comment')?.value?.trim()||''
       await setDoc(doc(db,'wellness',`${joueurActif.id}_${aujourdhui}`),{joueurId:joueurActif.id,date:aujourdhui,hooper:hooperScores,sommeil,tapCount,scoreGlobal:score,comment,createdAt:serverTimestamp()})
+      _notifyShellChange('wellness',`${joueurActif.id}_${aujourdhui}`)
       const btn=document.getElementById('submit-wellness')
       btn.textContent='✓ Wellness envoyé !';btn.style.background='#1D9E75';btn.disabled=true
       document.getElementById('card-wellness').classList.add('done')
@@ -2453,6 +2482,7 @@
               comment: comment.value.trim(),
               createdAt: serverTimestamp()
             })
+            _notifyShellChange('retoursEnergetique', retourId)
             wrap.innerHTML = ''
             const done = document.createElement('div')
             done.className = 'rpe-done'
@@ -2939,6 +2969,7 @@
       const updates={[clef]:val,updatedAt:serverTimestamp()}
       if(reps!=null&&reps!==undefined)updates[clef+'_reps']=reps
       try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+      _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
     }
 
     window.sauverToutesLesSeries=async function(seanceId,clefBase,nbSets,joueurId,val,inp,ckId){
@@ -2953,6 +2984,7 @@
       inp.style.color='#1D9E75'
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
       try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+      _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
     }
 
     window.toggleSaisieMode=function(checked){
