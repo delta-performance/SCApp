@@ -3027,7 +3027,8 @@
         const endSolContinues = endPlot?.ty === 'passage_sol' && nextStartPt && nextStartPt.x === endPt.x && nextStartPt.y === endPt.y
 
         // Helper pour dessiner le pop passage au sol
-        function drawSolPop(px, py, opacity) {
+        // offsetX/offsetY : direction dans laquelle décaler le pop (éloigné du tracé)
+        function drawSolPop(px, py, opacity, dirX, dirY) {
           if(opacity <= 0) return
           ctx.save()
           ctx.globalAlpha = opacity
@@ -3036,15 +3037,37 @@
           const text = '🔻 Passage au sol'
           const tw = ctx.measureText(text).width
           const bw = tw + 16, bh = 22
-          const bx = px - bw / 2, by = py - 22 - bh / 2
-          ctx.fillStyle = 'rgba(0,0,0,0.9)'
+          // Décaler le pop dans la direction opposée au tracé
+          const offsetDist = 28
+          let bx, by, arrowDir
+          // Normaliser la direction
+          const dlen = Math.hypot(dirX, dirY) || 1
+          const nx = dirX / dlen, ny = dirY / dlen
+          // Position du centre du pop, décalé dans la direction opposée au tracé
+          const cx = px + nx * offsetDist
+          const cy = py + ny * offsetDist
+          bx = cx - bw / 2; by = cy - bh / 2
+          // Garder dans les limites du canvas
+          bx = Math.max(4, Math.min(W - bw - 4, bx))
+          by = Math.max(4, Math.min(H - bh - 4, by))
+          ctx.fillStyle = 'rgba(0,0,0,0.88)'
           ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill()
           ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5
           ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.stroke()
-          ctx.fillStyle = 'rgba(0,0,0,0.9)'
-          ctx.beginPath(); ctx.moveTo(px - 5, by + bh); ctx.lineTo(px + 5, by + bh); ctx.lineTo(px, by + bh + 5); ctx.closePath(); ctx.fill()
+          // Flèche pointant vers le plot
+          const acx = bx + bw / 2, acy = by + bh / 2
+          const adx = px - acx, ady = py - acy
+          const adlen = Math.hypot(adx, ady) || 1
+          const anx = adx / adlen, any = ady / adlen
+          const arrowBase = 5
+          ctx.fillStyle = 'rgba(0,0,0,0.88)'
+          ctx.beginPath()
+          ctx.moveTo(acx + anx * arrowBase, acy + any * arrowBase)
+          ctx.lineTo(acx - anx * arrowBase + any * arrowBase, acy - any * arrowBase - anx * arrowBase)
+          ctx.lineTo(acx - anx * arrowBase - any * arrowBase, acy - any * arrowBase + anx * arrowBase)
+          ctx.closePath(); ctx.fill()
           ctx.fillStyle = '#f59e0b'
-          ctx.fillText(text, px, by + bh / 2)
+          ctx.fillText(text, bx + bw / 2, by + bh / 2)
           ctx.restore()
         }
 
@@ -3057,26 +3080,27 @@
           return 1
         }
 
-        // Pop au départ (passage_sol)
+        // Pop au départ (passage_sol) : décaler à l'opposé du segment (vers l'extérieur)
         if(startPlot?.ty === 'passage_sol') {
           const startPos = tToPx(startPt.x, startPt.y)
+          // Direction : opposée au segment (du start vers l'extérieur)
+          const dx = startPt.x - endPt.x, dy = startPt.y - endPt.y
           if(startSolContinues) {
-            // Continu depuis le segment précédent : pas de fade-in, reste à 1
-            drawSolPop(startPos.x, startPos.y, 1)
+            drawSolPop(startPos.x, startPos.y, 1, dx, dy)
           } else {
-            drawSolPop(startPos.x, startPos.y, simpleFade(progress, 0, 0.5, false))
+            drawSolPop(startPos.x, startPos.y, simpleFade(progress, 0, 0.5, false), dx, dy)
           }
         }
 
-        // Pop à l'arrivée (passage_sol)
+        // Pop à l'arrivée (passage_sol) : décaler à l'opposé du segment (vers l'extérieur)
         if(endPlot?.ty === 'passage_sol') {
           const endPos = tToPx(endPt.x, endPt.y)
-          // Si continu : visible sur les derniers 50% sans fade out
-          // Sinon : visible sur les derniers 50%
+          // Direction : opposée au segment (du end vers l'extérieur)
+          const dx = endPt.x - startPt.x, dy = endPt.y - startPt.y
           if(endSolContinues) {
-            drawSolPop(endPos.x, endPos.y, simpleFade(progress, 0.5, 0.5, true))
+            drawSolPop(endPos.x, endPos.y, simpleFade(progress, 0.5, 0.5, true), dx, dy)
           } else {
-            drawSolPop(endPos.x, endPos.y, simpleFade(progress, 0.5, 0.5, false))
+            drawSolPop(endPos.x, endPos.y, simpleFade(progress, 0.5, 0.5, false), dx, dy)
           }
         }
       }
