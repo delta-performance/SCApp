@@ -2838,7 +2838,7 @@
 
       // Dessine l'étape active avec progression
       function drawActiveStep(step, progress) {
-        const segColor = step.type === 'fleche' ? (SEG_TYPE_COLORS[step.segType] || step.color) : step.color
+        const segColor = step.type === 'fleche' ? (step.segType === 'course_arriere' ? SEG_TYPE_COLORS[step.segType] : step.color) : step.color
         if(step.type === 'fleche') {
           const a = tToPx(step.p1.x, step.p1.y), b = tToPx(step.p2.x, step.p2.y)
           // Ligne complète en semi-transparent
@@ -2928,13 +2928,13 @@
       // - Passage au sol : affiché au plot concerné, avec un fade in/out simple
       function drawPopLabel(step, progress, idx) {
         const segType = step.type === 'fleche' ? step.segType : 'course'
-        const segColor = step.type === 'fleche' ? (SEG_TYPE_COLORS[segType] || step.color) : step.color
+        const segColor = step.type === 'fleche' ? (segType === 'course_arriere' ? SEG_TYPE_COLORS[segType] : step.color) : step.color
 
         // Détermine le texte du type/légende
         let typeText = ''
         let typeColor = segColor
         if(step.label) { typeText = step.label }
-        else if(segType !== 'course') { typeText = SEG_TYPE_LABELS[segType] || '' }
+        else { typeText = SEG_TYPE_LABELS[segType] || '🏃 Course' }
 
         // 1. Type/légende : affiché sur le côté droit, en gros, pendant tout le segment
         if(typeText) {
@@ -3010,10 +3010,9 @@
         // Pop au départ (passage_sol)
         if(startPlot?.ty === 'passage_sol') {
           const startPos = tToPx(startPt.x, startPt.y)
-          // Si continu : visible tout le segment sans fade out
-          // Sinon : visible sur les premiers 50%
           if(startSolContinues) {
-            drawSolPop(startPos.x, startPos.y, simpleFade(progress, 0, 1.0, true))
+            // Continu depuis le segment précédent : pas de fade-in, reste à 1
+            drawSolPop(startPos.x, startPos.y, 1)
           } else {
             drawSolPop(startPos.x, startPos.y, simpleFade(progress, 0, 0.5, false))
           }
