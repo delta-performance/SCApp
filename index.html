@@ -2508,6 +2508,12 @@
     // Rendu du tracé terrain sur un canvas (version lecture seule pour le joueur)
     const T_LONG_P = 110, T_LARG_P = 70
     const T_ENBUT_P = 5, T_JEU_P = 100
+    // Polyfill roundRect pour les navigateurs plus anciens
+    if(!CanvasRenderingContext2D.prototype.roundRect){
+      CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
+        this.beginPath(); this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r); this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); this.closePath()
+      }
+    }
     function renderTraceCanvas(canvas, trace) {
       if(!trace || (!trace.plots?.length && !trace.courbes?.length && !trace.fleches?.length)) return
       const ctx = canvas.getContext('2d')
@@ -2653,6 +2659,8 @@
           }
         }
       }
+      const SEG_TYPE_ICONS_P = { course:'🏃', passage_sol:'🔻', course_arriere:'↩️' }
+      const SEG_TYPE_COLORS_P = { course:null, passage_sol:'#f59e0b', course_arriere:'#ef4444' }
       trace.fleches?.forEach((f, fi) => {
         const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
         if(!p1 || !p2) return
@@ -2661,13 +2669,24 @@
         if(len < 0.1) return
         const ox = flecheOffsets[fi].x, oy = flecheOffsets[fi].y
         const a = tToPx(p1.x + ox, p1.y + oy), b = tToPx(p2.x + ox, p2.y + oy)
-        ctx.strokeStyle = f.c || '#16C784'; ctx.lineWidth = 2
+        const segType = f.ty || 'course'
+        const segColor = SEG_TYPE_COLORS_P[segType] || f.c || '#16C784'
+        ctx.strokeStyle = segColor; ctx.lineWidth = 2
+        if(segType==='passage_sol'){ ctx.setLineDash([5,3]) }
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+        ctx.setLineDash([])
         const angle = Math.atan2(b.y - a.y, b.x - a.x)
-        ctx.beginPath(); ctx.moveTo(b.x, b.y)
-        ctx.lineTo(b.x - 8 * Math.cos(angle - Math.PI / 7), b.y - 8 * Math.sin(angle - Math.PI / 7))
-        ctx.lineTo(b.x - 8 * Math.cos(angle + Math.PI / 7), b.y - 8 * Math.sin(angle + Math.PI / 7))
-        ctx.closePath(); ctx.fillStyle = f.c || '#16C784'; ctx.fill()
+        if(segType==='course_arriere'){
+          ctx.beginPath(); ctx.moveTo(a.x, a.y)
+          ctx.lineTo(a.x + 8 * Math.cos(angle - Math.PI / 7), a.y + 8 * Math.sin(angle - Math.PI / 7))
+          ctx.lineTo(a.x + 8 * Math.cos(angle + Math.PI / 7), a.y + 8 * Math.sin(angle + Math.PI / 7))
+          ctx.closePath(); ctx.fillStyle = segColor; ctx.fill()
+        } else {
+          ctx.beginPath(); ctx.moveTo(b.x, b.y)
+          ctx.lineTo(b.x - 8 * Math.cos(angle - Math.PI / 7), b.y - 8 * Math.sin(angle - Math.PI / 7))
+          ctx.lineTo(b.x - 8 * Math.cos(angle + Math.PI / 7), b.y - 8 * Math.sin(angle + Math.PI / 7))
+          ctx.closePath(); ctx.fillStyle = segColor; ctx.fill()
+        }
         // Badge numéroté uniquement pour les segments dans un groupe colinéaire
         if(flecheOffsets[fi].inGroup) {
           const numPos = tToPx(p1.x + ox + dx * 0.15, p1.y + oy + dy * 0.15)
@@ -2680,9 +2699,10 @@
         }
         if(f.d) {
           const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-          const txt = f.d + 'm'
+          const typeIcon = SEG_TYPE_ICONS_P[segType] || ''
+          const txt = f.d + 'm' + (typeIcon ? ' ' + typeIcon : '')
           ctx.fillStyle = '#0f0f0f'; ctx.fillRect(mid.x - (txt.length * 3 + 3), mid.y - 7, txt.length * 6 + 6, 12)
-          ctx.fillStyle = f.c || '#16C784'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+          ctx.fillStyle = segColor; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
           ctx.fillText(txt, mid.x, mid.y + 2); ctx.textAlign = 'left'
         }
       })
@@ -2703,6 +2723,322 @@
         ctx.fillText(`${trace.distanceHI} m HI / rép`, W - 8, 6)
         ctx.restore()
       }
+    }
+
+    // Animation du parcours : montre séquentiellement chaque segment/courbe avec un point qui se déplace
+    function animateTrace(canvas, trace, onDone) {
+      if(!trace || (!trace.plots?.length && !trace.courbes?.length && !trace.fleches?.length)) { onDone?.(); return }
+      const ctx = canvas.getContext('2d')
+      const W = canvas.width, H = canvas.height
+      // Calcul auto-zoom (identique à renderTraceCanvas)
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      trace.plots?.forEach(p => { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y) })
+      trace.courbes?.forEach(c => { c.p?.forEach(pt => { minX = Math.min(minX, pt.x); maxX = Math.max(maxX, pt.x); minY = Math.min(minY, pt.y); maxY = Math.max(maxY, pt.y) }) })
+      if(!isFinite(minX)) { minX = 0; minY = 0; maxX = T_LONG_P; maxY = T_LARG_P }
+      const bw = maxX - minX, bh = maxY - minY
+      const padX = Math.max(8, bw * 0.2), padY = Math.max(8, bh * 0.2)
+      minX = Math.max(0, minX - padX); maxX = Math.min(T_LONG_P, maxX + padX)
+      minY = Math.max(0, minY - padY); maxY = Math.min(T_LARG_P, maxY + padY)
+      const fitW = maxX - minX, fitH = maxY - minY
+      const zoom = Math.min(W / fitW, H / fitH)
+      const panX = (W - fitW * zoom) / 2 - minX * zoom
+      const panY = (H - fitH * zoom) / 2 - minY * zoom
+      const tToPx = (mx, my) => ({ x: panX + mx * zoom, y: panY + my * zoom })
+
+      // Construit la liste ordonnée des "étapes" du parcours
+      const traceLabels = trace.labels || {}
+      const steps = []
+      trace.fleches?.forEach((f, fi) => {
+        const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
+        if(!p1 || !p2) return
+        const segType = f.ty || 'course'
+        const segColor = f.c || '#16C784'
+        steps.push({ type: 'fleche', segType, fi, p1, p2, dist: f.d || Math.round(Math.hypot(p2.x-p1.x, p2.y-p1.y)), color: segColor, label: traceLabels[segColor] || '' })
+      })
+      trace.courbes?.forEach((c, ci) => {
+        if(!c.p || c.p.length < 2) return
+        const segColor = c.c || '#3b82f6'
+        steps.push({ type: 'courbe', ci, pts: c.p, dist: c.d || 0, color: segColor, label: traceLabels[segColor] || '' })
+      })
+      // Trier : fleches d'abord par index, puis courbes
+      steps.sort((a, b) => (a.type === 'fleche' ? a.fi : 1000 + a.ci) - (b.type === 'fleche' ? b.fi : 1000 + b.ci))
+
+      const SEG_TYPE_LABELS = { course: '🏃 Course', passage_sol: '🔻 Passage au sol', course_arriere: '↩️ Course arrière' }
+      const SEG_TYPE_COLORS = { course: '#16C784', passage_sol: '#f59e0b', course_arriere: '#ef4444' }
+
+      // Fonction pour dessiner le fond (terrain)
+      function drawBackground() {
+        ctx.clearRect(0, 0, W, H)
+        ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, H)
+        const tl = tToPx(0, 0), br = tToPx(T_LONG_P, T_LARG_P)
+        ctx.fillStyle = '#0a1a0a'; ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y)
+        for(let x = 0; x < T_LONG_P; x += 10) {
+          const a = tToPx(x, 0), b = tToPx(x + 5, T_LARG_P)
+          ctx.fillStyle = '#0c1f0c'; ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y)
+        }
+        ctx.strokeStyle = '#1e3a1e'; ctx.lineWidth = 0.5
+        for(let x = 0; x <= T_LONG_P; x += 5) { const a = tToPx(x, 0), b = tToPx(x, T_LARG_P); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke() }
+        for(let y = 0; y <= T_LARG_P; y += 5) { const a = tToPx(0, y), b = tToPx(T_LONG_P, y); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke() }
+        // Lignes rugby
+        const lignesV = [
+          { x: T_ENBUT_P, col: '#3a7a3a', w: 2 }, { x: T_ENBUT_P + 22, col: '#2a5a2a', w: 1.5 },
+          { x: T_ENBUT_P + T_JEU_P/2, col: '#3a7a3a', w: 2 }, { x: T_ENBUT_P + T_JEU_P - 22, col: '#2a5a2a', w: 1.5 },
+          { x: T_ENBUT_P + T_JEU_P, col: '#3a7a3a', w: 2 },
+        ]
+        ;[0, T_LONG_P].forEach(xm => { const a = tToPx(xm, 0), b = tToPx(xm, T_LARG_P); ctx.strokeStyle = '#2a5a2a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke() })
+        lignesV.forEach(l => { const a = tToPx(l.x, 0), b = tToPx(l.x, T_LARG_P); ctx.strokeStyle = l.col; ctx.lineWidth = l.w; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke() })
+        ctx.strokeStyle = '#3a7a3a'; ctx.lineWidth = 2
+        let a = tToPx(0, 0), b = tToPx(T_LONG_P, 0); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+        a = tToPx(0, T_LARG_P); b = tToPx(T_LONG_P, T_LARG_P); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+      }
+
+      // Dessine les plots
+      function drawPlots(highlightIdx) {
+        trace.plots?.forEach((p, i) => {
+          const c = tToPx(p.x, p.y)
+          const isStart = highlightIdx === i
+          ctx.beginPath(); ctx.arc(c.x, c.y, isStart ? 7 : 5, 0, Math.PI * 2)
+          ctx.fillStyle = isStart ? '#FECC00' : '#ff6633'; ctx.fill()
+          ctx.strokeStyle = isStart ? '#fff' : '#cc4411'; ctx.lineWidth = isStart ? 2 : 1; ctx.stroke()
+          if(p.l) { ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.l, c.x, c.y); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic' }
+        })
+      }
+
+      // Dessine une étape complétée (en gris/foncé)
+      function drawCompletedStep(step) {
+        if(step.type === 'fleche') {
+          const a = tToPx(step.p1.x, step.p1.y), b = tToPx(step.p2.x, step.p2.y)
+          ctx.strokeStyle = step.color + '44'; ctx.lineWidth = 2
+          if(step.segType === 'passage_sol') ctx.setLineDash([5, 3])
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+          ctx.setLineDash([])
+        } else {
+          ctx.strokeStyle = step.color + '44'; ctx.lineWidth = 2
+          ctx.beginPath()
+          const f = tToPx(step.pts[0].x, step.pts[0].y); ctx.moveTo(f.x, f.y)
+          for(let i = 1; i < step.pts.length; i++) { const p = tToPx(step.pts[i].x, step.pts[i].y); ctx.lineTo(p.x, p.y) }
+          ctx.stroke()
+        }
+      }
+
+      // Dessine l'étape active avec progression
+      function drawActiveStep(step, progress) {
+        const segColor = step.type === 'fleche' ? (SEG_TYPE_COLORS[step.segType] || step.color) : step.color
+        if(step.type === 'fleche') {
+          const a = tToPx(step.p1.x, step.p1.y), b = tToPx(step.p2.x, step.p2.y)
+          // Ligne complète en semi-transparent
+          ctx.strokeStyle = segColor + '44'; ctx.lineWidth = 2
+          if(step.segType === 'passage_sol') ctx.setLineDash([5, 3])
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+          ctx.setLineDash([])
+          // Ligne animée (progression)
+          const curX = a.x + (b.x - a.x) * progress
+          const curY = a.y + (b.y - a.y) * progress
+          ctx.strokeStyle = segColor; ctx.lineWidth = 3
+          if(step.segType === 'passage_sol') ctx.setLineDash([5, 3])
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(curX, curY); ctx.stroke()
+          ctx.setLineDash([])
+          // Point qui se déplace
+          ctx.beginPath(); ctx.arc(curX, curY, 6, 0, Math.PI * 2)
+          ctx.fillStyle = segColor; ctx.fill()
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke()
+          // Flèche au point d'arrivée si terminé
+          if(progress >= 1) {
+            const angle = Math.atan2(b.y - a.y, b.x - a.x)
+            if(step.segType === 'course_arriere') {
+              ctx.beginPath(); ctx.moveTo(a.x, a.y)
+              ctx.lineTo(a.x + 8 * Math.cos(angle - Math.PI / 7), a.y + 8 * Math.sin(angle - Math.PI / 7))
+              ctx.lineTo(a.x + 8 * Math.cos(angle + Math.PI / 7), a.y + 8 * Math.sin(angle + Math.PI / 7))
+              ctx.closePath(); ctx.fillStyle = segColor; ctx.fill()
+            } else {
+              ctx.beginPath(); ctx.moveTo(b.x, b.y)
+              ctx.lineTo(b.x - 8 * Math.cos(angle - Math.PI / 7), b.y - 8 * Math.sin(angle - Math.PI / 7))
+              ctx.lineTo(b.x - 8 * Math.cos(angle + Math.PI / 7), b.y - 8 * Math.sin(angle + Math.PI / 7))
+              ctx.closePath(); ctx.fillStyle = segColor; ctx.fill()
+            }
+          }
+        } else {
+          // Courbe
+          ctx.strokeStyle = segColor + '44'; ctx.lineWidth = 2
+          ctx.beginPath()
+          const f = tToPx(step.pts[0].x, step.pts[0].y); ctx.moveTo(f.x, f.y)
+          for(let i = 1; i < step.pts.length; i++) { const p = tToPx(step.pts[i].x, step.pts[i].y); ctx.lineTo(p.x, p.y) }
+          ctx.stroke()
+          // Partie animée
+          const totalPts = step.pts.length
+          const animPts = Math.max(2, Math.floor(totalPts * progress))
+          ctx.strokeStyle = segColor; ctx.lineWidth = 3
+          ctx.beginPath()
+          const f2 = tToPx(step.pts[0].x, step.pts[0].y); ctx.moveTo(f2.x, f2.y)
+          for(let i = 1; i < animPts; i++) { const p = tToPx(step.pts[i].x, step.pts[i].y); ctx.lineTo(p.x, p.y) }
+          if(animPts > 0 && animPts < totalPts) {
+            const frac = (totalPts * progress) - (animPts - 1)
+            const pa = step.pts[animPts - 1], pb = step.pts[animPts]
+            const ip = tToPx(pa.x + (pb.x - pa.x) * frac, pa.y + (pb.y - pa.y) * frac)
+            ctx.lineTo(ip.x, ip.y)
+          }
+          ctx.stroke()
+          // Point qui se déplace
+          if(animPts > 0 && animPts < totalPts) {
+            const frac = (totalPts * progress) - (animPts - 1)
+            const pa = step.pts[animPts - 1], pb = step.pts[animPts]
+            const ip = tToPx(pa.x + (pb.x - pa.x) * frac, pa.y + (pb.y - pa.y) * frac)
+            ctx.beginPath(); ctx.arc(ip.x, ip.y, 6, 0, Math.PI * 2)
+            ctx.fillStyle = segColor; ctx.fill()
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke()
+          } else if(animPts >= totalPts) {
+            const last = step.pts[totalPts - 1]
+            const lp = tToPx(last.x, last.y)
+            ctx.beginPath(); ctx.arc(lp.x, lp.y, 6, 0, Math.PI * 2)
+            ctx.fillStyle = segColor; ctx.fill()
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke()
+          }
+        }
+      }
+
+      // Dessine le label d'étape courant (en haut à gauche)
+      function drawStepLabel(step, stepIdx) {
+        const segType = step.type === 'fleche' ? step.segType : 'course'
+        const label = step.type === 'fleche' ? (SEG_TYPE_LABELS[segType] || 'Course') : '↗️ Courbe'
+        const color = step.type === 'fleche' ? (SEG_TYPE_COLORS[segType] || step.color) : step.color
+        const distText = step.dist ? ` · ${step.dist}m` : ''
+        const txt = `Étape ${stepIdx + 1}/${steps.length} : ${label}${distText}`
+        ctx.save()
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif'
+        ctx.textBaseline = 'top'; ctx.textAlign = 'left'
+        const tw = ctx.measureText(txt).width
+        ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(8, 8, tw + 16, 24)
+        ctx.fillStyle = color; ctx.fillText(txt, 16, 13)
+        ctx.restore()
+      }
+
+      // Dessine un "pop" (bulle flottante) au point de départ du segment
+      // Affiche la légende de couleur si elle existe, sinon le type de segment
+      function drawPopLabel(step, progress) {
+        // Le pop reste visible pendant les premiers 40% de la progression
+        const popDuration = 0.4
+        if(progress > popDuration) return
+        // Opacité qui fade out
+        const opacity = progress < popDuration * 0.7 ? 1 : 1 - (progress - popDuration * 0.7) / (popDuration * 0.3)
+
+        // Détermine le texte à afficher : légende de couleur prioritaire, sinon type
+        const segType = step.type === 'fleche' ? step.segType : 'course'
+        const segColor = step.type === 'fleche' ? (SEG_TYPE_COLORS[segType] || step.color) : step.color
+        let popText = ''
+        if(step.label) {
+          popText = step.label
+        } else if(segType !== 'course') {
+          popText = SEG_TYPE_LABELS[segType] || ''
+        }
+        if(!popText) return
+
+        // Position : point de départ du segment
+        let px, py
+        if(step.type === 'fleche') {
+          const p = tToPx(step.p1.x, step.p1.y)
+          px = p.x; py = p.y
+        } else {
+          const p = tToPx(step.pts[0].x, step.pts[0].y)
+          px = p.x; py = p.y
+        }
+
+        // Décalage vers le haut pour ne pas chevaucher le plot
+        const offsetY = -22
+
+        ctx.save()
+        ctx.globalAlpha = opacity
+        ctx.font = 'bold 12px system-ui, -apple-system, sans-serif'
+        ctx.textBaseline = 'middle'; ctx.textAlign = 'center'
+        const tw = ctx.measureText(popText).width
+        const bw = tw + 16, bh = 22
+        const bx = px - bw / 2, by = py + offsetY - bh / 2
+
+        // Fond arrondi
+        ctx.fillStyle = 'rgba(0,0,0,0.9)'
+        ctx.beginPath()
+        ctx.roundRect(bx, by, bw, bh, 6)
+        ctx.fill()
+        // Bordure colorée
+        ctx.strokeStyle = segColor; ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.roundRect(bx, by, bw, bh, 6)
+        ctx.stroke()
+        // Petit triangle pointant vers le bas (vers le plot)
+        ctx.fillStyle = 'rgba(0,0,0,0.9)'
+        ctx.beginPath()
+        ctx.moveTo(px - 5, by + bh)
+        ctx.lineTo(px + 5, by + bh)
+        ctx.lineTo(px, by + bh + 5)
+        ctx.closePath()
+        ctx.fill()
+        // Texte
+        ctx.fillStyle = segColor
+        ctx.fillText(popText, px, py + offsetY)
+        ctx.restore()
+      }
+
+      // Animation
+      let stepIdx = 0
+      let progress = 0
+      const speed = 0.015 // progress per frame for fleches
+      const courbeSpeed = 0.008
+      let rafId = null
+      let stopped = false
+
+      function frame() {
+        if(stopped) return
+        drawBackground()
+        // Draw completed steps
+        for(let i = 0; i < stepIdx; i++) drawCompletedStep(steps[i])
+        // Draw active step
+        if(stepIdx < steps.length) {
+          drawActiveStep(steps[stepIdx], progress)
+          drawStepLabel(steps[stepIdx], stepIdx)
+          drawPopLabel(steps[stepIdx], progress)
+          // Highlight start plot for fleche
+          if(steps[stepIdx].type === 'fleche') {
+            const startPlotIdx = trace.plots?.indexOf(steps[stepIdx].p1)
+            if(startPlotIdx >= 0) drawPlots(startPlotIdx)
+            else drawPlots(-1)
+          } else {
+            drawPlots(-1)
+          }
+          // Advance progress
+          const sp = steps[stepIdx].type === 'fleche' ? speed : courbeSpeed
+          progress += sp
+          if(progress >= 1) {
+            progress = 1
+            // Pause briefly at end of step
+            setTimeout(() => {
+              if(stopped) return
+              stepIdx++
+              progress = 0
+              if(stepIdx >= steps.length) {
+                // Animation terminée
+                drawBackground()
+                for(let i = 0; i < steps.length; i++) drawCompletedStep(steps[i])
+                drawPlots(-1)
+                // Message de fin
+                ctx.save()
+                ctx.font = 'bold 14px system-ui, -apple-system, sans-serif'
+                ctx.textBaseline = 'middle'; ctx.textAlign = 'center'
+                ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(W/2 - 80, H/2 - 16, 160, 32)
+                ctx.fillStyle = '#16C784'; ctx.fillText('✓ Parcours terminé', W/2, H/2)
+                ctx.restore()
+                setTimeout(() => { onDone?.() }, 1200)
+                return
+              }
+              rafId = requestAnimationFrame(frame)
+            }, 400)
+            return
+          }
+        }
+        rafId = requestAnimationFrame(frame)
+      }
+
+      // Cleanup function
+      animateTrace._stop = () => { stopped = true; if(rafId) cancelAnimationFrame(rafId) }
+      frame()
     }
 
     // Construit la légende des couleurs à partir d'un tracé
@@ -2751,6 +3087,19 @@
       canvas.height = Math.round(maxW * 0.64)
       canvas.style.cssText = `width:100%;max-width:${maxW}px;border-radius:8px;border:1px solid #1e3a1e;`
       overlay.appendChild(canvas)
+      // Bouton animation en fullscreen
+      const animBtn = document.createElement('button')
+      animBtn.textContent = '▶ Lancer l\'animation'
+      animBtn.style.cssText = 'margin-top:10px;padding:8px 18px;border-radius:8px;border:1px solid #16C784;background:#16C78422;color:#16C784;font-size:12px;font-weight:600;cursor:pointer;font-family:system-ui,-apple-system,sans-serif;'
+      let animRunning = false
+      animBtn.onclick = (ev) => {
+        ev.stopPropagation()
+        if(animRunning){ animRunning = false; animBtn.textContent = '▶ Lancer l\'animation'; animateTrace._stop?.(); renderTraceCanvas(canvas, trace); return }
+        animRunning = true
+        animBtn.textContent = '⏹ Arrêter'
+        animateTrace(canvas, trace, () => { animRunning = false; animBtn.textContent = '▶ Lancer l\'animation'; renderTraceCanvas(canvas, trace) })
+      }
+      overlay.appendChild(animBtn)
       const legend = buildTraceLegend(trace)
       if(legend) overlay.appendChild(legend)
       document.body.appendChild(overlay)
@@ -2904,6 +3253,21 @@
                 canvas.onclick = () => openTraceFullscreen(exo.trace, exo.nom || 'Parcours')
                 traceWrap.appendChild(traceLabel)
                 traceWrap.appendChild(canvas)
+                // Bouton animation
+                const animBtnRow = document.createElement('div')
+                animBtnRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;'
+                const animBtn = document.createElement('button')
+                animBtn.textContent = '▶ Lancer l\'animation'
+                animBtn.style.cssText = 'padding:6px 14px;border-radius:8px;border:1px solid #16C784;background:#16C78422;color:#16C784;font-size:11px;font-weight:600;cursor:pointer;font-family:system-ui,-apple-system,sans-serif;'
+                let animRunning = false
+                animBtn.onclick = () => {
+                  if(animRunning){ animRunning = false; animBtn.textContent = '▶ Lancer l\'animation'; animateTrace._stop?.(); renderTraceCanvas(canvas, exo.trace); return }
+                  animRunning = true
+                  animBtn.textContent = '⏹ Arrêter'
+                  animateTrace(canvas, exo.trace, () => { animRunning = false; animBtn.textContent = '▶ Lancer l\'animation'; renderTraceCanvas(canvas, exo.trace) })
+                }
+                animBtnRow.appendChild(animBtn)
+                traceWrap.appendChild(animBtnRow)
                 const legend = buildTraceLegend(exo.trace)
                 if(legend) traceWrap.appendChild(legend)
                 eEl.appendChild(traceWrap)
