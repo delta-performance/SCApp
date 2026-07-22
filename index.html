@@ -2785,21 +2785,41 @@
 
       // Construit la liste ordonnée des "étapes" du parcours
       const traceLabels = trace.labels || {}
+      const animOrder = trace.animOrder
       const steps = []
-      trace.fleches?.forEach((f, fi) => {
-        const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
-        if(!p1 || !p2) return
-        const segType = f.ty || 'course'
-        const segColor = f.c || '#16C784'
-        steps.push({ type: 'fleche', segType, fi, p1, p2, dist: f.d || Math.round(Math.hypot(p2.x-p1.x, p2.y-p1.y)), color: segColor, label: traceLabels[segColor] || '' })
-      })
-      trace.courbes?.forEach((c, ci) => {
-        if(!c.p || c.p.length < 2) return
-        const segColor = c.c || '#3b82f6'
-        steps.push({ type: 'courbe', ci, pts: c.p, dist: c.d || 0, color: segColor, label: traceLabels[segColor] || '' })
-      })
-      // Trier : fleches d'abord par index, puis courbes
-      steps.sort((a, b) => (a.type === 'fleche' ? a.fi : 1000 + a.ci) - (b.type === 'fleche' ? b.fi : 1000 + b.ci))
+
+      if(animOrder && animOrder.length){
+        // Custom order from editor
+        animOrder.forEach(o => {
+          if(o.type === 'fleche'){
+            const f = trace.fleches?.[o.idx]; if(!f) return
+            const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
+            if(!p1 || !p2) return
+            const segType = f.ty || 'course'
+            const segColor = f.c || '#16C784'
+            steps.push({ type: 'fleche', segType, fi: o.idx, p1, p2, dist: f.d || Math.round(Math.hypot(p2.x-p1.x, p2.y-p1.y)), color: segColor, label: traceLabels[segColor] || '' })
+          } else {
+            const c = trace.courbes?.[o.idx]; if(!c || !c.p || c.p.length < 2) return
+            const segColor = c.c || '#3b82f6'
+            steps.push({ type: 'courbe', ci: o.idx, pts: c.p, dist: c.d || 0, color: segColor, label: traceLabels[segColor] || '' })
+          }
+        })
+      } else {
+        // Default order: fleches by index, then courbes
+        trace.fleches?.forEach((f, fi) => {
+          const p1 = trace.plots?.[f.f], p2 = trace.plots?.[f.t]
+          if(!p1 || !p2) return
+          const segType = f.ty || 'course'
+          const segColor = f.c || '#16C784'
+          steps.push({ type: 'fleche', segType, fi, p1, p2, dist: f.d || Math.round(Math.hypot(p2.x-p1.x, p2.y-p1.y)), color: segColor, label: traceLabels[segColor] || '' })
+        })
+        trace.courbes?.forEach((c, ci) => {
+          if(!c.p || c.p.length < 2) return
+          const segColor = c.c || '#3b82f6'
+          steps.push({ type: 'courbe', ci, pts: c.p, dist: c.d || 0, color: segColor, label: traceLabels[segColor] || '' })
+        })
+        steps.sort((a, b) => (a.type === 'fleche' ? a.fi : 1000 + a.ci) - (b.type === 'fleche' ? b.fi : 1000 + b.ci))
+      }
 
       const SEG_TYPE_LABELS = { course: '🏃 Course', course_arriere: '↩️ Course arrière' }
       const SEG_TYPE_COLORS = { course: '#16C784', course_arriere: '#ef4444' }
