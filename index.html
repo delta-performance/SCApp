@@ -2924,21 +2924,12 @@
       }
 
       // Dessine un "pop" (bulle flottante) au point de départ du segment
-      // Affiche la légende de couleur si elle existe, sinon le type de segment
-      // Affiche aussi un pop "Passage au sol" au moment où l'animation arrive sur un plot passage_sol
-      function drawPopLabel(step, progress) {
-        const popDuration = 0.4
+      // - Type/legende : visible pendant TOUT le segment
+      // - Passage au sol : visible plus longtemps (60%), et continu si le segment suivant commence au même plot
+      function drawPopLabel(step, progress, idx) {
         const segType = step.type === 'fleche' ? step.segType : 'course'
         const segColor = step.type === 'fleche' ? (SEG_TYPE_COLORS[segType] || step.color) : step.color
-
-        // Helper pour calculer l'opacité : fade in puis fade out sur une fenêtre de popDuration
-        function popOpacity(p, windowStart) {
-          const pStart = windowStart
-          const pEnd = windowStart + popDuration
-          if(p < pStart || p > pEnd) return 0
-          const local = (p - pStart) / popDuration
-          return local < 0.3 ? local / 0.3 : 1 - (local - 0.3) / 0.7
-        }
+        const SOL_DURATION = 0.6 // passage_sol pop visible sur 60% du segment
 
         // Helper pour dessiner une bulle pop
         function drawBubble(bx, by, text, color, opacity) {
@@ -2954,7 +2945,6 @@
           ctx.beginPath(); ctx.roundRect(bxx, byy, bw, bh, 6); ctx.fill()
           ctx.strokeStyle = color; ctx.lineWidth = 1.5
           ctx.beginPath(); ctx.roundRect(bxx, byy, bw, bh, 6); ctx.stroke()
-          // Petit triangle pointant vers le bas
           ctx.fillStyle = 'rgba(0,0,0,0.9)'
           ctx.beginPath(); ctx.moveTo(bx - 5, byy + bh); ctx.lineTo(bx + 5, byy + bh); ctx.lineTo(bx, byy + bh + 5); ctx.closePath(); ctx.fill()
           ctx.fillStyle = color
@@ -2962,66 +2952,78 @@
           ctx.restore()
         }
 
-        if(step.type === 'fleche') {
-          const startPos = tToPx(step.p1.x, step.p1.y)
-          const startPlot = trace.plots?.find(p => p.x === step.p1.x && p.y === step.p1.y)
+        // Opacité : fade in rapide (10%) puis plein, fade out en fin (10%)
+        function fullOpacity(p) {
+          if(p < 0.1) return p / 0.1
+          if(p > 0.9) return 1 - (p - 0.9) / 0.1
+          return 1
+        }
+        // Opacité sur une fenêtre [start, start+dur], avec fade in/out
+        function windowOpacity(p, start, dur) {
+          if(p < start || p > start + dur) return 0
+          const local = (p - start) / dur
+          if(local < 0.15) return local / 0.15
+          if(local > 0.85) return 1 - (local - 0.85) / 0.15
+          return 1
+        }
 
-          // Pop au DÉPART : légende de couleur > type de segment > passage_sol plot
-          // Fenêtre : 0 → popDuration (début du segment)
-          const startOpacity = popOpacity(progress, 0)
-          if(startOpacity > 0) {
-            let popText = ''
-            let popColor = segColor
-            if(step.label) {
-              popText = step.label
-            } else if(segType !== 'course') {
-              popText = SEG_TYPE_LABELS[segType] || ''
-            } else if(startPlot?.ty === 'passage_sol') {
-              popText = '🔻 Passage au sol'
-              popColor = '#f59e0b'
-            }
-            if(popText) drawBubble(startPos.x, startPos.y - 22, popText, popColor, startOpacity)
-          }
+        // Récupère le plot de départ/arrivée
+        let startPt, endPt
+        if(step.type === 'fleche') { startPt = step.p1; endPt = step.p2 }
+        else { startPt = step.pts[0]; endPt = step.pts[step.pts.length - 1] }
 
-          // Pop à l'ARRIVÉE : seulement si le plot d'arrivée est un passage_sol
-          // Fenêtre : (1 - popDuration) → 1.0 (fin du segment, quand le point arrive sur le plot)
-          const endPlot = trace.plots?.find(p => p.x === step.p2.x && p.y === step.p2.y)
-          if(endPlot?.ty === 'passage_sol') {
-            const endOpacity = popOpacity(progress, 1 - popDuration)
-            if(endOpacity > 0) {
-              const endPos = tToPx(step.p2.x, step.p2.y)
-              drawBubble(endPos.x, endPos.y - 22, '🔻 Passage au sol', '#f59e0b', endOpacity)
-            }
-          }
+        const startPlot = trace.plots?.find(p => p.x === startPt.x && p.y === startPt.y)
+        const endPlot = trace.plots?.find(p => p.x === endPt.x && p.y === endPt.y)
+
+        // Vérifie si le segment précédent finit au même passage_sol que le départ
+        const prevStep = idx > 0 ? steps[idx - 1] : null
+        let prevEndPt = null
+        if(prevStep) {
+          if(prevStep.type === 'fleche') prevEndPt = prevStep.p2
+          else prevEndPt = prevStep.pts[prevStep.pts.length - 1]
+        }
+        const startSolContinues = startPlot?.ty === 'passage_sol' && prevEndPt && prevEndPt.x === startPt.x && prevEndPt.y === startPt.y
+
+        // Vérifie si le segment suivant commence au même passage_sol que l'arrivée
+        const nextStep = idx < steps.length - 1 ? steps[idx + 1] : null
+        let nextStartPt = null
+        if(nextStep) {
+          if(nextStep.type === 'fleche') nextStartPt = nextStep.p1
+          else nextStartPt = nextStep.pts[0]
+        }
+        const endSolContinues = endPlot?.ty === 'passage_sol' && nextStartPt && nextStartPt.x === endPt.x && nextStartPt.y === endPt.y
+
+        // 1. Pop au DÉPART
+        const startPos = tToPx(startPt.x, startPt.y)
+        if(startPlot?.ty === 'passage_sol') {
+          // Passage au sol au départ
+          // Si continu depuis le segment précédent → visible sur tout le segment
+          // Sinon → visible sur les premiers 60%
+          const dur = startSolContinues ? 1.0 : SOL_DURATION
+          const op = startSolContinues ? fullOpacity(progress) : windowOpacity(progress, 0, dur)
+          if(op > 0) drawBubble(startPos.x, startPos.y - 22, '🔻 Passage au sol', '#f59e0b', op)
         } else {
-          // Courbe
-          const startPos = tToPx(step.pts[0].x, step.pts[0].y)
-          const startPlot = trace.plots?.find(p => p.x === step.pts[0].x && p.y === step.pts[0].y)
-
-          // Pop au départ
-          const startOpacity = popOpacity(progress, 0)
-          if(startOpacity > 0) {
-            let popText = ''
-            let popColor = segColor
-            if(step.label) {
-              popText = step.label
-            } else if(startPlot?.ty === 'passage_sol') {
-              popText = '🔻 Passage au sol'
-              popColor = '#f59e0b'
-            }
-            if(popText) drawBubble(startPos.x, startPos.y - 22, popText, popColor, startOpacity)
+          // Type de segment ou légende de couleur → visible pendant TOUT le segment
+          let popText = ''
+          let popColor = segColor
+          if(step.label) { popText = step.label }
+          else if(segType !== 'course') { popText = SEG_TYPE_LABELS[segType] || '' }
+          if(popText) {
+            const op = fullOpacity(progress)
+            if(op > 0) drawBubble(startPos.x, startPos.y - 22, popText, popColor, op)
           }
+        }
 
-          // Pop à l'arrivée
-          const lastPt = step.pts[step.pts.length - 1]
-          const endPlot = trace.plots?.find(p => p.x === lastPt.x && p.y === lastPt.y)
-          if(endPlot?.ty === 'passage_sol') {
-            const endOpacity = popOpacity(progress, 1 - popDuration)
-            if(endOpacity > 0) {
-              const endPos = tToPx(lastPt.x, lastPt.y)
-              drawBubble(endPos.x, endPos.y - 22, '🔻 Passage au sol', '#f59e0b', endOpacity)
-            }
-          }
+        // 2. Pop à l'ARRIVÉE (passage au sol seulement)
+        if(endPlot?.ty === 'passage_sol') {
+          const endPos = tToPx(endPt.x, endPt.y)
+          // Si continu vers le segment suivant → visible sur les derniers 60% (et continuera)
+          // Sinon → visible sur les derniers 60%
+          const start = 1 - SOL_DURATION
+          const op = windowOpacity(progress, start, SOL_DURATION)
+          // Si continue, pas de fade out en fin
+          const finalOp = endSolContinues ? (progress >= start ? (progress > 0.9 ? 1 : Math.min(1, (progress - start) / 0.15)) : 0) : op
+          if(finalOp > 0) drawBubble(endPos.x, endPos.y - 22, '🔻 Passage au sol', '#f59e0b', finalOp)
         }
       }
 
@@ -3042,7 +3044,7 @@
         if(stepIdx < steps.length) {
           drawActiveStep(steps[stepIdx], progress)
           drawStepLabel(steps[stepIdx], stepIdx)
-          drawPopLabel(steps[stepIdx], progress)
+          drawPopLabel(steps[stepIdx], progress, stepIdx)
           // Highlight start plot for fleche
           if(steps[stepIdx].type === 'fleche') {
             const startPlotIdx = trace.plots?.indexOf(steps[stepIdx].p1)
