@@ -2122,6 +2122,16 @@
         if(exo.timerRecupSeries) parts.push('récup série ' + formatMmSs(parseMmSs(exo.timerRecupSeries)))
         return parts.length ? parts.join(' + ') : 'Dist+Repos'
       }
+      if(exo.timerMode==='retour_marchant'){
+        let parts = []
+        const dist = (unite === 'distance') ? distancePerRepEnergetique(exo)
+          : (unite === 'calories') ? (exo.caloriesManuelles || 0)
+          : exo.timerDistance
+        if(dist) parts.push(unite === 'calories' ? dist + ' cal' : dist + 'm')
+        parts.push('retour marchant = récup')
+        if(exo.timerRecupSeries) parts.push('récup série ' + formatMmSs(parseMmSs(exo.timerRecupSeries)))
+        return parts.length ? parts.join(' + ') : 'Retour marchant'
+      }
       return null
     }
 
@@ -2167,6 +2177,20 @@
             // Distance/cal phase = manual, no countdown
             phases.push({ type:'distance', sec:0, series:s, rep:r, distance:distVal, unite:unite, manual:true })
             if(r < nbReps - 1 && reposSec > 0) phases.push({ type:'repos', sec:reposSec, series:s, rep:r })
+          }
+          if(s < nbSeries - 1 && recupSeriesSec > 0) phases.push({ type:'recup_series', sec:recupSeriesSec, series:s, rep:nbReps-1 })
+        }
+      } else if(exo.timerMode === 'retour_marchant'){
+        const recupSeriesSec = parseMmSs(exo.timerRecupSeries)
+        const distVal = unite === 'distance' ? distancePerRepEnergetique(exo)
+          : unite === 'calories' ? (exo.caloriesManuelles || 0)
+          : exo.timerDistance
+        for(let s = 0; s < nbSeries; s++){
+          for(let r = 0; r < nbReps; r++){
+            // Phase distance = effort manuel
+            phases.push({ type:'distance', sec:0, series:s, rep:r, distance:distVal, unite:unite, manual:true })
+            // Phase retour marchant = récup manuelle (pas de countdown, le joueur revient à pied)
+            if(r < nbReps - 1) phases.push({ type:'retour_marchant', sec:0, series:s, rep:r, manual:true })
           }
           if(s < nbSeries - 1 && recupSeriesSec > 0) phases.push({ type:'recup_series', sec:recupSeriesSec, series:s, rep:nbReps-1 })
         }
@@ -2266,7 +2290,8 @@
         recup_series: 'RÉCUP SÉRIE',
         cadence: 'DÉPART',
         distance: 'DISTANCE',
-        repos: 'REPOS'
+        repos: 'REPOS',
+        retour_marchant: 'RETOUR MARCHANT'
       }
 
       function updateUI(){
@@ -2282,10 +2307,15 @@
           return
         }
         phaseEl.textContent = phaseLabels[ph.type] || ph.type
-        phaseEl.className = 'nrg-exo-timer-phase ' + (ph.type === 'effort' ? 'effort' : (ph.type === 'recup' || ph.type === 'recup_series' ? 'recup' : 'repos'))
+        phaseEl.className = 'nrg-exo-timer-phase ' + (ph.type === 'effort' ? 'effort' : (ph.type === 'recup' || ph.type === 'recup_series' || ph.type === 'retour_marchant' ? 'recup' : 'repos'))
         if(ph.manual){
-          countEl.textContent = ph.unite === 'calories' ? `${ph.distance} cal` : `${ph.distance}m`
-          countEl.className = 'nrg-exo-timer-count manual'
+          if(ph.type === 'retour_marchant'){
+            countEl.textContent = '↩ Récup'
+            countEl.className = 'nrg-exo-timer-count manual'
+          } else {
+            countEl.textContent = ph.unite === 'calories' ? `${ph.distance} cal` : `${ph.distance}m`
+            countEl.className = 'nrg-exo-timer-count manual'
+          }
         } else {
           countEl.textContent = nrgFormatTime(remaining)
           countEl.classList.toggle('urgent', remaining <= 10 && remaining > 0)
@@ -3262,6 +3292,9 @@
                 if(exo.timerRecupDist) recupInfo += ` · récup reps ${formatMmSs(parseMmSs(exo.timerRecupDist))}`
                 if(exo.timerRecupSeries) recupInfo += ` · récup séries ${formatMmSs(parseMmSs(exo.timerRecupSeries))}`
               } else if(exo.timerMode === 'cadence'){
+                if(exo.timerRecupSeries) recupInfo += ` · récup séries ${formatMmSs(parseMmSs(exo.timerRecupSeries))}`
+              } else if(exo.timerMode === 'retour_marchant'){
+                recupInfo += ' · retour marchant = récup'
                 if(exo.timerRecupSeries) recupInfo += ` · récup séries ${formatMmSs(parseMmSs(exo.timerRecupSeries))}`
               }
               // Total charge
