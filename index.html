@@ -676,12 +676,15 @@
       try{
         const token='p_'+Date.now()+'_'+Math.random().toString(36).slice(2)
         const myEmail=(auth.currentUser&&auth.currentUser.email)||'player-app'
+        const playerName=joueurActif?((joueurActif.prenom||'')+' '+(joueurActif.nom||'')).trim():''
         // changeLog pour sync incrémentale et rattrapage au redémarrage
         await setDoc(doc(db,'changeLog','cl_'+token),{
           collection:collectionName,
           docId:docId,
           op:opType,
           by:myEmail,
+          byName:playerName,
+          source:'player',
           at:Date.now(),
           writeToken:token
         })
@@ -691,6 +694,8 @@
           docId:docId,
           op:opType,
           by:myEmail,
+          byName:playerName,
+          source:'player',
           writeToken:token,
           at:serverTimestamp(),
           page:'player-app'
@@ -1026,6 +1031,14 @@
             } else {
               const associatedPlayer = joueurs.find(j => j.uid === user.uid);
               if (associatedPlayer) {
+                // Backfill email if missing (for players linked before email field was added)
+                if (!associatedPlayer.email && user.email) {
+                  try {
+                    await setDoc(doc(db, 'joueurs', associatedPlayer.id), { email: user.email }, { merge: true });
+                    associatedPlayer.email = user.email;
+                    console.log('[Player-app] Email backfillé pour', associatedPlayer.prenom, associatedPlayer.nom);
+                  } catch(e) { console.warn('[Player-app] Erreur backfill email:', e) }
+                }
                 await selectionnerJoueur(associatedPlayer);
               } else {
                 // Unassociated user: show player list of only unlinked players to select their name
@@ -1153,8 +1166,9 @@
         }
         try {
           // Link player with user uid in Firestore
-          await setDoc(doc(db, 'joueurs', j.id), { uid: user.uid }, { merge: true });
+          await setDoc(doc(db, 'joueurs', j.id), { uid: user.uid, email: user.email }, { merge: true });
           j.uid = user.uid; // Update local memory representation
+          j.email = user.email;
         } catch (e) {
           console.error('Linkage error:', e);
           alert('Erreur lors de la liaison du profil. Demande à ton préparateur physique.');
