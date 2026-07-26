@@ -1564,7 +1564,7 @@
       const h=document.getElementById('sleep-wheel-h'), m=document.getElementById('sleep-wheel-m')
       if(!h.children.length){ buildSleepWheel(h,0,24,false); buildSleepWheel(m,0,59,true) }
       let val=parseFloat(document.getElementById('sleep-h').value)
-      if(isNaN(val) || val<0) val=7
+      if(isNaN(val) || val<0) val=8
       let hh=Math.min(24,Math.max(0,Math.floor(val)))
       let mm=Math.round((val-Math.floor(val))*60)
       if(mm>=60){ hh++; mm=0 }
