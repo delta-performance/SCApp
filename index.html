@@ -334,6 +334,20 @@
     .rpe-submit { width: 100%; padding: 13px; border-radius: 10px; border: none; background: #FECC00; color: #0f0f0f; font-size: 15px; font-weight: 700; cursor: pointer; }
     .rpe-submit:disabled { opacity: 0.3; }
     .rpe-done { text-align: center; padding: 12px; background: #1D9E7508; border: 1px solid #1D9E7544; border-radius: 10px; font-size: 13px; color: #1D9E75; font-weight: 600; }
+    .sleep-modal { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 9999; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .sleep-modal-inner { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 20px; width: 100%; max-width: 300px; text-align: center; }
+    .sleep-modal-title { font-size: 16px; font-weight: 700; color: #FECC00; margin-bottom: 8px; }
+    .sleep-wheels { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 16px 0; height: 180px; }
+    .sleep-wheel-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .sleep-wheel-label { font-size: 11px; color: #888; text-transform: uppercase; }
+    .sleep-wheel { width: 70px; height: 150px; overflow-y: auto; padding: 55px 0; border: 1px solid #2a2a2a; border-radius: 10px; background: #0f0f0f; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+    .sleep-wheel::-webkit-scrollbar { display: none; }
+    .sleep-wheel-item { height: 40px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #888; cursor: pointer; }
+    .sleep-wheel-item.sel { background: #FECC00; color: #0f0f0f; font-weight: 700; }
+    .sleep-wheel-sep { font-size: 20px; font-weight: 700; color: #FECC00; align-self: center; }
+    .sleep-modal-actions { display: flex; gap: 10px; }
+    .sleep-modal-btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 15px; font-weight: 700; cursor: pointer; }
+    button.sleep-input { display: flex; align-items: center; justify-content: center; }
   </style>
   <link rel="manifest" href="./manifest.json?v=20260714">
   <meta name="theme-color" content="#FECC00">
@@ -548,11 +562,32 @@
       <div class="wellness-card">
         <div class="wellness-card-title">Sommeil</div>
         <div class="sleep-row">
-          <input class="sleep-input" type="number" id="sleep-h" min="0" max="24" step="1" placeholder="" oninput="majProgress();updateSleepColor(this)" />
+          <button type="button" class="sleep-input" id="sleep-display" onclick="openSleepPicker()">--h--</button>
+          <input type="hidden" id="sleep-h" />
           <span id="sleep-badge" class="sleep-badge">—h</span>
           <div class="sleep-label">heures de sommeil</div>
         </div>
         <div id="sleep-evol" class="sleep-evol" style="display:none"></div>
+      </div>
+      <div id="sleep-modal" class="sleep-modal" onclick="if(event.target===this) closeSleepPicker()">
+        <div class="sleep-modal-inner">
+          <div class="sleep-modal-title">Durée du sommeil</div>
+          <div class="sleep-wheels">
+            <div class="sleep-wheel-wrap">
+              <div class="sleep-wheel-label">Heures</div>
+              <div class="sleep-wheel" id="sleep-wheel-h"></div>
+            </div>
+            <div class="sleep-wheel-sep">h</div>
+            <div class="sleep-wheel-wrap">
+              <div class="sleep-wheel-label">Minutes</div>
+              <div class="sleep-wheel" id="sleep-wheel-m"></div>
+            </div>
+          </div>
+          <div class="sleep-modal-actions">
+            <button type="button" class="sleep-modal-btn" style="background:#2a2a2a;color:#fff;" onclick="closeSleepPicker()">Annuler</button>
+            <button type="button" class="sleep-modal-btn" style="background:#FECC00;color:#0f0f0f;" onclick="confirmSleepPicker()">Valider</button>
+          </div>
+        </div>
       </div>
       <div class="wellness-card">
         <div class="wellness-card-title">Tap test — 10 secondes</div>
@@ -1473,13 +1508,20 @@
     window.updateSleepColor=function(input){
       const badge=document.getElementById('sleep-badge')
       const evolEl=document.getElementById('sleep-evol')
+      const display=document.getElementById('sleep-display')
       if(!badge) return
       const val=parseFloat(input.value)
       if(isNaN(val) || val<0){
         badge.textContent='—h'; badge.className='sleep-badge'
+        if(display) display.textContent='--h--'
         if(evolEl){ evolEl.style.display='none'; evolEl.textContent='' }
         return
       }
+      const h=Math.floor(val)
+      const m=Math.round((val-h)*60)
+      let dh=h, dm=m
+      if(dm>=60){ dh++; dm=0 }
+      if(display) display.textContent=dh+'h'+String(dm).padStart(2,'0')
       badge.textContent=Math.round(val)+'h'
       const baseline=getHistoryBaseline('sommeil')
       if(baseline==null || baseline<=0){
@@ -1494,6 +1536,58 @@
       else if(diff<=-0.10){ cls='sleep-badge alert'; txt=`↓ ${pct}% vs tes 3 semaines`; col='#E24B4A' }
       badge.className=cls
       if(evolEl){ evolEl.textContent=txt; evolEl.style.display='block'; evolEl.style.color=col }
+    }
+
+    // ===== SLEEP PICKER =====
+    function buildSleepWheel(el, min, max, pad){
+      el.innerHTML=''
+      for(let i=min;i<=max;i++){
+        const d=document.createElement('div')
+        d.className='sleep-wheel-item'
+        d.dataset.val=i
+        d.textContent=pad?String(i).padStart(2,'0'):i
+        d.onclick=function(){
+          el.querySelectorAll('.sleep-wheel-item').forEach(x=>x.classList.remove('sel'))
+          d.classList.add('sel')
+          el.scrollTop=d.offsetTop-el.clientHeight/2+d.clientHeight/2
+        }
+        el.appendChild(d)
+      }
+    }
+    function selectSleepWheel(el, val){
+      const item=[...el.children].find(c=>parseInt(c.dataset.val,10)===val)
+      if(!item) return
+      el.querySelectorAll('.sleep-wheel-item').forEach(x=>x.classList.remove('sel'))
+      item.classList.add('sel')
+      el.scrollTop=item.offsetTop-el.clientHeight/2+item.clientHeight/2
+    }
+    window.openSleepPicker=function(){
+      const h=document.getElementById('sleep-wheel-h'), m=document.getElementById('sleep-wheel-m')
+      if(!h.children.length){ buildSleepWheel(h,0,24,false); buildSleepWheel(m,0,59,true) }
+      let val=parseFloat(document.getElementById('sleep-h').value)
+      if(isNaN(val) || val<0) val=7
+      let hh=Math.min(24,Math.max(0,Math.floor(val)))
+      let mm=Math.round((val-Math.floor(val))*60)
+      if(mm>=60){ hh++; mm=0 }
+      if(hh>24){ hh=24; mm=0 }
+      selectSleepWheel(h,hh)
+      selectSleepWheel(m,mm)
+      document.getElementById('sleep-modal').style.display='flex'
+    }
+    window.confirmSleepPicker=function(){
+      const hEl=document.querySelector('#sleep-wheel-h .sleep-wheel-item.sel')
+      const mEl=document.querySelector('#sleep-wheel-m .sleep-wheel-item.sel')
+      const h=hEl?parseInt(hEl.dataset.val,10):0
+      const mm=mEl?parseInt(mEl.dataset.val,10):0
+      const total=h+(mm/60)
+      const input=document.getElementById('sleep-h')
+      input.value=total
+      updateSleepColor(input)
+      majProgress()
+      closeSleepPicker()
+    }
+    window.closeSleepPicker=function(){
+      document.getElementById('sleep-modal').style.display='none'
     }
 
     // ===== WELLNESS SOUMETTRE =====
