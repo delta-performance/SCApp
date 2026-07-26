@@ -1,5 +1,5 @@
 const CACHE_NAME = 'sca-player-v3';
-const APP_VERSION = '1.0.27';
+const APP_VERSION = '1.0.28';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
