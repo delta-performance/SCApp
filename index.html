@@ -50,8 +50,8 @@
     .hooper-row { display: flex; align-items: center; margin-bottom: 11px; }
     .hooper-label { font-size: 13px; color: #ccc; flex: 1; }
     .hooper-scale { display: flex; gap: 4px; }
-    .scale-btn { width: 33px; height: 33px; border-radius: 7px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #888; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .1s; }
-    .scale-btn.sel { background: #FECC00; border-color: #FECC00; color: #0f0f0f; font-weight: 700; }
+    .scale-btn { width: 33px; height: 33px; border-radius: 7px; border: 1px solid rgba(255,255,255,.12); background: #0f0f0f; color: #fff; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .1s; }
+    .scale-btn.sel { box-shadow: 0 0 0 2px #fff; font-weight: 700; transform: scale(1.08); z-index: 1; }
     .sleep-row { display: flex; align-items: center; gap: 12px; }
     .sleep-input { width: 80px; padding: 10px; border-radius: 8px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #FECC00; font-size: 18px; font-weight: 700; text-align: center; outline: none; }
     .sleep-input:focus { border-color: #FECC00; }
@@ -1372,7 +1372,7 @@
       const c=document.getElementById('hooper-container');c.innerHTML=''
       HOOPER_Q.forEach(q=>{
         const row=document.createElement('div');row.className='hooper-row'
-        row.innerHTML=`<span class="hooper-label">${q.label}</span><div class="hooper-scale">${[1,2,3,4,5,6,7].map(v=>`<button class="scale-btn" onclick="setHooper('${q.id}',${v},this)">${v}</button>`).join('')}</div>`
+        row.innerHTML=`<span class="hooper-label">${q.label}</span><div class="hooper-scale">${[1,2,3,4,5,6,7].map(v=>`<button class="scale-btn" style="background:hsl(${Math.round((v-1)/6*120)},70%,45%)" onclick="setHooper('${q.id}',${v},this)">${v}</button>`).join('')}</div>`
         c.appendChild(row)
         const ext=document.createElement('div');ext.className='hooper-extremes-row'
         ext.innerHTML=`<span>${q.low}</span><span>${q.high}</span>`
