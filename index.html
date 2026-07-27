@@ -432,7 +432,7 @@
 
     // Force reload if app version changed (ensures players get latest code)
     (function() {
-      const CURRENT_VERSION = '1.0.30';
+      const CURRENT_VERSION = '1.0.31';
       try {
         const stored = localStorage.getItem('__playerAppVersion');
         if (stored && stored !== CURRENT_VERSION) {
@@ -6517,6 +6517,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
     function buildStandards(base, ecart, desc = false) {
       // desc = true => plus grand = mieux (Vmax, 1RM, saut…)
       // desc = false => plus petit = mieux (sprints, RFU…)
+      // Ici base = valeur GOAT (meilleure)
       const keys = ['goat', 'tb', 'bien', 'ok', 'moyen', 'boulot', 'pas']
       const s = {}
       keys.forEach((k, i) => {
@@ -6525,11 +6526,37 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       return s
     }
 
+    // Construit les seuils autour de la valeur OK (base = OK)
+    function buildDefaultStandard(base, desc, ecart) {
+      return {
+        ok: base,
+        bien: desc ? base + ecart : base - ecart,
+        tb: desc ? base + 2 * ecart : base - 2 * ecart,
+        goat: desc ? base + 3 * ecart : base - 3 * ecart,
+        moyen: desc ? base - ecart : base + ecart,
+        boulot: desc ? base - 2 * ecart : base + 2 * ecart,
+        pas: desc ? base - 3 * ecart : base + 3 * ecart
+      }
+    }
+
+    function buildDefaultThresholds(baseMap, desc, ecartPct) {
+      const result = {}
+      Object.keys(baseMap).forEach(poste => {
+        const base = parseFloat(baseMap[poste]) || 0
+        if (!base) return
+        result[poste] = buildDefaultStandard(base, desc, base * ecartPct)
+      })
+      return result
+    }
+
     function getRFUStandards(posteKey) {
       const poste = normalizePosteKey(posteKey)
       const cfg = window.__performanceStandards && window.__performanceStandards.endurance && window.__performanceStandards.endurance.rfu
       if (cfg && cfg[poste] !== undefined) {
-        const base = cfg[poste]
+        const raw = cfg[poste]
+        if (raw && typeof raw === 'object' && raw.ok !== undefined) return raw
+        const base = parseFloat(raw) || 0
+        if (!base) return null
         const ecart = Math.round(base * 0.07)
         return buildStandards(base, ecart, false)
       }
@@ -6548,24 +6575,24 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
     const PERF_STANDARDS_DEFAULT = {
       muscu: {
-        'Box squat': fwdBackMap(1.7, 1.5),
-        'SDT': fwdBackMap(2.1, 1.9),
-        'DC': fwdBackMap(1.4, 1.25),
-        'Tirage sous banc': fwdBackMap(1.2, 1.05),
-        'Développé militaire': fwdBackMap(0.75, 0.65),
-        'Push press': fwdBackMap(1.0, 0.85)
+        'Box squat': buildDefaultThresholds(fwdBackMap(1.7, 1.5), true, 0.06),
+        'SDT': buildDefaultThresholds(fwdBackMap(2.1, 1.9), true, 0.06),
+        'DC': buildDefaultThresholds(fwdBackMap(1.4, 1.25), true, 0.06),
+        'Tirage sous banc': buildDefaultThresholds(fwdBackMap(1.2, 1.05), true, 0.06),
+        'Développé militaire': buildDefaultThresholds(fwdBackMap(0.75, 0.65), true, 0.06),
+        'Push press': buildDefaultThresholds(fwdBackMap(1.0, 0.85), true, 0.06)
       },
       vitesse: {
-        vmax: fwdBackMap(29.5, 32.5),
-        test10m: fwdBackMap(1.90, 1.75),
-        test20m: fwdBackMap(3.15, 2.95),
-        test50m: fwdBackMap(6.40, 6.05)
+        vmax: buildDefaultThresholds(fwdBackMap(29.5, 32.5), true, 0.05),
+        test10m: buildDefaultThresholds(fwdBackMap(1.90, 1.75), false, 0.05),
+        test20m: buildDefaultThresholds(fwdBackMap(3.15, 2.95), false, 0.05),
+        test50m: buildDefaultThresholds(fwdBackMap(6.40, 6.05), false, 0.05)
       },
       puissance: {
-        broadJump: fwdBackMap(250, 280),
-        cmj: fwdBackMap(34, 38),
-        sj: fwdBackMap(32, 36),
-        pmaxRel: fwdBackMap(52, 60)
+        broadJump: buildDefaultThresholds(fwdBackMap(250, 280), true, 0.05),
+        cmj: buildDefaultThresholds(fwdBackMap(34, 38), true, 0.05),
+        sj: buildDefaultThresholds(fwdBackMap(32, 36), true, 0.05),
+        pmaxRel: buildDefaultThresholds(fwdBackMap(52, 60), true, 0.05)
       }
     }
 
@@ -6584,12 +6611,22 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       const byCategory = (window.__performanceStandards && window.__performanceStandards[category]) || PERF_STANDARDS_DEFAULT[category] || {}
       const byPoste = byCategory[key]
       if (!byPoste || byPoste[poste] === undefined) return null
-      let raw = byPoste[poste]
-      if (category === 'muscu') {
-        raw = raw * (poidsJoueur || 100)
+      const raw = byPoste[poste]
+      // Nouveau format : objet avec tous les seuils
+      if (raw && typeof raw === 'object' && raw.ok !== undefined) {
+        if (category === 'muscu') {
+          const mul = {}
+          for (const k of Object.keys(raw)) mul[k] = raw[k] * (poidsJoueur || 100)
+          return mul
+        }
+        return raw
       }
-      const ecart = category === 'muscu' ? raw * 0.06 : raw * 0.05
-      return buildStandards(raw, ecart, getMetricDirection(category, key))
+      // Ancien format : valeur unique OK/base
+      let base = parseFloat(raw) || 0
+      if (!base) return null
+      if (category === 'muscu') base = base * (poidsJoueur || 100)
+      const ecart = category === 'muscu' ? base * 0.06 : base * 0.05
+      return buildStandards(base, ecart, getMetricDirection(category, key))
     }
 
     function getStandardCategorie(value, standard, desc = false) {
