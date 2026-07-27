@@ -369,6 +369,11 @@
     .perf-compare-text { font-size: 11px; color: #ccc; margin-top: 2px; }
     .perf-std-value { font-size: 11px; color: #888; text-align: right; min-width: 50px; }
     .perf-rank-pill { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; }
+    .perf-history { margin-top: 12px; border-top: 1px solid #2a2a2a; padding-top: 10px; }
+    .perf-history-title { font-size: 11px; color: #888; margin-bottom: 6px; font-weight: 600; }
+    .perf-history-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; color: #ccc; border-bottom: 1px solid #1a1a1a; }
+    .perf-history-row:last-child { border-bottom: none; }
+    .perf-history-date { color: #888; }
   </style>
   <link rel="manifest" href="./manifest.json?v=20260714">
   <meta name="theme-color" content="#FECC00">
@@ -432,7 +437,7 @@
 
     // Force reload if app version changed (ensures players get latest code)
     (function() {
-      const CURRENT_VERSION = '1.0.32';
+      const CURRENT_VERSION = '1.0.33';
       try {
         const stored = localStorage.getItem('__playerAppVersion');
         if (stored && stored !== CURRENT_VERSION) {
@@ -6474,44 +6479,87 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
 // ===== MODULE PERFORMANCES =====
     const PERF_POSTES_BARÈME = [
-      { key: '1', nom: 'Pilier gauche', defaut: 150 },
-      { key: '2', nom: 'Talonneur', defaut: 155 },
-      { key: '3', nom: 'Pilier droit', defaut: 150 },
-      { key: '4', nom: '2ème ligne', defaut: 160 },
-      { key: '5', nom: '2ème ligne', defaut: 160 },
-      { key: '6', nom: '3ème ligne aile', defaut: 155 },
-      { key: '7', nom: '3ème ligne aile', defaut: 155 },
-      { key: '8', nom: 'N8', defaut: 160 },
-      { key: '9', nom: 'Demi de mêlée', defaut: 145 },
-      { key: '10', nom: "Demi d'ouverture", defaut: 145 },
-      { key: '11', nom: 'Ailier', defaut: 140 },
-      { key: '12', nom: 'Centre', defaut: 145 },
-      { key: '13', nom: 'Centre', defaut: 145 },
-      { key: '14', nom: 'Ailier', defaut: 140 },
-      { key: '15', nom: 'Arrière', defaut: 140 }
+      { key: 'Pilier gauche', nom: 'Pilier gauche', defaut: 150, groupe: 'avant' },
+      { key: 'Talonneur', nom: 'Talonneur', defaut: 155, groupe: 'avant' },
+      { key: 'Pilier droit', nom: 'Pilier droit', defaut: 150, groupe: 'avant' },
+      { key: '2e Ligne', nom: '2e Ligne', defaut: 160, groupe: 'avant' },
+      { key: 'N8', nom: 'N8', defaut: 160, groupe: 'avant' },
+      { key: '3e Ligne aile', nom: '3e Ligne aile', defaut: 155, groupe: 'avant' },
+      { key: 'Demi de mêlée', nom: 'Demi de mêlée', defaut: 145, groupe: 'tq' },
+      { key: "Demi d'ouverture", nom: "Demi d'ouverture", defaut: 145, groupe: 'tq' },
+      { key: 'Centre', nom: 'Centre', defaut: 145, groupe: 'tq' },
+      { key: 'Ailier', nom: 'Ailier', defaut: 140, groupe: 'tq' },
+      { key: 'Arrière', nom: 'Arrière', defaut: 140, groupe: 'tq' }
     ]
 
     const NOM_POSTE_TO_KEY = {
-      'pilier gauche': '1', '1': '1', 'pilier': '1', 'pilier gauche 1': '1',
-      'talonneur': '2', '2': '2',
-      'pilier droit': '3', '3': '3', 'pilier droit 3': '3',
-      '2eme ligne': '4', '2eme ligne 4': '4', '2ème ligne': '4', '2ème ligne 4': '4', '4': '4',
-      '2eme ligne 2': '5', '2ème ligne 2': '5', '2eme ligne 5': '5', '2ème ligne 5': '5', '5': '5',
-      '3eme ligne aile': '6', '3ème ligne aile': '6', '3eme ligne aile 6': '6', '3ème ligne aile 6': '6', '6': '6',
-      '3eme ligne aile 2': '7', '3ème ligne aile 2': '7', '3eme ligne aile 7': '7', '3ème ligne aile 7': '7', '7': '7',
-      'n8': '8', 'numero 8': '8', '8': '8',
-      'demi de melee': '9', 'demi de mêlée': '9', '9': '9',
-      "demi d'ouverture": '10', 'demi d ouverture': '10', '10': '10',
-      'ailier': '11', 'ailier 11': '11', '11': '11',
-      'centre': '12', 'centre 12': '12', '12': '12',
-      'centre 2': '13', 'centre 13': '13', '13': '13',
-      'ailier 2': '14', 'ailier 14': '14', '14': '14',
-      'arriere': '15', 'arrière': '15', 'arrière 15': '15', '15': '15'
+      '1': 'Pilier gauche', 'pilier gauche': 'Pilier gauche', 'pilier': 'Pilier gauche',
+      '2': 'Talonneur', 'talonneur': 'Talonneur',
+      '3': 'Pilier droit', 'pilier droit': 'Pilier droit',
+      '4': '2e Ligne', '5': '2e Ligne', '2eme ligne': '2e Ligne', '2ème ligne': '2e Ligne', '2eme ligne 4': '2e Ligne', '2ème ligne 4': '2e Ligne',
+      '2eme ligne 5': '2e Ligne', '2ème ligne 5': '2e Ligne',
+      '6': '3e Ligne aile', '7': '3e Ligne aile', '3eme ligne aile': '3e Ligne aile', '3ème ligne aile': '3e Ligne aile',
+      '3eme ligne aile 6': '3e Ligne aile', '3ème ligne aile 6': '3e Ligne aile', '3eme ligne aile 7': '3e Ligne aile', '3ème ligne aile 7': '3e Ligne aile',
+      '8': 'N8', 'n8': 'N8', 'numero 8': 'N8', 'numero8': 'N8',
+      '9': 'Demi de mêlée', 'demi de melee': 'Demi de mêlée', 'demi de mêlée': 'Demi de mêlée',
+      '10': "Demi d'ouverture", "demi d'ouverture": "Demi d'ouverture", 'demi d ouverture': "Demi d'ouverture",
+      '11': 'Ailier', '12': 'Centre', '13': 'Centre', '14': 'Ailier', '15': 'Arrière',
+      'ailier': 'Ailier', 'ailier 11': 'Ailier', 'ailier 14': 'Ailier',
+      'centre': 'Centre', 'centre 12': 'Centre', 'centre 13': 'Centre',
+      'arriere': 'Arrière', 'arrière': 'Arrière', 'arrière 15': 'Arrière'
     }
 
     function normalizePosteKey(poste) {
       const p = String(poste || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/-/g, ' ').trim()
       return NOM_POSTE_TO_KEY[p] || p
+    }
+
+    const NUM_TO_ROSTER = {
+      '1': 'Pilier gauche', '2': 'Talonneur', '3': 'Pilier droit',
+      '4': '2e Ligne', '5': '2e Ligne',
+      '6': '3e Ligne aile', '7': '3e Ligne aile',
+      '8': 'N8',
+      '9': 'Demi de mêlée', '10': "Demi d'ouverture",
+      '11': 'Ailier', '12': 'Centre', '13': 'Centre', '14': 'Ailier', '15': 'Arrière'
+    }
+
+    function migratePerformanceStandards(data) {
+      if (!data) return null
+      const migrated = {}
+      Object.keys(data).forEach(cat => {
+        migrated[cat] = {}
+        Object.keys(data[cat]).forEach(metric => {
+          migrated[cat][metric] = {}
+          Object.keys(data[cat][metric]).forEach(posteKey => {
+            const rosterKey = NUM_TO_ROSTER[posteKey] || posteKey
+            if (migrated[cat][metric][rosterKey] === undefined) {
+              migrated[cat][metric][rosterKey] = data[cat][metric][posteKey]
+            }
+          })
+        })
+      })
+      return migrated
+    }
+
+    function mergeStandards(defaults, loaded) {
+      const out = JSON.parse(JSON.stringify(defaults))
+      if (!loaded) return out
+      Object.keys(loaded).forEach(cat => {
+        if (!out[cat]) out[cat] = {}
+        Object.keys(loaded[cat]).forEach(metric => {
+          if (!out[cat][metric]) out[cat][metric] = {}
+          Object.keys(loaded[cat][metric]).forEach(poste => {
+            const val = loaded[cat][metric][poste]
+            if (val && typeof val === 'object' && val.ok !== undefined) {
+              out[cat][metric][poste] = { ...out[cat][metric][poste], ...val }
+            } else if (typeof val === 'number') {
+              // ancien format avec une seule valeur OK
+              out[cat][metric][poste] = out[cat][metric][poste] || JSON.parse(JSON.stringify(PERF_STANDARDS_DEFAULT[cat]?.[metric]?.[poste]))
+            }
+          })
+        })
+      })
+      return out
     }
 
     function buildStandards(base, ecart, desc = false) {
@@ -6551,7 +6599,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
     function getRFUStandards(posteKey) {
       const poste = normalizePosteKey(posteKey)
-      const cfg = window.__performanceStandards && window.__performanceStandards.endurance && window.__performanceStandards.endurance.rfu
+      const cfg = (window.__performanceStandards && window.__performanceStandards.endurance && window.__performanceStandards.endurance.rfu) || (PERF_STANDARDS_DEFAULT.endurance && PERF_STANDARDS_DEFAULT.endurance.rfu)
       if (cfg && cfg[poste] !== undefined) {
         const raw = cfg[poste]
         if (raw && typeof raw === 'object' && raw.ok !== undefined) return raw
@@ -6568,8 +6616,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
     function fwdBackMap(fwd, back) {
       const m = {}
-      for (let i = 1; i <= 8; i++) m[String(i)] = fwd
-      for (let i = 9; i <= 15; i++) m[String(i)] = back
+      const avants = ['Pilier gauche', 'Talonneur', 'Pilier droit', '2e Ligne', 'N8', '3e Ligne aile']
+      const tqs = ['Demi de mêlée', "Demi d'ouverture", 'Centre', 'Ailier', 'Arrière']
+      avants.forEach(k => m[k] = fwd)
+      tqs.forEach(k => m[k] = back)
       return m
     }
 
@@ -6593,6 +6643,21 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         cmj: buildDefaultThresholds(fwdBackMap(34, 38), true, 0.05),
         sj: buildDefaultThresholds(fwdBackMap(32, 36), true, 0.05),
         pmaxRel: buildDefaultThresholds(fwdBackMap(52, 60), true, 0.05)
+      },
+      endurance: {
+        rfu: {
+          'Pilier gauche': { pas: 305, boulot: 295, moyen: 285, ok: 280, bien: 270, tb: 265, goat: 255 },
+          'Talonneur': { pas: 285, boulot: 290, moyen: 280, ok: 275, bien: 265, tb: 260, goat: 250 },
+          'Pilier droit': { pas: 305, boulot: 295, moyen: 285, ok: 280, bien: 270, tb: 265, goat: 255 },
+          '2e Ligne': { pas: 305, boulot: 295, moyen: 285, ok: 275, bien: 265, tb: 255, goat: 245 },
+          'N8': { pas: 285, boulot: 280, moyen: 275, ok: 270, bien: 255, tb: 245, goat: 235 },
+          '3e Ligne aile': { pas: 275, boulot: 270, moyen: 260, ok: 255, bien: 245, tb: 240, goat: 230 },
+          'Demi de mêlée': { pas: 245, boulot: 255, moyen: 245, ok: 240, bien: 230, tb: 225, goat: 212 },
+          "Demi d'ouverture": { pas: 250, boulot: 255, moyen: 245, ok: 240, bien: 230, tb: 225, goat: 215 },
+          'Centre': { pas: 255, boulot: 255, moyen: 245, ok: 240, bien: 230, tb: 225, goat: 215 },
+          'Ailier': { pas: 250, boulot: 250, moyen: 240, ok: 235, bien: 225, tb: 220, goat: 212 },
+          'Arrière': { pas: 250, boulot: 250, moyen: 240, ok: 235, bien: 225, tb: 220, goat: 212 }
+        }
       }
     }
 
@@ -6757,7 +6822,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       try {
         const snap = await getDoc(doc(db, 'config', 'performanceStandards'))
         if (snap.exists()) {
-          window.__performanceStandards = snap.data()
+          const migrated = migratePerformanceStandards(snap.data())
+          window.__performanceStandards = mergeStandards(PERF_STANDARDS_DEFAULT, migrated)
         } else {
           window.__performanceStandards = null
         }
@@ -6765,6 +6831,25 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         console.error('[Performances] Erreur chargement standards:', e)
         window.__performanceStandards = null
       }
+    }
+
+    function groupDocsByJoueur(docs) {
+      const latest = {}
+      const history = {}
+      docs.forEach(d => {
+        const data = { id: d.id, ...d.data() }
+        const jid = data.joueurId || d.id
+        if (!jid) return
+        if (!history[jid]) history[jid] = []
+        history[jid].push(data)
+        if (!latest[jid] || (data.updatedAt?.seconds || 0) > (latest[jid].updatedAt?.seconds || 0)) {
+          latest[jid] = data
+        }
+      })
+      for (const jid of Object.keys(history)) {
+        history[jid].sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0))
+      }
+      return { latest, history }
     }
 
     async function chargerPerformances(force = false) {
@@ -6792,25 +6877,32 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
         const maxTestes = {}
         maxTestesSnap.docs.forEach(d => { maxTestes[d.id] = d.data() })
-        const vitesse = {}
-        vitesseSnap.docs.forEach(d => { vitesse[d.id] = { id: d.id, ...d.data() } })
-        const puissance = {}
-        puissanceSnap.docs.forEach(d => { puissance[d.id] = { id: d.id, ...d.data() } })
-        const rfu = {}
-        rfuSnap.docs.forEach(d => { rfu[d.id] = { id: d.id, ...d.data() } })
+
+        const { latest: vitesse, history: vitesseHistory } = groupDocsByJoueur(vitesseSnap.docs)
+        const { latest: puissance, history: puissanceHistory } = groupDocsByJoueur(puissanceSnap.docs)
+        const { latest: rfu, history: rfuHistory } = groupDocsByJoueur(rfuSnap.docs)
+
         const fv = {}
+        const fvHistory = {}
         fvSnap.docs.forEach(d => {
           const data = { id: d.id, ...d.data() }
-          if (data.joueurId && (!fv[data.joueurId] || (data.date > fv[data.joueurId].date))) {
-            fv[data.joueurId] = data
+          const jid = data.joueurId
+          if (jid) {
+            if (!fvHistory[jid]) fvHistory[jid] = []
+            fvHistory[jid].push(data)
+            if (!fv[jid] || (data.date > fv[jid].date)) fv[jid] = data
           }
         })
+        for (const jid of Object.keys(fvHistory)) {
+          fvHistory[jid].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        }
+
         const statsGPS = {}
         statsGPSSnap.docs.forEach(d => { statsGPS[d.id] = d.data() })
 
         await loadPerformanceStandards()
 
-        performancesData = { maxTestes, vitesse, puissance, rfu, fv, statsGPS }
+        performancesData = { maxTestes, vitesse, vitesseHistory, puissance, puissanceHistory, rfu, rfuHistory, fv, fvHistory, statsGPS }
         setCache(cacheKey, performancesData)
         renderPerformances(currentPerfTab || 'muscu')
       } catch (e) {
@@ -6836,6 +6928,33 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       else if (tab === 'vitesse') renderPerfVitesse(c)
       else if (tab === 'puissance') renderPerfPuissance(c)
       else if (tab === 'endurance') renderPerfEndurance(c)
+    }
+
+    function formatHistoryDate(entry) {
+      if (entry.date) {
+        try { return new Date(entry.date).toLocaleDateString('fr-FR') } catch (e) {}
+      }
+      if (entry.updatedAt?.seconds) {
+        return new Date(entry.updatedAt.seconds * 1000).toLocaleDateString('fr-FR')
+      }
+      return '—'
+    }
+
+    function addMetricHistory(card, entries, fieldKey, unit, decimals = 1) {
+      if (!entries || entries.length <= 1) return
+      const history = document.createElement('div')
+      history.className = 'perf-history'
+      history.innerHTML = '<div class="perf-history-title">Historique</div>'
+      entries.slice(1).forEach(entry => {
+        const val = entry[fieldKey]
+        if (val === null || val === undefined) return
+        const row = document.createElement('div')
+        row.className = 'perf-history-row'
+        const formatted = decimals === 0 ? Math.round(val) : parseFloat(val).toFixed(decimals)
+        row.innerHTML = `<span class="perf-history-date">${formatHistoryDate(entry)}</span><span>${formatted}${unit ? ' ' + unit : ''}</span>`
+        history.appendChild(row)
+      })
+      if (history.children.length > 1) card.appendChild(history)
     }
 
     function renderPerfMuscu(container) {
@@ -6892,7 +7011,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           return { poste: j.poste, val: v[m.key] || null }
         }).filter(x => x.val)
         const standard = getStandardsFor('vitesse', m.key, joueurActif.poste)
-        container.appendChild(createPerfMetricCard(m.label, val, m.unit, standard, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste), m.desc), m.desc))
+        const card = createPerfMetricCard(m.label, val, m.unit, standard, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste), m.desc), m.desc)
+        addMetricHistory(card, performancesData.vitesseHistory[joueurActif.id], m.key, m.unit, 2)
+        container.appendChild(card)
       })
     }
 
@@ -6932,7 +7053,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         }).filter(x => x.val)
         const standard = getStandardsFor('puissance', m.key, joueurActif.poste)
         const desc = getMetricDirection('puissance', m.key)
-        container.appendChild(createPerfMetricCard(m.label, val, m.unit, standard, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste), desc), desc))
+        const card = createPerfMetricCard(m.label, val, m.unit, standard, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste), desc), desc)
+        addMetricHistory(card, performancesData.puissanceHistory[joueurActif.id], m.key, m.unit, m.key === 'keiserSquat' ? 0 : 1)
+        container.appendChild(card)
       })
     }
 
@@ -6981,6 +7104,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       if (rankInfo) {
         card.appendChild(createRankRow(rankInfo))
       }
+
+      addMetricHistory(card, performancesData.rfuHistory[joueurActif.id], 'total', 's', 1)
 
       container.appendChild(card)
     }
