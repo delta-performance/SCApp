@@ -6493,20 +6493,20 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
     ]
 
     const NOM_POSTE_TO_KEY = {
-      '1': 'Pilier gauche', 'pilier gauche': 'Pilier gauche', 'pilier': 'Pilier gauche',
+      '1': 'Pilier gauche', 'pilier gauche': 'Pilier gauche', 'pilier': 'Pilier gauche', 'pilier 1': 'Pilier gauche',
       '2': 'Talonneur', 'talonneur': 'Talonneur',
-      '3': 'Pilier droit', 'pilier droit': 'Pilier droit',
-      '4': '2e Ligne', '5': '2e Ligne', '2eme ligne': '2e Ligne', '2ème ligne': '2e Ligne', '2eme ligne 4': '2e Ligne', '2ème ligne 4': '2e Ligne',
-      '2eme ligne 5': '2e Ligne', '2ème ligne 5': '2e Ligne',
-      '6': '3e Ligne aile', '7': '3e Ligne aile', '3eme ligne aile': '3e Ligne aile', '3ème ligne aile': '3e Ligne aile',
-      '3eme ligne aile 6': '3e Ligne aile', '3ème ligne aile 6': '3e Ligne aile', '3eme ligne aile 7': '3e Ligne aile', '3ème ligne aile 7': '3e Ligne aile',
-      '8': 'N8', 'n8': 'N8', 'numero 8': 'N8', 'numero8': 'N8',
-      '9': 'Demi de mêlée', 'demi de melee': 'Demi de mêlée', 'demi de mêlée': 'Demi de mêlée',
-      '10': "Demi d'ouverture", "demi d'ouverture": "Demi d'ouverture", 'demi d ouverture': "Demi d'ouverture",
+      '3': 'Pilier droit', 'pilier droit': 'Pilier droit', 'pilier 3': 'Pilier droit',
+      '4': '2e Ligne', '5': '2e Ligne', '2e ligne': '2e Ligne', '2eme ligne': '2e Ligne', '2ème ligne': '2e Ligne', '2e ligne 4': '2e Ligne', '2eme ligne 4': '2e Ligne', '2ème ligne 4': '2e Ligne',
+      '2e ligne 5': '2e Ligne', '2eme ligne 5': '2e Ligne', '2ème ligne 5': '2e Ligne',
+      '6': '3e Ligne aile', '7': '3e Ligne aile', '3e ligne': '3e Ligne aile', '3e ligne aile': '3e Ligne aile', '3eme ligne aile': '3e Ligne aile', '3ème ligne aile': '3e Ligne aile',
+      '3e ligne aile 6': '3e Ligne aile', '3eme ligne aile 6': '3e Ligne aile', '3ème ligne aile 6': '3e Ligne aile', '3e ligne aile 7': '3e Ligne aile', '3eme ligne aile 7': '3e Ligne aile', '3ème ligne aile 7': '3e Ligne aile',
+      '8': 'N8', 'n8': 'N8', 'n 8': 'N8', 'numero 8': 'N8', 'numero8': 'N8', '8e': 'N8', '8e ligne': 'N8', '8eme ligne': 'N8', '8ème ligne': 'N8', '8e ligne centre': 'N8', '3e ligne centre': 'N8', '3eme ligne centre': 'N8', '3ème ligne centre': 'N8', 'troisieme ligne centre': 'N8', 'numero huit': 'N8', 'huit': 'N8',
+      '9': 'Demi de mêlée', 'demi de melee': 'Demi de mêlée', 'demi de mêlée': 'Demi de mêlée', 'scrum half': 'Demi de mêlée',
+      '10': "Demi d'ouverture", "demi d'ouverture": "Demi d'ouverture", 'demi d ouverture': "Demi d'ouverture", 'fly half': "Demi d'ouverture",
       '11': 'Ailier', '12': 'Centre', '13': 'Centre', '14': 'Ailier', '15': 'Arrière',
-      'ailier': 'Ailier', 'ailier 11': 'Ailier', 'ailier 14': 'Ailier',
-      'centre': 'Centre', 'centre 12': 'Centre', 'centre 13': 'Centre',
-      'arriere': 'Arrière', 'arrière': 'Arrière', 'arrière 15': 'Arrière'
+      'ailier': 'Ailier', 'ailier 11': 'Ailier', 'ailier 14': 'Ailier', 'ailier gauche': 'Ailier', 'ailier droit': 'Ailier',
+      'centre': 'Centre', 'centre 12': 'Centre', 'centre 13': 'Centre', 'centres': 'Centre',
+      'arriere': 'Arrière', 'arrière': 'Arrière', 'arrière 15': 'Arrière', 'fullback': 'Arrière'
     }
 
     function normalizePosteKey(poste) {
@@ -6531,7 +6531,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         Object.keys(data[cat]).forEach(metric => {
           migrated[cat][metric] = {}
           Object.keys(data[cat][metric]).forEach(posteKey => {
-            const rosterKey = NUM_TO_ROSTER[posteKey] || posteKey
+            const rosterKey = normalizePosteKey(posteKey)
             if (migrated[cat][metric][rosterKey] === undefined) {
               migrated[cat][metric][rosterKey] = data[cat][metric][posteKey]
             }
