@@ -6885,19 +6885,43 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       return { latest, history }
     }
 
+    const MUSCU_EXOS = ['Box squat', 'SDT', 'DC', 'Tirage sous banc', 'Développé militaire', 'Push press']
+
+    function groupMuscuByJoueur(docs) {
+      const latest = {}
+      const history = {}
+      docs.forEach(d => {
+        const data = { id: d.id, ...d.data() }
+        const jid = data.joueurId
+        const exo = data.exercice
+        if (!jid || !MUSCU_EXOS.includes(exo)) return
+        if (!history[jid]) history[jid] = []
+        history[jid].push(data)
+      })
+      for (const jid of Object.keys(history)) {
+        history[jid].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+        const byExo = {}
+        history[jid].forEach(p => {
+          if (byExo[p.exercice] === undefined && p.oneRM !== undefined && p.oneRM !== null) byExo[p.exercice] = p.oneRM
+        })
+        latest[jid] = byExo
+      }
+      return { latest, history }
+    }
+
     async function chargerPerformances(force = false) {
       const c = document.getElementById('performances-content')
       if (!c) return
       c.innerHTML = '<div class="empty-msg">Chargement de tes performances...</div>'
       if (!joueurActif) return
 
-      const cacheKey = 'performances_' + joueurActif.id
+      const cacheKey = 'performances_v2_' + joueurActif.id
       if (!force && getCache(cacheKey)) {
         performancesData = getCache(cacheKey)
       } else {
         try {
-          const [maxTestesSnap, vitesseSnap, puissanceSnap, rfuSnap, fvSnap, statsGPSSnap] = await Promise.all([
-            getDocs(collection(db, 'maxTestes')),
+          const [muscuSnap, vitesseSnap, puissanceSnap, rfuSnap, fvSnap, statsGPSSnap] = await Promise.all([
+            getDocs(collection(db, 'dataPerf')),
             getDocs(collection(db, 'vitesseData')),
             getDocs(collection(db, 'puissanceData')),
             getDocs(collection(db, 'rfuData')),
@@ -6905,9 +6929,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             getDocs(collection(db, 'statsGPS'))
           ])
 
-          const maxTestes = {}
-          maxTestesSnap.docs.forEach(d => { maxTestes[d.id] = d.data() })
-
+          const { latest: muscu, history: muscuHistory } = groupMuscuByJoueur(muscuSnap.docs)
           const { latest: vitesse, history: vitesseHistory } = groupDocsByJoueur(vitesseSnap.docs)
           const { latest: puissance, history: puissanceHistory } = groupDocsByJoueur(puissanceSnap.docs)
           const { latest: rfu, history: rfuHistory } = groupDocsByJoueur(rfuSnap.docs)
@@ -6930,7 +6952,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const statsGPS = {}
           statsGPSSnap.docs.forEach(d => { statsGPS[d.id] = d.data() })
 
-          performancesData = { maxTestes, vitesse, vitesseHistory, puissance, puissanceHistory, rfu, rfuHistory, fv, fvHistory, statsGPS }
+          performancesData = { muscu, muscuHistory, vitesse, vitesseHistory, puissance, puissanceHistory, rfu, rfuHistory, fv, fvHistory, statsGPS }
           setCache(cacheKey, performancesData)
         } catch (e) {
           console.error('[Performances] Erreur chargement:', e)
@@ -6999,10 +7021,12 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         { key: 'Push press', label: 'Push press', unit: 'kg' }
       ]
 
+      const latestByJoueur = performancesData.muscu || {}
+      const myData = latestByJoueur[joueurActif.id] || {}
       metrics.forEach(m => {
-        const val = performancesData.maxTestes[joueurActif.id]?.[m.key] || null
+        const val = myData[m.key] || null
         if (!val) return
-        const allValues = Object.entries(performancesData.maxTestes)
+        const allValues = Object.entries(latestByJoueur)
           .map(([jid, data]) => {
             const j = joueurs.find(x => x.id === jid)
             return { poste: j?.poste, val: data[m.key] || null }
