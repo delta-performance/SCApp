@@ -432,7 +432,7 @@
 
     // Force reload if app version changed (ensures players get latest code)
     (function() {
-      const CURRENT_VERSION = '1.0.28';
+      const CURRENT_VERSION = '1.0.30';
       try {
         const stored = localStorage.getItem('__playerAppVersion');
         if (stored && stored !== CURRENT_VERSION) {
@@ -6514,24 +6514,86 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       return NOM_POSTE_TO_KEY[p] || p
     }
 
+    function buildStandards(base, ecart, desc = false) {
+      // desc = true => plus grand = mieux (Vmax, 1RM, saut…)
+      // desc = false => plus petit = mieux (sprints, RFU…)
+      const keys = ['goat', 'tb', 'bien', 'ok', 'moyen', 'boulot', 'pas']
+      const s = {}
+      keys.forEach((k, i) => {
+        s[k] = desc ? base - ecart * i : base + ecart * i
+      })
+      return s
+    }
+
     function getRFUStandards(posteKey) {
+      const poste = normalizePosteKey(posteKey)
+      const cfg = window.__performanceStandards && window.__performanceStandards.endurance && window.__performanceStandards.endurance.rfu
+      if (cfg && cfg[poste] !== undefined) {
+        const base = cfg[poste]
+        const ecart = Math.round(base * 0.07)
+        return buildStandards(base, ecart, false)
+      }
       const p = PERF_POSTES_BARÈME.find(x => x.key === String(posteKey))
       if (!p) return null
       const ecart = Math.round(p.defaut * 0.07)
-      return {
-        goat: p.defaut,
-        tb: p.defaut + ecart,
-        bien: p.defaut + ecart * 2,
-        ok: p.defaut + ecart * 3,
-        moyen: p.defaut + ecart * 4,
-        boulot: p.defaut + ecart * 5,
-        pas: p.defaut + ecart * 6
+      return buildStandards(p.defaut, ecart, false)
+    }
+
+    function fwdBackMap(fwd, back) {
+      const m = {}
+      for (let i = 1; i <= 8; i++) m[String(i)] = fwd
+      for (let i = 9; i <= 15; i++) m[String(i)] = back
+      return m
+    }
+
+    const PERF_STANDARDS_DEFAULT = {
+      muscu: {
+        'Box squat': fwdBackMap(1.7, 1.5),
+        'SDT': fwdBackMap(2.1, 1.9),
+        'DC': fwdBackMap(1.4, 1.25),
+        'Tirage sous banc': fwdBackMap(1.2, 1.05),
+        'Développé militaire': fwdBackMap(0.75, 0.65),
+        'Push press': fwdBackMap(1.0, 0.85)
+      },
+      vitesse: {
+        vmax: fwdBackMap(29.5, 32.5),
+        test10m: fwdBackMap(1.90, 1.75),
+        test20m: fwdBackMap(3.15, 2.95),
+        test50m: fwdBackMap(6.40, 6.05)
+      },
+      puissance: {
+        broadJump: fwdBackMap(250, 280),
+        cmj: fwdBackMap(34, 38),
+        sj: fwdBackMap(32, 36),
+        pmaxRel: fwdBackMap(52, 60)
       }
     }
 
-    function getCategorieRFU(total, posteKey) {
-      const standards = getRFUStandards(posteKey)
-      if (!standards || !total) return null
+    const METRIC_DIRECTION = {
+      muscu: { 'Box squat': true, 'SDT': true, 'DC': true, 'Tirage sous banc': true, 'Développé militaire': true, 'Push press': true },
+      vitesse: { vmax: true, test10m: false, test20m: false, test50m: false },
+      puissance: { broadJump: true, cmj: true, sj: true, pmaxRel: true, keiserSquat: true, pmaxAbs: true }
+    }
+
+    function getMetricDirection(category, key) {
+      return (METRIC_DIRECTION[category] && METRIC_DIRECTION[category][key]) || false
+    }
+
+    function getStandardsFor(category, key, posteKey) {
+      const poste = normalizePosteKey(posteKey)
+      const byCategory = (window.__performanceStandards && window.__performanceStandards[category]) || PERF_STANDARDS_DEFAULT[category] || {}
+      const byPoste = byCategory[key]
+      if (!byPoste || byPoste[poste] === undefined) return null
+      let raw = byPoste[poste]
+      if (category === 'muscu') {
+        raw = raw * (poidsJoueur || 100)
+      }
+      const ecart = category === 'muscu' ? raw * 0.06 : raw * 0.05
+      return buildStandards(raw, ecart, getMetricDirection(category, key))
+    }
+
+    function getStandardCategorie(value, standard, desc = false) {
+      if (value === null || value === undefined || !standard) return null
       const cats = [
         { key: 'goat', label: 'GOAT', color: '#FFD700' },
         { key: 'tb', label: 'Très bien', color: '#1D9E75' },
@@ -6542,49 +6604,49 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         { key: 'pas', label: 'Pas invité', color: '#333' }
       ]
       for (const c of cats) {
-        if (total >= standards[c.key]) return c
+        if (desc ? value >= standard[c.key] : value <= standard[c.key]) return c
       }
       return { label: '—', color: '#555' }
     }
 
-    function getStandardPct(total, standard) {
-      if (total === null || total === undefined || !standard) return 0
-      const min = standard.goat * 0.9
-      const max = standard.pas * 1.1
-      const pct = 100 - ((total - min) / (max - min)) * 100
-      return Math.max(0, Math.min(100, pct))
+    function getStandardPct(value, standard, desc = false) {
+      if (value === null || value === undefined || !standard) return 0
+      const best = standard.goat
+      const worst = standard.pas
+      if (best === worst) return 100
+      if (desc) {
+        if (value >= best) return 100
+        if (value <= worst) return 0
+        return Math.max(0, Math.min(100, ((value - worst) / (best - worst)) * 100))
+      }
+      if (value <= best) return 100
+      if (value >= worst) return 0
+      return Math.max(0, Math.min(100, ((worst - value) / (worst - best)) * 100))
     }
 
-    function getStandardColor(total, standard) {
-      if (total === null || total === undefined || !standard) return '#555'
-      if (total <= standard.goat) return '#FFD700'
-      if (total <= standard.tb) return '#1D9E75'
-      if (total <= standard.bien) return '#3B82F6'
-      if (total <= standard.ok) return '#6B7280'
-      if (total <= standard.moyen) return '#EF9F27'
-      if (total <= standard.boulot) return '#E24B4A'
+    function getStandardColor(value, standard, desc = false) {
+      if (value === null || value === undefined || !standard) return '#555'
+      if (desc ? value >= standard.goat : value <= standard.goat) return '#FFD700'
+      if (desc ? value >= standard.tb : value <= standard.tb) return '#1D9E75'
+      if (desc ? value >= standard.bien : value <= standard.bien) return '#3B82F6'
+      if (desc ? value >= standard.ok : value <= standard.ok) return '#6B7280'
+      if (desc ? value >= standard.moyen : value <= standard.moyen) return '#EF9F27'
+      if (desc ? value >= standard.boulot : value <= standard.boulot) return '#E24B4A'
       return '#333'
     }
 
-    function getPosteValues(valuesMap, currentPoste, preferExact = true) {
+    function getPosteValues(valuesMap, currentPoste) {
       const exactKey = normalizePosteKey(currentPoste)
-      const exact = valuesMap.filter(x => normalizePosteKey(x.poste) === exactKey)
-      if (preferExact && exact.length >= 3) return exact.map(x => x.val)
-      const avants = ['1', '2', '3', '4', '5', '6', '7', '8']
-      const p = normalizePosteKey(currentPoste)
-      const isAvant = avants.includes(p)
-      return valuesMap.filter(x => {
-        const px = normalizePosteKey(x.poste)
-        return isAvant ? avants.includes(px) : (px && !avants.includes(px))
-      }).map(x => x.val)
+      return valuesMap
+        .filter(x => normalizePosteKey(x.poste) === exactKey)
+        .map(x => x.val)
     }
 
     function computeRankInfo(value, allValues, desc) {
       if (value === null || value === undefined || !allValues || !allValues.length) return null
-      const withMe = [...allValues, value]
-      const sorted = [...withMe].sort((a, b) => desc ? b - a : a - b)
-      const rank = sorted.indexOf(value) + 1
-      const total = sorted.length
+      const better = allValues.filter(v => desc ? v > value : v < value).length
+      const rank = better + 1
+      const total = allValues.length + 1
       const pct = Math.round((rank / total) * 100)
       return { rank, total, pct, top: pct <= 25 }
     }
@@ -6613,7 +6675,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       return row
     }
 
-    function createPerfMetricCard(label, value, unit, standard, rankInfo) {
+    function createPerfMetricCard(label, value, unit, standard, rankInfo, desc = false) {
       const card = document.createElement('div')
       card.className = 'perf-metric-card'
       const valStr = formatPerfValue(value)
@@ -6626,15 +6688,16 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       if (standard && value !== null && value !== undefined) {
         const stdRow = document.createElement('div')
         stdRow.className = 'perf-compare-row'
-        const stdPct = getStandardPct(value, standard)
-        const stdColor = getStandardColor(value, standard)
+        const stdPct = getStandardPct(value, standard, desc)
+        const stdColor = getStandardColor(value, standard, desc)
+        const cat = getStandardCategorie(value, standard, desc)
         stdRow.innerHTML = `
           <div class="perf-compare-item">
             <div class="perf-compare-label">Standard</div>
             <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${stdPct}%; background:${stdColor}"></div></div>
             <div class="perf-std-value">${standard.ok.toFixed(1)}${unit}</div>
           </div>
-          <div class="perf-compare-text" style="color:${stdColor};">Standard OK du poste</div>
+          <div class="perf-compare-text" style="color:${cat ? cat.color : stdColor};">${cat ? 'Catégorie : ' + cat.label : 'Standard OK du poste'}</div>
         `
         card.appendChild(stdRow)
       }
@@ -6651,6 +6714,20 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       })
       currentPerfTab = tab
       renderPerformances(tab)
+    }
+
+    async function loadPerformanceStandards() {
+      try {
+        const snap = await getDoc(doc(db, 'config', 'performanceStandards'))
+        if (snap.exists()) {
+          window.__performanceStandards = snap.data()
+        } else {
+          window.__performanceStandards = null
+        }
+      } catch (e) {
+        console.error('[Performances] Erreur chargement standards:', e)
+        window.__performanceStandards = null
+      }
     }
 
     async function chargerPerformances(force = false) {
@@ -6693,6 +6770,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         })
         const statsGPS = {}
         statsGPSSnap.docs.forEach(d => { statsGPS[d.id] = d.data() })
+
+        await loadPerformanceStandards()
 
         performancesData = { maxTestes, vitesse, puissance, rfu, fv, statsGPS }
         setCache(cacheKey, performancesData)
@@ -6740,9 +6819,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             return { poste: j?.poste, val: data[m.key] || null }
           })
           .filter(x => x.val)
-        const compareValues = getPosteValues(allValues, joueurActif.poste, true)
+        const compareValues = getPosteValues(allValues, joueurActif.poste)
         const rankInfo = computeRankInfo(val, compareValues, true)
-        container.appendChild(createPerfMetricCard(m.label, val, m.unit, null, rankInfo))
+        const standard = getStandardsFor('muscu', m.key, joueurActif.poste)
+        container.appendChild(createPerfMetricCard(m.label, val, m.unit, standard, rankInfo, true))
       })
     }
 
@@ -6757,7 +6837,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         return { poste: j.poste, val: s.vmaxSaison || v.vmaxManuel || null }
       }).filter(x => x.val)
 
-      container.appendChild(createPerfMetricCard('Vmax', vmax, 'km/h', null, computeRankInfo(vmax, getPosteValues(allVmax, joueurActif.poste, true), true)))
+      const vmaxStd = getStandardsFor('vitesse', 'vmax', joueurActif.poste)
+      container.appendChild(createPerfMetricCard('Vmax', vmax, 'km/h', vmaxStd, computeRankInfo(vmax, getPosteValues(allVmax, joueurActif.poste), true), true))
 
       ;[
         { key: 'test10m', label: 'Test 10m', unit: 's', desc: false },
@@ -6769,7 +6850,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const v = performancesData.vitesse[j.id] || {}
           return { poste: j.poste, val: v[m.key] || null }
         }).filter(x => x.val)
-        container.appendChild(createPerfMetricCard(m.label, val, m.unit, null, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste, true), m.desc)))
+        const standard = getStandardsFor('vitesse', m.key, joueurActif.poste)
+        container.appendChild(createPerfMetricCard(m.label, val, m.unit, standard, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste), m.desc), m.desc))
       })
     }
 
@@ -6788,8 +6870,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         return { poste: j.poste, val: f.Pmaxkg || f.pmaxkg || f.PmaxRel || null }
       }).filter(x => x.val)
 
-      container.appendChild(createPerfMetricCard('Pmax absolue F-V', pmaxAbs, 'W', null, computeRankInfo(pmaxAbs, getPosteValues(allPmaxAbs, joueurActif.poste, true), true)))
-      container.appendChild(createPerfMetricCard('Pmax relative F-V', pmaxRel, 'W/kg', null, computeRankInfo(pmaxRel, getPosteValues(allPmaxRel, joueurActif.poste, true), true)))
+      container.appendChild(createPerfMetricCard('Pmax absolue F-V', pmaxAbs, 'W', null, computeRankInfo(pmaxAbs, getPosteValues(allPmaxAbs, joueurActif.poste), true), true))
+
+      const pmaxRelStd = getStandardsFor('puissance', 'pmaxRel', joueurActif.poste)
+      container.appendChild(createPerfMetricCard('Pmax relative F-V', pmaxRel, 'W/kg', pmaxRelStd, computeRankInfo(pmaxRel, getPosteValues(allPmaxRel, joueurActif.poste), true), true))
 
       ;[
         { key: 'keiserSquat', label: 'Keiser Squat', unit: 'W' },
@@ -6802,7 +6886,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const p = performancesData.puissance[j.id] || {}
           return { poste: j.poste, val: p[m.key] || null }
         }).filter(x => x.val)
-        container.appendChild(createPerfMetricCard(m.label, val, m.unit, null, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste, true), true)))
+        const standard = getStandardsFor('puissance', m.key, joueurActif.poste)
+        const desc = getMetricDirection('puissance', m.key)
+        container.appendChild(createPerfMetricCard(m.label, val, m.unit, standard, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste), desc), desc))
       })
     }
 
@@ -6812,14 +6898,14 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       const type = rd.type || 'avant'
       const posteKey = normalizePosteKey(joueurActif.poste)
       const standard = getRFUStandards(posteKey)
-      const categorie = total ? getCategorieRFU(total, posteKey) : null
+      const categorie = total ? getStandardCategorie(total, standard, false) : null
 
       const allTotals = joueurs.map(j => {
         const r = performancesData.rfu[j.id] || {}
         return { poste: j.poste, val: r.total || null }
       }).filter(x => x.val)
 
-      const rankInfo = computeRankInfo(total, getPosteValues(allTotals, joueurActif.poste, true), false)
+      const rankInfo = computeRankInfo(total, getPosteValues(allTotals, joueurActif.poste), false)
 
       const card = document.createElement('div')
       card.className = 'perf-metric-card'
@@ -6834,8 +6920,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       if (standard) {
         const stdRow = document.createElement('div')
         stdRow.className = 'perf-compare-row'
-        const stdPct = getStandardPct(total, standard)
-        const stdColor = getStandardColor(total, standard)
+        const stdPct = getStandardPct(total, standard, false)
+        const stdColor = getStandardColor(total, standard, false)
         stdRow.innerHTML = `
           <div class="perf-compare-item">
             <div class="perf-compare-label">Standard</div>
