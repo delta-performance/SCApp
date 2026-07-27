@@ -6771,6 +6771,28 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       return n % 1 === 0 ? n.toString() : n.toFixed(1)
     }
 
+    const PERF_CATS = [
+      { key: 'goat', label: 'GOAT' },
+      { key: 'tb', label: 'Très bien' },
+      { key: 'bien', label: 'Bien' },
+      { key: 'ok', label: 'OK' },
+      { key: 'moyen', label: 'Moyen' },
+      { key: 'boulot', label: 'Au boulot' },
+      { key: 'pas', label: 'Pas invité' }
+    ]
+
+    function getStandardTargetText(cat, standard, unit) {
+      if (!cat || !standard) return ''
+      if (cat.key === 'goat') return 'GOAT'
+      const idx = PERF_CATS.findIndex(c => c.key === cat.key)
+      if (idx <= 0) return ''
+      const next = PERF_CATS[idx - 1]
+      const val = standard[next.key]
+      if (val === undefined || val === null) return ''
+      const valStr = formatPerfValue(val)
+      return `${valStr}${unit} (${next.label})`
+    }
+
     function createRankRow(rankInfo) {
       const row = document.createElement('div')
       row.className = 'perf-compare-row'
@@ -6808,7 +6830,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           <div class="perf-compare-item">
             <div class="perf-compare-label">Standard</div>
             <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${stdPct}%; background:${stdColor}"></div></div>
-            <div class="perf-std-value">${standard.ok.toFixed(1)}${unit}</div>
+            <div class="perf-std-value">${getStandardTargetText(cat, standard, unit)}</div>
           </div>
           <div class="perf-compare-text" style="color:${cat ? cat.color : stdColor};">${cat ? 'Catégorie : ' + cat.label : 'Standard OK du poste'}</div>
         `
@@ -7105,7 +7127,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           <div class="perf-compare-item">
             <div class="perf-compare-label">Standard</div>
             <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${stdPct}%; background:${stdColor}"></div></div>
-            <div class="perf-std-value">${standard.ok.toFixed(1)}s</div>
+            <div class="perf-std-value">${getStandardTargetText(categorie, standard, 's')}</div>
           </div>
           <div class="perf-compare-text" style="color:${categorie ? categorie.color : stdColor};">${categorie ? 'Catégorie : ' + categorie.label : 'Standard OK du poste'}</div>
         `
