@@ -3861,6 +3861,36 @@
     let selectedDayIdx = 0
     let currentViewMode = 'jour'   // 'jour' | 'semaine'
     let planningScope   = 'moi'    // 'moi'  | 'equipe'
+    let planningColumnsConfig = {}
+
+    async function loadPlanningColumnsConfig() {
+      const cached = getCache('planning_columnsConfig_player')
+      if (cached) planningColumnsConfig = cached
+      try {
+        const docSnap = await getDoc(doc(db, 'config', 'planningColumnsConfig'))
+        if (docSnap.exists() && docSnap.data().config) {
+          planningColumnsConfig = docSnap.data().config
+          setCache('planning_columnsConfig_player', planningColumnsConfig)
+        }
+      } catch (e) { console.log('No planning columns config found') }
+    }
+
+    function getDayColumns(dateStr) {
+      const cols = planningColumnsConfig[dateStr]
+      if (!cols || !Array.isArray(cols) || cols.length <= 1) return null
+      return cols
+    }
+
+    function getGroupeShortName(groupeId) {
+      if (!groupeId || !window.__groupesConfig) return 'Groupe'
+      for (const cat of window.__groupesConfig) {
+        if (cat.sousGroupes) {
+          const sg = cat.sousGroupes.find(s => s.id === groupeId)
+          if (sg && sg.nom) return sg.nom
+        }
+      }
+      return 'Groupe'
+    }
 
     // ─── Scope toggle ───
     window.setPlanningScope = function(scope){
@@ -3900,6 +3930,41 @@
         return false
       }
 
+      function eventGroupIds(e) {
+        if (e.groupeIds && Array.isArray(e.groupeIds) && e.groupeIds.length > 0) return e.groupeIds
+        if (e.groupeId) return [e.groupeId]
+        return []
+      }
+
+      function isHGGroup(groupIds) {
+        if (!window.__groupesConfig || !groupIds.length) return false
+        return window.__groupesConfig.some(cat =>
+          cat.sousGroupes && cat.sousGroupes.some(s =>
+            groupIds.includes(s.id) && String(s.nom || '').toUpperCase() === 'HG'
+          )
+        )
+      }
+
+      function isVisibleForPlayer(e) {
+        if (e.visible === false) return false
+
+        // Explicitement sélectionné(s)
+        const selectedPlayers = e.visiblePlayers || e.joueurIds
+        if (e.visible === 'selected' || (selectedPlayers && selectedPlayers.length > 0)) {
+          return selectedPlayers.includes(jid)
+        }
+
+        // Groupe(s) assigné(s)
+        const gids = eventGroupIds(e)
+        if (gids.length > 0) {
+          if (isHGGroup(gids)) return true
+          return gids.some(gid => isPlayerInGroup(gid))
+        }
+
+        // Par défaut visible par tous
+        return true
+      }
+
       if(planningScope === 'equipe'){
         // Vue équipe : tout le planning collectif visible par au moins un joueur
         // Exclure seulement visible:false (staff only)
@@ -3921,28 +3986,7 @@
         } else {
           // Joueur valide : planning collectif filtré par visibilité
           return {
-            planning: planningAll.filter(e => {
-              if(e.visible === false) return false         // masqué staff
-              if(e.visible === 'groupe'){
-                // Check if this is the HG group — visible to everyone
-                const allGroupIds = e.groupeIds || (e.groupeId ? [e.groupeId] : [])
-                const isHGGroup = window.__groupesConfig && window.__groupesConfig.some(cat =>
-                  cat.sousGroupes && cat.sousGroupes.some(s =>
-                    allGroupIds.includes(s.id) && s.nom === 'HG'
-                  )
-                )
-                if (isHGGroup) return true
-                // Créneau assigné à un ou plusieurs groupes : visible si le joueur est dans l'un d'eux
-                if (allGroupIds.length > 0) {
-                  return allGroupIds.some(gid => isPlayerInGroup(gid))
-                }
-                return false
-              }
-              if(e.visiblePlayers && e.visiblePlayers.length > 0){
-                return e.visiblePlayers.includes(jid)     // créneau pour joueurs sélectionnés
-              }
-              return true                                  // visible par tous
-            }),
+            planning: planningAll.filter(isVisibleForPlayer),
             creneaux: []  // pas de créneaux blessés pour un joueur valide
           }
         }
@@ -4079,6 +4123,64 @@
       return sorted
     }
 
+    // ───── Placement avec colonnes de groupes (comme renderer/planning.html) ─────
+    function assignGroupColumns(events, dayColumns) {
+      const nbCols = dayColumns.length
+      const columnOccupancy = Array.from({ length: nbCols }, () => [])
+      const eventAssignments = new Map()
+
+      function overlap(a, b) { return a.debut < b.fin && a.fin > b.debut }
+
+      const assignedEvents = events.filter(ev => {
+        const gids = ev.groupeIds || (ev.groupeId ? [ev.groupeId] : [])
+        return gids.some(gid => dayColumns.indexOf(gid) !== -1)
+      })
+      const unassignedEvents = events.filter(ev => {
+        const gids = ev.groupeIds || (ev.groupeId ? [ev.groupeId] : [])
+        return !gids.some(gid => dayColumns.indexOf(gid) !== -1)
+      }).sort((a, b) => heureMin(a.heureDebut) - heureMin(b.heureDebut))
+
+      assignedEvents.forEach(ev => {
+        const gids = ev.groupeIds || (ev.groupeId ? [ev.groupeId] : [])
+        let idx = -1
+        for (const gid of gids) {
+          const found = dayColumns.indexOf(gid)
+          if (found !== -1) { idx = found; break }
+        }
+        if (idx === -1) return
+        const span = (ev.columnSpan && Number(ev.columnSpan) > 1) ? Math.min(Number(ev.columnSpan), nbCols - idx) : 1
+        const debut = heureMin(ev.heureDebut) || 0
+        const fin = heureMin(ev.heureFin) || debut + 60
+        eventAssignments.set(ev.id, { colStart: idx, colSpan: span, _col: idx, _totalCols: nbCols, _colSpan: span })
+        for (let ci = idx; ci < idx + span; ci++) {
+          columnOccupancy[ci].push({ debut, fin })
+        }
+      })
+
+      unassignedEvents.forEach(ev => {
+        const debut = heureMin(ev.heureDebut) || 0
+        const fin = heureMin(ev.heureFin) || debut + 60
+        const savedSpan = Math.max(1, Math.min(Number(ev.columnSpan) || 1, nbCols))
+        if (savedSpan > 1) {
+          eventAssignments.set(ev.id, { colStart: 0, colSpan: savedSpan, _col: 0, _totalCols: nbCols, _colSpan: savedSpan })
+          for (let ci = 0; ci < savedSpan; ci++) columnOccupancy[ci].push({ debut, fin })
+          return
+        }
+        const isColFree = (ci) => !columnOccupancy[ci].some(occ => overlap({ debut, fin }, occ))
+        let targetCol = -1
+        for (let ci = 0; ci < nbCols; ci++) { if (isColFree(ci)) { targetCol = ci; break } }
+        if (targetCol === -1) targetCol = 0
+        eventAssignments.set(ev.id, { colStart: targetCol, colSpan: 1, _col: targetCol, _totalCols: nbCols, _colSpan: 1 })
+        columnOccupancy[targetCol].push({ debut, fin })
+      })
+
+      return events.map(ev => {
+        const as = eventAssignments.get(ev.id)
+        if (!as) return ev
+        return { ...ev, ...as }
+      })
+    }
+
     // ───── Charge les données ─────
     async function chargerPlanning(){
       if(!joueurActif) return
@@ -4121,6 +4223,10 @@
             } catch(e) {}
           }
         }
+        // Make sure group-column config is available before rendering
+        if (Object.keys(planningColumnsConfig).length === 0) {
+          try { await loadPlanningColumnsConfig() } catch (e) {}
+        }
         const filtered=filterByScope(cached.planningAll,cached.creneauxAll)
         buildWeekSlides(lundi,filtered.planning,filtered.creneaux,nowStr)
         buildWeekOverview(lundi,filtered.planning,filtered.creneaux,nowStr)
@@ -4138,7 +4244,7 @@
         const lundiStr = dateStrLocal(lundi)
         const dimancheStr = dateStrLocal(dimanche)
 
-        const [planSnap, bSnap, grpSnap] = await Promise.all([
+        const [planSnap, bSnap, grpSnap, colsSnap] = await Promise.all([
           getDocs(query(
             collection(db, 'planning'),
             where('date', '>=', lundiStr),
@@ -4149,12 +4255,19 @@
             where('date', '>=', lundiStr),
             where('date', '<=', dimancheStr)
           )),
-          getDocs(collection(db, 'groupesConfiguration'))
+          getDocs(collection(db, 'groupesConfiguration')),
+          getDoc(doc(db, 'config', 'planningColumnsConfig'))
         ])
         
         // Store groups config for filtering
         window.__groupesConfig = grpSnap.docs.map(d => ({ id: d.id, ...d.data() }))
         setCache('groupesConfig_player', window.__groupesConfig)
+        
+        // Per-day group column config
+        if (colsSnap.exists() && colsSnap.data().config) {
+          planningColumnsConfig = colsSnap.data().config
+          setCache('planning_columnsConfig_player', planningColumnsConfig)
+        }
         
         const planningAll = planSnap.docs.map(d=>({id:d.id,...d.data()}))
           .filter(p => {
@@ -4253,6 +4366,7 @@
       const HOUR_H = HOUR_H_WEEK
       const totalH = (TL_END - TL_START + 1) * HOUR_H
       const TIME_W = 32 // largeur colonne heures
+      const MIN_DAY_W = 120 // journées plus larges
       
       // Wrapper flex
       const wrapper = document.createElement('div')
@@ -4267,8 +4381,16 @@
         const ds=dateStrLocal(d)
         const isToday=ds===todayStr
         const cell=document.createElement('div')
-        cell.style.cssText=`flex:1;min-width:0;text-align:center;padding:5px 1px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${isToday?'#FECC00':'#555'};border-left:1px solid #1e1e1e;cursor:pointer;`
-        cell.innerHTML=`${JOURS_SHORT[i]}<br><span style="font-size:13px;font-weight:700;color:${isToday?'#FECC00':'#fff'};">${d.getDate()}</span>`
+        const dayColumns = planningScope === 'equipe' ? getDayColumns(ds) : null
+        const nbSub = dayColumns ? dayColumns.length : 0
+        cell.style.cssText=`flex:1;min-width:${MIN_DAY_W}px;text-align:center;padding:5px 1px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${isToday?'#FECC00':'#555'};border-left:1px solid #1e1e1e;cursor:pointer;display:flex;flex-direction:column;`
+        let inner = `<div>${JOURS_SHORT[i]}<br><span style="font-size:13px;font-weight:700;color:${isToday?'#FECC00':'#fff'};">${d.getDate()}</span></div>`
+        if (nbSub > 1) {
+          inner += `<div style="display:flex;width:100%;height:14px;border-top:1px solid #1e1e1e;margin-top:2px;background:#111;">` +
+            dayColumns.map((gid, ci) => `<div style="flex:1;font-size:9px;font-weight:600;color:#FECC00;display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:${ci < nbSub - 1 ? '1px solid #1a1a1a' : 'none'};" title="${getGroupeShortName(gid)}">${getGroupeShortName(gid)}</div>`).join('') +
+            `</div>`
+        }
+        cell.innerHTML = inner
         cell.onclick = () => {
           // Passer en vue jour sur ce jour
           selectedDayIdx = i
@@ -4302,7 +4424,20 @@
         const isToday=ds===todayStr
         
         const dayCol = document.createElement('div')
-        dayCol.style.cssText=`flex:1;min-width:0;position:relative;border-left:1px solid #1e1e1e;background:${isToday?'#FECC0006':'transparent'};`
+        dayCol.style.cssText=`flex:1;min-width:${MIN_DAY_W}px;position:relative;border-left:1px solid #1e1e1e;background:${isToday?'#FECC0006':'transparent'};`
+        
+        const dayColumns = planningScope === 'equipe' ? getDayColumns(ds) : null
+        const nbSub = dayColumns ? dayColumns.length : 0
+        
+        // Sub-column visual separators
+        if (nbSub > 1) {
+          for (let ci = 1; ci < nbSub; ci++) {
+            const sep = document.createElement('div')
+            const pct = (ci / nbSub) * 100
+            sep.style.cssText = `position:absolute;top:0;bottom:0;left:${pct}%;width:1px;background:#1a1a1a;pointer-events:none;z-index:1;`
+            dayCol.appendChild(sep)
+          }
+        }
         
         // Grid lines
         for(let h=TL_START; h<=TL_END; h++){
@@ -4316,7 +4451,7 @@
           ...planning.filter(e=>e.date===ds&&e.visible!==false).map(e=>({...e,source:'planning'})),
           ...creneaux.filter(c=>c.date===ds).map(c=>({...c,source:'creneaux'}))
         ]
-        const placed = computeColumns(evDay)
+        const placed = (dayColumns && planningScope === 'equipe') ? assignGroupColumns(evDay, dayColumns) : computeColumns(evDay)
         
         placed.forEach(ev=>{
           const startMin = heureMin(ev.heureDebut)
@@ -4327,8 +4462,9 @@
           const height = Math.max(14, ((endMin-startMin)/60)*HOUR_H - 2)
           const colIdx = ev._col || 0
           const totalCols = ev._totalCols || 1
+          const colSpan = ev._colSpan || 1
           const leftPct = colIdx/totalCols*100
-          const widthPct = 100/totalCols
+          const widthPct = colSpan/totalCols*100
           
           const {bg,border,text} = getEventColors(ev)
           const typeName = TYPE_NAMES[ev.type]||ev.type||'—'
