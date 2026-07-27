@@ -555,20 +555,30 @@
           <div class="menu-sub">Du jour</div>
           <div class="done-badge" id="wellness-done-badge" style="display:none">✓ Rempli</div>
         </div>
-        <div class="menu-card" onclick="allerVers('seance')">
-          <div class="menu-icon">🏋️</div>
-          <div class="menu-label">Ma séance</div>
-          <div class="menu-sub">Programme muscu</div>
-        </div>
         <div class="menu-card" onclick="allerVers('planning')">
           <div class="menu-icon">📅</div>
           <div class="menu-label">Mon planning</div>
           <div class="menu-sub">Semaine en cours</div>
         </div>
+        <div class="menu-card" onclick="allerVers('seance')">
+          <div class="menu-icon">🏋️</div>
+          <div class="menu-label">Ma séance</div>
+          <div class="menu-sub">Programme muscu</div>
+        </div>
+        <div class="menu-card" onclick="allerVers('energetique')">
+          <div class="menu-icon">🏃</div>
+          <div class="menu-label">Énergétique</div>
+          <div class="menu-sub">Course, vélo, ski...</div>
+        </div>
         <div class="menu-card" onclick="allerVers('gps')">
           <div class="menu-icon">📡</div>
           <div class="menu-label">Stats GPS</div>
           <div class="menu-sub">Mes données</div>
+        </div>
+        <div class="menu-card" onclick="allerVers('performances')">
+          <div class="menu-icon">⚡</div>
+          <div class="menu-label">Performances</div>
+          <div class="menu-sub">Stats physiques</div>
         </div>
       </div>
     </div>
@@ -967,10 +977,10 @@
     // ===== SYSTEME DE MODULES EVOLUTIF =====
     const MODULES = [
       { id: 'wellness', label: 'Wellness', sub: 'Du jour', icon: '💚', active: true },
-      { id: 'seance', label: 'Ma séance', sub: 'Programme muscu', icon: '🏋️', active: true },
       { id: 'planning', label: 'Mon planning', sub: 'Semaine en cours', icon: '📅', active: false, comingSoonText: 'Cette fonctionnalité arrive bientôt ! Nous la préparons pour l\'équipe.' },
-      { id: 'gps', label: 'Stats GPS', sub: 'Mes données', icon: '📡', active: true },
+      { id: 'seance', label: 'Ma séance', sub: 'Programme muscu', icon: '🏋️', active: true },
       { id: 'energetique', label: 'Énergétique', sub: 'Course, vélo, ski...', icon: '🏃', active: true },
+      { id: 'gps', label: 'Stats GPS', sub: 'Mes données', icon: '📡', active: true },
       { id: 'performances', label: 'Performances', sub: 'Stats physiques', icon: '⚡', active: true }
     ]
 
@@ -6708,7 +6718,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       for (const c of cats) {
         if (desc ? value >= standard[c.key] : value <= standard[c.key]) return c
       }
-      return { label: '—', color: '#555' }
+      // Au-delà du seuil "pas" -> reste "Pas invité"
+      return cats[cats.length - 1]
     }
 
     function getStandardPct(value, standard, desc = false) {
