@@ -367,6 +367,7 @@
     .perf-bar-bg { flex: 1; height: 8px; background: #0f0f0f; border-radius: 4px; overflow: hidden; }
     .perf-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
     .perf-compare-text { font-size: 11px; color: #ccc; margin-top: 2px; }
+    .perf-cat-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border: 1.5px solid; border-radius: 10px; margin-left: 8px; }
     .perf-std-value { font-size: 11px; color: #888; text-align: right; min-width: 50px; }
     .perf-rank-pill { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; }
     .perf-history { margin-top: 12px; border-top: 1px solid #2a2a2a; padding-top: 10px; }
@@ -6814,9 +6815,11 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       const card = document.createElement('div')
       card.className = 'perf-metric-card'
       const valStr = formatPerfValue(value)
+      const cat = (standard && value !== null && value !== undefined) ? getStandardCategorie(value, standard, desc) : null
+      const badge = cat ? `<span class="perf-cat-badge" style="color:${cat.color}; border-color:${cat.color};">${cat.label}</span>` : ''
       card.innerHTML = `
         <div class="perf-metric-header">
-          <div class="perf-metric-name">${label}</div>
+          <div class="perf-metric-name">${label}${badge}</div>
           <div>${valStr !== null ? `<span class="perf-metric-value">${valStr}</span><span class="perf-metric-unit">${unit}</span>` : '<span class="perf-metric-empty">Pas de donnée</span>'}</div>
         </div>
       `
@@ -6825,14 +6828,12 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         stdRow.className = 'perf-compare-row'
         const stdPct = getStandardPct(value, standard, desc)
         const stdColor = getStandardColor(value, standard, desc)
-        const cat = getStandardCategorie(value, standard, desc)
         stdRow.innerHTML = `
           <div class="perf-compare-item">
             <div class="perf-compare-label">Standard</div>
             <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${stdPct}%; background:${stdColor}"></div></div>
             <div class="perf-std-value">${getStandardTargetText(cat, standard, unit)}</div>
           </div>
-          <div class="perf-compare-text" style="color:${cat ? cat.color : stdColor};">${cat ? 'Catégorie : ' + cat.label : 'Standard OK du poste'}</div>
         `
         card.appendChild(stdRow)
       }
@@ -7131,12 +7132,13 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
       const rankInfo = computeRankInfo(total, getPosteValues(allTotals, joueurActif.poste), false)
 
+      const badge = categorie ? `<span class="perf-cat-badge" style="color:${categorie.color}; border-color:${categorie.color};">${categorie.label}</span>` : ''
       const card = document.createElement('div')
       card.className = 'perf-metric-card'
       const valStr = formatPerfValue(total)
       card.innerHTML = `
         <div class="perf-metric-header">
-          <div class="perf-metric-name">RFU fitness test (${type === 'tq' ? 'TQ 6 passages' : 'Avant 5 passages'})</div>
+          <div class="perf-metric-name">RFU fitness test (${type === 'tq' ? 'TQ 6 passages' : 'Avant 5 passages'})${badge}</div>
           <div>${valStr !== null ? `<span class="perf-metric-value">${valStr}</span><span class="perf-metric-unit">s</span>` : '<span class="perf-metric-empty">Pas de donnée</span>'}</div>
         </div>
       `
@@ -7152,7 +7154,6 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${stdPct}%; background:${stdColor}"></div></div>
             <div class="perf-std-value">${getStandardTargetText(categorie, standard, 's')}</div>
           </div>
-          <div class="perf-compare-text" style="color:${categorie ? categorie.color : stdColor};">${categorie ? 'Catégorie : ' + categorie.label : 'Standard OK du poste'}</div>
         `
         card.appendChild(stdRow)
       }
