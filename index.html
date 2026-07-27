@@ -6894,54 +6894,53 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       const cacheKey = 'performances_' + joueurActif.id
       if (!force && getCache(cacheKey)) {
         performancesData = getCache(cacheKey)
-        renderPerformances(currentPerfTab || 'muscu')
-        return
-      }
+      } else {
+        try {
+          const [maxTestesSnap, vitesseSnap, puissanceSnap, rfuSnap, fvSnap, statsGPSSnap] = await Promise.all([
+            getDocs(collection(db, 'maxTestes')),
+            getDocs(collection(db, 'vitesseData')),
+            getDocs(collection(db, 'puissanceData')),
+            getDocs(collection(db, 'rfuData')),
+            getDocs(collection(db, 'fv_profils')),
+            getDocs(collection(db, 'statsGPS'))
+          ])
 
-      try {
-        const [maxTestesSnap, vitesseSnap, puissanceSnap, rfuSnap, fvSnap, statsGPSSnap] = await Promise.all([
-          getDocs(collection(db, 'maxTestes')),
-          getDocs(collection(db, 'vitesseData')),
-          getDocs(collection(db, 'puissanceData')),
-          getDocs(collection(db, 'rfuData')),
-          getDocs(collection(db, 'fv_profils')),
-          getDocs(collection(db, 'statsGPS'))
-        ])
+          const maxTestes = {}
+          maxTestesSnap.docs.forEach(d => { maxTestes[d.id] = d.data() })
 
-        const maxTestes = {}
-        maxTestesSnap.docs.forEach(d => { maxTestes[d.id] = d.data() })
+          const { latest: vitesse, history: vitesseHistory } = groupDocsByJoueur(vitesseSnap.docs)
+          const { latest: puissance, history: puissanceHistory } = groupDocsByJoueur(puissanceSnap.docs)
+          const { latest: rfu, history: rfuHistory } = groupDocsByJoueur(rfuSnap.docs)
 
-        const { latest: vitesse, history: vitesseHistory } = groupDocsByJoueur(vitesseSnap.docs)
-        const { latest: puissance, history: puissanceHistory } = groupDocsByJoueur(puissanceSnap.docs)
-        const { latest: rfu, history: rfuHistory } = groupDocsByJoueur(rfuSnap.docs)
-
-        const fv = {}
-        const fvHistory = {}
-        fvSnap.docs.forEach(d => {
-          const data = { id: d.id, ...d.data() }
-          const jid = data.joueurId
-          if (jid) {
-            if (!fvHistory[jid]) fvHistory[jid] = []
-            fvHistory[jid].push(data)
-            if (!fv[jid] || (data.date > fv[jid].date)) fv[jid] = data
+          const fv = {}
+          const fvHistory = {}
+          fvSnap.docs.forEach(d => {
+            const data = { id: d.id, ...d.data() }
+            const jid = data.joueurId
+            if (jid) {
+              if (!fvHistory[jid]) fvHistory[jid] = []
+              fvHistory[jid].push(data)
+              if (!fv[jid] || (data.date > fv[jid].date)) fv[jid] = data
+            }
+          })
+          for (const jid of Object.keys(fvHistory)) {
+            fvHistory[jid].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
           }
-        })
-        for (const jid of Object.keys(fvHistory)) {
-          fvHistory[jid].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+          const statsGPS = {}
+          statsGPSSnap.docs.forEach(d => { statsGPS[d.id] = d.data() })
+
+          performancesData = { maxTestes, vitesse, vitesseHistory, puissance, puissanceHistory, rfu, rfuHistory, fv, fvHistory, statsGPS }
+          setCache(cacheKey, performancesData)
+        } catch (e) {
+          console.error('[Performances] Erreur chargement:', e)
+          c.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'
+          return
         }
-
-        const statsGPS = {}
-        statsGPSSnap.docs.forEach(d => { statsGPS[d.id] = d.data() })
-
-        await loadPerformanceStandards()
-
-        performancesData = { maxTestes, vitesse, vitesseHistory, puissance, puissanceHistory, rfu, rfuHistory, fv, fvHistory, statsGPS }
-        setCache(cacheKey, performancesData)
-        renderPerformances(currentPerfTab || 'muscu')
-      } catch (e) {
-        console.error('[Performances] Erreur chargement:', e)
-        c.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'
       }
+
+      await loadPerformanceStandards()
+      renderPerformances(currentPerfTab || 'muscu')
     }
 
     function renderPerformances(tab) {
