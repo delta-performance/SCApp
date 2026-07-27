@@ -919,9 +919,27 @@
     ]
     const COUL={'Pilier':'#8B3A3A','Talonneur':'#6B3A8B','2e Ligne':'#3A6B8B','3e Ligne':'#3A8B6B',"Demi de mêlée":'#8B6B3A',"Demi d'ouverture":'#6B8B3A','Centre':'#3A4A8B','Ailier':'#8B3A6B','Arrière':'#2A6B5B'}
     
-    // Default colors - will be overridden by loaded types
-    let TCOL={match:'#E24B4A',entrainement:'#378ADD',muscu:'#FECC00',reunion:'#888',medical:'#1D9E75',deplacement:'#7F77DD',kine:'#378ADD',terrain:'#1D9E75',piscine:'#7F77DD',repos:'#444',autre:'#555'}
-    let TYPE_NAMES={match:'Match',entrainement:'Entraînement',muscu:'Muscu',reunion:'Réunion',medical:'Médical',deplacement:'Déplacement',kine:'Kiné',terrain:'Terrain',piscine:'Piscine',repos:'Repos',autre:'Autre'}
+    // Default event styles (same as renderer/planning.html)
+    let TYPE_STYLES={
+      match:        { border:'#E24B4A', name:'Match', hasIntensity:true, textColor:'auto' },
+      entrainement: { border:'#378ADD', name:'Entraînement', hasIntensity:true, textColor:'auto' },
+      muscu:        { border:'#FECC00', name:'Muscu', hasIntensity:true, textColor:'black' },
+      vitesse:      { border:'#FF5722', name:'Vitesse', hasIntensity:true, textColor:'auto' },
+      reunion:      { border:'#888', name:'Réunion', hasIntensity:false, textColor:'auto' },
+      medical:      { border:'#1D9E75', name:'Médical', hasIntensity:false, textColor:'auto' },
+      deplacement:  { border:'#7F77DD', name:'Déplacement', hasIntensity:false, textColor:'auto' },
+      club:         { border:'#9C27B0', name:'Club', hasIntensity:false, textColor:'auto' },
+      cohesion:     { border:'#FF9800', name:'Cohésion', hasIntensity:true, textColor:'black' },
+      terrain:      { border:'#1D9E75', name:'Terrain adapté', hasIntensity:false, textColor:'auto' },
+      cardio:       { border:'#E91E63', name:'Cardio', hasIntensity:false, textColor:'auto' },
+      autre:        { border:'#444', name:'Autre', hasIntensity:false, textColor:'white' },
+      kine:         { border:'#378ADD', name:'Kiné', hasIntensity:false, textColor:'auto' },
+      piscine:      { border:'#7F77DD', name:'Piscine', hasIntensity:false, textColor:'auto' },
+      repos:        { border:'#888', name:'Repos', hasIntensity:false, textColor:'auto' }
+    }
+    // Derived maps for existing code
+    let TCOL={}, TYPE_NAMES={}
+    Object.keys(TYPE_STYLES).forEach(k=>{ TCOL[k]=TYPE_STYLES[k].border; TYPE_NAMES[k]=TYPE_STYLES[k].name })
     const COL={joueur:'Player Name',date:'Date',seance:'Activity Name',period:'Period Name',distHI:'Distance Haute Intensité',distTot:'Total Distance',vmax:'Maximum Velocity',vmaxPct:'Max Vel (% Max)',load:'Total Player Load',accB2:'Acceleration B2 Efforts (Gen 2)',accB3:'Acceleration B3 Efforts (Gen 2)',rhie:'RHIE Total Bouts',duree:'Total Duration'}
     const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 
@@ -951,21 +969,26 @@
     const aujourdhui=dateStrLocal(new Date())
     document.getElementById('header-date').textContent=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})
 
-    // Load custom event types from Firebase
+    // Load custom event types from Firebase (merge with defaults like planning.html)
     async function loadEventTypesFromFirebase() {
       try {
         const docRef = doc(db, 'config', 'eventTypes')
         const docSnap = await getDoc(docRef)
         if (docSnap.exists() && docSnap.data().types) {
           const loadedTypes = docSnap.data().types
-          // Update colors and names with loaded values
           Object.keys(loadedTypes).forEach(key => {
-            const typeStyle = loadedTypes[key]
-            if (typeStyle.border) {
-              TCOL[key] = typeStyle.border
-            }
-            if (typeStyle.name) {
-              TYPE_NAMES[key] = typeStyle.name
+            const loaded = loadedTypes[key]
+            if (loaded.border) TCOL[key] = loaded.border
+            if (loaded.name) TYPE_NAMES[key] = loaded.name
+            if (TYPE_STYLES[key]) {
+              TYPE_STYLES[key] = { ...TYPE_STYLES[key], ...loaded }
+            } else {
+              TYPE_STYLES[key] = {
+                includeInStats: true,
+                hasIntensity: false,
+                textColor: 'auto',
+                ...loaded
+              }
             }
           })
           console.log('Loaded custom event types:', loadedTypes)
@@ -3941,28 +3964,68 @@
     const HOUR_H_DAY = 64    // vue jour : plus de hauteur
     const HOUR_H_WEEK = 44   // vue semaine : compact
     
-    // ───── Calcul couleur avec intensité (identique au coach) ─────
-    function getEventColors(ev) {
-      const baseCol = TCOL[ev.type] || (ev.source==='creneaux' ? '#E24B4A' : '#555')
-      const intensity = ev.intensity || 0
-      let bg, border, text
-      if (intensity === 3) {
-        // Fort : couleur pleine, texte blanc
-        bg = baseCol + 'DD'
-        border = baseCol
-        text = '#FFFFFF'
-      } else if (intensity === 2) {
-        // Moyen
-        bg = baseCol + '55'
-        border = baseCol + 'AA'
-        text = baseCol
-      } else {
-        // Léger ou pas défini
-        bg = baseCol + '28'
-        border = baseCol + '66'
-        text = baseCol
+    // ───── Helpers couleurs identiques à renderer/planning.html ─────
+    function hexToHsl(hex) {
+      let r = parseInt(hex.slice(1,3),16)/255
+      let g = parseInt(hex.slice(3,5),16)/255
+      let b = parseInt(hex.slice(5,7),16)/255
+      const max = Math.max(r,g,b), min = Math.min(r,g,b)
+      let h=0, s=0, l=(max+min)/2
+      if (max !== min) {
+        const d = max - min
+        s = l > 0.5 ? d/(2-max-min) : d/(max+min)
+        switch(max) {
+          case r: h = ((g-b)/d + (g<b?6:0))/6; break
+          case g: h = ((b-r)/d + 2)/6; break
+          case b: h = ((r-g)/d + 4)/6; break
+        }
       }
-      return { bg, border, text, base: baseCol }
+      return { h: h*360, s: s*100, l: l*100 }
+    }
+    function hslStr(h,s,l) { return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(Math.min(100,Math.max(0,l)))}%)` }
+    const INTENSITY_L_OFFSET = { 1: 40, 2: 20, 3: 0 }
+
+    function getEventStyle(ev) {
+      const key = ev.type || 'autre'
+      if (TYPE_STYLES[key]) return TYPE_STYLES[key]
+      if (ev.source === 'creneaux') return { border:'#E24B4A', name:'Créneau', hasIntensity:false, textColor:'auto' }
+      return TYPE_STYLES.autre
+    }
+
+    function getEventStyleWithIntensity(ev) {
+      const baseStyle = getEventStyle(ev)
+      const baseColor = baseStyle.border
+      const hsl = hexToHsl(baseColor)
+
+      // Déterminer la couleur du texte
+      let textColor = '#FFFFFF'
+      if (ev.textColor === 'white') {
+        textColor = '#FFFFFF'
+      } else if (ev.textColor === 'black') {
+        textColor = '#000000'
+      } else if (ev.textColor && ev.textColor !== 'auto') {
+        textColor = ev.textColor
+      } else if (baseStyle.textColor && baseStyle.textColor !== 'auto') {
+        textColor = baseStyle.textColor === 'white' ? '#FFFFFF' : '#000000'
+      } else {
+        const intensity = baseStyle.hasIntensity ? (Number(ev.intensity) || 3) : 3
+        const lightnessOffset = INTENSITY_L_OFFSET[intensity] || 0
+        const adjustedLightness = Math.min(100, hsl.l + lightnessOffset)
+        textColor = adjustedLightness > 60 ? '#000000' : '#FFFFFF'
+      }
+
+      if (!baseStyle.hasIntensity) {
+        return { bg: hslStr(hsl.h, hsl.s, hsl.l), border: baseColor, text: textColor, base: baseColor }
+      }
+
+      const intensity = Number(ev.intensity) || 3
+      const lightnessOffset = INTENSITY_L_OFFSET[intensity] || 0
+      const adjustedLightness = Math.min(100, hsl.l + lightnessOffset)
+      return { bg: hslStr(hsl.h, hsl.s, adjustedLightness), border: baseColor, text: textColor, base: baseColor }
+    }
+
+    function getEventColors(ev) {
+      return getEventStyleWithIntensity(ev)
     }
 
     // ───── Algorithme correct de détection des chevauchements ─────
@@ -6787,11 +6850,20 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       if (cat.key === 'goat') return 'GOAT'
       const idx = PERF_CATS.findIndex(c => c.key === cat.key)
       if (idx <= 0) return ''
-      const next = PERF_CATS[idx - 1]
-      const val = standard[next.key]
-      if (val === undefined || val === null) return ''
+      let val = null
+      let nextLabel = ''
+      for (let i = idx - 1; i >= 0; i--) {
+        const candidate = PERF_CATS[i]
+        const candidateVal = standard[candidate.key]
+        if (candidateVal !== undefined && candidateVal !== null) {
+          val = candidateVal
+          nextLabel = candidate.label
+          break
+        }
+      }
+      if (val === null || val === undefined) return ''
       const valStr = formatPerfValue(val)
-      return `${valStr}${unit} (${next.label})`
+      return `${valStr}${unit} (${nextLabel})`
     }
 
     function createRankRow(rankInfo) {
