@@ -348,6 +348,27 @@
     .sleep-modal-actions { display: flex; gap: 10px; }
     .sleep-modal-btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 15px; font-weight: 700; cursor: pointer; }
     button.sleep-input { display: flex; align-items: center; justify-content: center; }
+
+    /* ===== MODULE PERFORMANCES ===== */
+    .perf-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 4px; }
+    .perf-tabs::-webkit-scrollbar { display: none; }
+    .perf-tab { flex: 1; min-width: 80px; padding: 10px 8px; border-radius: 10px; border: 1px solid #2a2a2a; background: #1a1a1a; color: #888; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; }
+    .perf-tab.active { background: #FECC00; color: #0f0f0f; border-color: #FECC00; }
+    .perf-category-title { font-size: 14px; font-weight: 700; color: #FECC00; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    .perf-metric-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+    .perf-metric-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .perf-metric-name { font-size: 13px; font-weight: 600; color: #fff; }
+    .perf-metric-value { font-size: 22px; font-weight: 700; color: #FECC00; line-height: 1; }
+    .perf-metric-unit { font-size: 11px; color: #555; margin-left: 3px; }
+    .perf-metric-empty { font-size: 13px; color: #555; font-style: italic; }
+    .perf-compare-row { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .perf-compare-item { display: flex; align-items: center; gap: 10px; }
+    .perf-compare-label { font-size: 11px; color: #888; min-width: 70px; flex-shrink: 0; }
+    .perf-bar-bg { flex: 1; height: 8px; background: #0f0f0f; border-radius: 4px; overflow: hidden; }
+    .perf-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+    .perf-compare-text { font-size: 11px; color: #ccc; margin-top: 2px; }
+    .perf-std-value { font-size: 11px; color: #888; text-align: right; min-width: 50px; }
+    .perf-rank-pill { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; }
   </style>
   <link rel="manifest" href="./manifest.json?v=20260714">
   <meta name="theme-color" content="#FECC00">
@@ -411,7 +432,7 @@
 
     // Force reload if app version changed (ensures players get latest code)
     (function() {
-      const CURRENT_VERSION = '1.0.27';
+      const CURRENT_VERSION = '1.0.28';
       try {
         const stored = localStorage.getItem('__playerAppVersion');
         if (stored && stored !== CURRENT_VERSION) {
@@ -714,6 +735,21 @@
       <div id="gps-content"><div class="empty-msg">Chargement...</div></div>
     </div>
 
+    <!-- PERFORMANCES -->
+    <div class="screen" id="screen-performances">
+      <div class="section-header">
+        <button class="back-btn" onclick="allerVers('menu')">← Retour</button>
+        <div class="section-title">Mes performances</div>
+      </div>
+      <div class="perf-tabs">
+        <button class="perf-tab active" onclick="setPerfTab('muscu')" id="perf-tab-muscu">Musculation</button>
+        <button class="perf-tab" onclick="setPerfTab('vitesse')" id="perf-tab-vitesse">Vitesse</button>
+        <button class="perf-tab" onclick="setPerfTab('puissance')" id="perf-tab-puissance">Puissance</button>
+        <button class="perf-tab" onclick="setPerfTab('endurance')" id="perf-tab-endurance">Endurance</button>
+      </div>
+      <div id="performances-content"><div class="empty-msg">Chargement...</div></div>
+    </div>
+
     <!-- ÉNERGÉTIQUE -->
     <div class="screen" id="screen-energetique">
       <div class="section-header">
@@ -875,6 +911,7 @@
 
     let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
     let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
+    let currentPerfTab='muscu',performancesData=null
     let recapVisible = localStorage.getItem('player_recap_visible') === 'true'
     let tapCount=0,tapStarted=false,tapDone=false,tapRemaining=10,tapTimer=null
     let wellnessHistory=[]
@@ -928,7 +965,8 @@
       { id: 'seance', label: 'Ma séance', sub: 'Programme muscu', icon: '🏋️', active: true },
       { id: 'planning', label: 'Mon planning', sub: 'Semaine en cours', icon: '📅', active: false, comingSoonText: 'Cette fonctionnalité arrive bientôt ! Nous la préparons pour l\'équipe.' },
       { id: 'gps', label: 'Stats GPS', sub: 'Mes données', icon: '📡', active: true },
-      { id: 'energetique', label: 'Énergétique', sub: 'Course, vélo, ski...', icon: '🏃', active: true }
+      { id: 'energetique', label: 'Énergétique', sub: 'Course, vélo, ski...', icon: '🏃', active: true },
+      { id: 'performances', label: 'Performances', sub: 'Stats physiques', icon: '⚡', active: true }
     ]
 
     window.renderMenuGrid = function() {
@@ -936,7 +974,7 @@
       if (!grid) return
       
       const data = window.__playerModulesData || {}
-      const defaultStates = { wellness: true, seance: true, planning: false, gps: true, energetique: true }
+      const defaultStates = { wellness: true, seance: true, planning: false, gps: true, energetique: true, performances: true }
 
       grid.innerHTML = MODULES.map(m => {
         // 1. Déterminer si le module est actif globalement
@@ -1399,6 +1437,10 @@
         const recapToggle=document.getElementById('energetique-recap-toggle')
         if(recapToggle)recapToggle.checked=recapVisible
         chargerEnergetique({ targetSeanceId: opts.targetSeanceId })
+      }
+      if(screen==='performances'){
+        const perfContent=document.getElementById('performances-content')
+        if(perfContent) chargerPerformances()
       }
     }
 
@@ -6429,6 +6471,388 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
   // Render initial
   renderAll()
 }
+
+// ===== MODULE PERFORMANCES =====
+    const PERF_POSTES_BARÈME = [
+      { key: '1', nom: 'Pilier gauche', defaut: 150 },
+      { key: '2', nom: 'Talonneur', defaut: 155 },
+      { key: '3', nom: 'Pilier droit', defaut: 150 },
+      { key: '4', nom: '2ème ligne', defaut: 160 },
+      { key: '5', nom: '2ème ligne', defaut: 160 },
+      { key: '6', nom: '3ème ligne aile', defaut: 155 },
+      { key: '7', nom: '3ème ligne aile', defaut: 155 },
+      { key: '8', nom: 'N8', defaut: 160 },
+      { key: '9', nom: 'Demi de mêlée', defaut: 145 },
+      { key: '10', nom: "Demi d'ouverture", defaut: 145 },
+      { key: '11', nom: 'Ailier', defaut: 140 },
+      { key: '12', nom: 'Centre', defaut: 145 },
+      { key: '13', nom: 'Centre', defaut: 145 },
+      { key: '14', nom: 'Ailier', defaut: 140 },
+      { key: '15', nom: 'Arrière', defaut: 140 }
+    ]
+
+    const NOM_POSTE_TO_KEY = {
+      'pilier gauche': '1', '1': '1', 'pilier': '1', 'pilier gauche 1': '1',
+      'talonneur': '2', '2': '2',
+      'pilier droit': '3', '3': '3', 'pilier droit 3': '3',
+      '2eme ligne': '4', '2eme ligne 4': '4', '2ème ligne': '4', '2ème ligne 4': '4', '4': '4',
+      '2eme ligne 2': '5', '2ème ligne 2': '5', '2eme ligne 5': '5', '2ème ligne 5': '5', '5': '5',
+      '3eme ligne aile': '6', '3ème ligne aile': '6', '3eme ligne aile 6': '6', '3ème ligne aile 6': '6', '6': '6',
+      '3eme ligne aile 2': '7', '3ème ligne aile 2': '7', '3eme ligne aile 7': '7', '3ème ligne aile 7': '7', '7': '7',
+      'n8': '8', 'numero 8': '8', '8': '8',
+      'demi de melee': '9', 'demi de mêlée': '9', '9': '9',
+      "demi d'ouverture": '10', 'demi d ouverture': '10', '10': '10',
+      'ailier': '11', 'ailier 11': '11', '11': '11',
+      'centre': '12', 'centre 12': '12', '12': '12',
+      'centre 2': '13', 'centre 13': '13', '13': '13',
+      'ailier 2': '14', 'ailier 14': '14', '14': '14',
+      'arriere': '15', 'arrière': '15', 'arrière 15': '15', '15': '15'
+    }
+
+    function normalizePosteKey(poste) {
+      const p = String(poste || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/-/g, ' ').trim()
+      return NOM_POSTE_TO_KEY[p] || p
+    }
+
+    function getRFUStandards(posteKey) {
+      const p = PERF_POSTES_BARÈME.find(x => x.key === String(posteKey))
+      if (!p) return null
+      const ecart = Math.round(p.defaut * 0.07)
+      return {
+        goat: p.defaut,
+        tb: p.defaut + ecart,
+        bien: p.defaut + ecart * 2,
+        ok: p.defaut + ecart * 3,
+        moyen: p.defaut + ecart * 4,
+        boulot: p.defaut + ecart * 5,
+        pas: p.defaut + ecart * 6
+      }
+    }
+
+    function getCategorieRFU(total, posteKey) {
+      const standards = getRFUStandards(posteKey)
+      if (!standards || !total) return null
+      const cats = [
+        { key: 'goat', label: 'GOAT', color: '#FFD700' },
+        { key: 'tb', label: 'Très bien', color: '#1D9E75' },
+        { key: 'bien', label: 'Bien', color: '#3B82F6' },
+        { key: 'ok', label: 'OK', color: '#6B7280' },
+        { key: 'moyen', label: 'Moyen', color: '#EF9F27' },
+        { key: 'boulot', label: 'Au boulot', color: '#E24B4A' },
+        { key: 'pas', label: 'Pas invité', color: '#333' }
+      ]
+      for (const c of cats) {
+        if (total >= standards[c.key]) return c
+      }
+      return { label: '—', color: '#555' }
+    }
+
+    function getStandardPct(total, standard) {
+      if (total === null || total === undefined || !standard) return 0
+      const min = standard.goat * 0.9
+      const max = standard.pas * 1.1
+      const pct = 100 - ((total - min) / (max - min)) * 100
+      return Math.max(0, Math.min(100, pct))
+    }
+
+    function getStandardColor(total, standard) {
+      if (total === null || total === undefined || !standard) return '#555'
+      if (total <= standard.goat) return '#FFD700'
+      if (total <= standard.tb) return '#1D9E75'
+      if (total <= standard.bien) return '#3B82F6'
+      if (total <= standard.ok) return '#6B7280'
+      if (total <= standard.moyen) return '#EF9F27'
+      if (total <= standard.boulot) return '#E24B4A'
+      return '#333'
+    }
+
+    function getPosteValues(valuesMap, currentPoste, preferExact = true) {
+      const exactKey = normalizePosteKey(currentPoste)
+      const exact = valuesMap.filter(x => normalizePosteKey(x.poste) === exactKey)
+      if (preferExact && exact.length >= 3) return exact.map(x => x.val)
+      const avants = ['1', '2', '3', '4', '5', '6', '7', '8']
+      const p = normalizePosteKey(currentPoste)
+      const isAvant = avants.includes(p)
+      return valuesMap.filter(x => {
+        const px = normalizePosteKey(x.poste)
+        return isAvant ? avants.includes(px) : (px && !avants.includes(px))
+      }).map(x => x.val)
+    }
+
+    function computeRankInfo(value, allValues, desc) {
+      if (value === null || value === undefined || !allValues || !allValues.length) return null
+      const withMe = [...allValues, value]
+      const sorted = [...withMe].sort((a, b) => desc ? b - a : a - b)
+      const rank = sorted.indexOf(value) + 1
+      const total = sorted.length
+      const pct = Math.round((rank / total) * 100)
+      return { rank, total, pct, top: pct <= 25 }
+    }
+
+    function formatPerfValue(v) {
+      if (v === null || v === undefined) return null
+      const n = Number(v)
+      if (isNaN(n)) return null
+      return n % 1 === 0 ? n.toString() : n.toFixed(1)
+    }
+
+    function createRankRow(rankInfo) {
+      const row = document.createElement('div')
+      row.className = 'perf-compare-row'
+      const width = Math.max(5, 100 - ((rankInfo.rank - 1) / Math.max(rankInfo.total - 1, 1)) * 100)
+      const color = rankInfo.top ? '#1D9E75' : '#FECC00'
+      const suffix = rankInfo.rank === 1 ? 'er' : 'ème'
+      row.innerHTML = `
+        <div class="perf-compare-item">
+          <div class="perf-compare-label">Classement</div>
+          <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${width}%; background:${color}"></div></div>
+          <div class="perf-std-value">${rankInfo.rank}/${rankInfo.total}</div>
+        </div>
+        <div class="perf-compare-text" style="color:${color};">Top ${rankInfo.pct}% au poste · ${rankInfo.rank}${suffix} sur ${rankInfo.total}</div>
+      `
+      return row
+    }
+
+    function createPerfMetricCard(label, value, unit, standard, rankInfo) {
+      const card = document.createElement('div')
+      card.className = 'perf-metric-card'
+      const valStr = formatPerfValue(value)
+      card.innerHTML = `
+        <div class="perf-metric-header">
+          <div class="perf-metric-name">${label}</div>
+          <div>${valStr !== null ? `<span class="perf-metric-value">${valStr}</span><span class="perf-metric-unit">${unit}</span>` : '<span class="perf-metric-empty">Pas de donnée</span>'}</div>
+        </div>
+      `
+      if (standard && value !== null && value !== undefined) {
+        const stdRow = document.createElement('div')
+        stdRow.className = 'perf-compare-row'
+        const stdPct = getStandardPct(value, standard)
+        const stdColor = getStandardColor(value, standard)
+        stdRow.innerHTML = `
+          <div class="perf-compare-item">
+            <div class="perf-compare-label">Standard</div>
+            <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${stdPct}%; background:${stdColor}"></div></div>
+            <div class="perf-std-value">${standard.ok.toFixed(1)}${unit}</div>
+          </div>
+          <div class="perf-compare-text" style="color:${stdColor};">Standard OK du poste</div>
+        `
+        card.appendChild(stdRow)
+      }
+      if (rankInfo) {
+        card.appendChild(createRankRow(rankInfo))
+      }
+      return card
+    }
+
+    window.setPerfTab = function(tab) {
+      ['muscu', 'vitesse', 'puissance', 'endurance'].forEach(t => {
+        const btn = document.getElementById('perf-tab-' + t)
+        if (btn) btn.className = t === tab ? 'perf-tab active' : 'perf-tab'
+      })
+      currentPerfTab = tab
+      renderPerformances(tab)
+    }
+
+    async function chargerPerformances(force = false) {
+      const c = document.getElementById('performances-content')
+      if (!c) return
+      c.innerHTML = '<div class="empty-msg">Chargement de tes performances...</div>'
+      if (!joueurActif) return
+
+      const cacheKey = 'performances_' + joueurActif.id
+      if (!force && getCache(cacheKey)) {
+        performancesData = getCache(cacheKey)
+        renderPerformances(currentPerfTab || 'muscu')
+        return
+      }
+
+      try {
+        const [maxTestesSnap, vitesseSnap, puissanceSnap, rfuSnap, fvSnap, statsGPSSnap] = await Promise.all([
+          getDocs(collection(db, 'maxTestes')),
+          getDocs(collection(db, 'vitesseData')),
+          getDocs(collection(db, 'puissanceData')),
+          getDocs(collection(db, 'rfuData')),
+          getDocs(collection(db, 'fv_profils')),
+          getDocs(collection(db, 'statsGPS'))
+        ])
+
+        const maxTestes = {}
+        maxTestesSnap.docs.forEach(d => { maxTestes[d.id] = d.data() })
+        const vitesse = {}
+        vitesseSnap.docs.forEach(d => { vitesse[d.id] = { id: d.id, ...d.data() } })
+        const puissance = {}
+        puissanceSnap.docs.forEach(d => { puissance[d.id] = { id: d.id, ...d.data() } })
+        const rfu = {}
+        rfuSnap.docs.forEach(d => { rfu[d.id] = { id: d.id, ...d.data() } })
+        const fv = {}
+        fvSnap.docs.forEach(d => {
+          const data = { id: d.id, ...d.data() }
+          if (data.joueurId && (!fv[data.joueurId] || (data.date > fv[data.joueurId].date))) {
+            fv[data.joueurId] = data
+          }
+        })
+        const statsGPS = {}
+        statsGPSSnap.docs.forEach(d => { statsGPS[d.id] = d.data() })
+
+        performancesData = { maxTestes, vitesse, puissance, rfu, fv, statsGPS }
+        setCache(cacheKey, performancesData)
+        renderPerformances(currentPerfTab || 'muscu')
+      } catch (e) {
+        console.error('[Performances] Erreur chargement:', e)
+        c.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'
+      }
+    }
+
+    function renderPerformances(tab) {
+      const c = document.getElementById('performances-content')
+      if (!c) return
+      if (!performancesData) {
+        c.innerHTML = '<div class="empty-msg">Chargement...</div>'
+        return
+      }
+      c.innerHTML = ''
+      const title = document.createElement('div')
+      title.className = 'perf-category-title'
+      const titles = { muscu: 'Musculation', vitesse: 'Vitesse', puissance: 'Puissance', endurance: 'Endurance' }
+      title.textContent = titles[tab] || tab
+      c.appendChild(title)
+      if (tab === 'muscu') renderPerfMuscu(c)
+      else if (tab === 'vitesse') renderPerfVitesse(c)
+      else if (tab === 'puissance') renderPerfPuissance(c)
+      else if (tab === 'endurance') renderPerfEndurance(c)
+    }
+
+    function renderPerfMuscu(container) {
+      const metrics = [
+        { key: 'Box squat', label: 'Box squat', unit: 'kg' },
+        { key: 'SDT', label: 'SDT', unit: 'kg' },
+        { key: 'DC', label: 'Développé couché', unit: 'kg' },
+        { key: 'Tirage sous banc', label: 'Tirage sous banc', unit: 'kg' },
+        { key: 'Développé militaire', label: 'Développé militaire', unit: 'kg' },
+        { key: 'Push press', label: 'Push press', unit: 'kg' }
+      ]
+
+      metrics.forEach(m => {
+        const val = performancesData.maxTestes[joueurActif.id]?.[m.key] || null
+        const allValues = Object.entries(performancesData.maxTestes)
+          .map(([jid, data]) => {
+            const j = joueurs.find(x => x.id === jid)
+            return { poste: j?.poste, val: data[m.key] || null }
+          })
+          .filter(x => x.val)
+        const compareValues = getPosteValues(allValues, joueurActif.poste, true)
+        const rankInfo = computeRankInfo(val, compareValues, true)
+        container.appendChild(createPerfMetricCard(m.label, val, m.unit, null, rankInfo))
+      })
+    }
+
+    function renderPerfVitesse(container) {
+      const vd = performancesData.vitesse[joueurActif.id] || {}
+      const sg = performancesData.statsGPS[joueurActif.id] || {}
+      const vmax = sg.vmaxSaison || vd.vmaxManuel || null
+
+      const allVmax = joueurs.map(j => {
+        const v = performancesData.vitesse[j.id] || {}
+        const s = performancesData.statsGPS[j.id] || {}
+        return { poste: j.poste, val: s.vmaxSaison || v.vmaxManuel || null }
+      }).filter(x => x.val)
+
+      container.appendChild(createPerfMetricCard('Vmax', vmax, 'km/h', null, computeRankInfo(vmax, getPosteValues(allVmax, joueurActif.poste, true), true)))
+
+      ;[
+        { key: 'test10m', label: 'Test 10m', unit: 's', desc: false },
+        { key: 'test20m', label: 'Test 20m', unit: 's', desc: false },
+        { key: 'test50m', label: 'Test 50m', unit: 's', desc: false }
+      ].forEach(m => {
+        const val = vd[m.key] || null
+        const allValues = joueurs.map(j => {
+          const v = performancesData.vitesse[j.id] || {}
+          return { poste: j.poste, val: v[m.key] || null }
+        }).filter(x => x.val)
+        container.appendChild(createPerfMetricCard(m.label, val, m.unit, null, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste, true), m.desc)))
+      })
+    }
+
+    function renderPerfPuissance(container) {
+      const pd = performancesData.puissance[joueurActif.id] || {}
+      const fv = performancesData.fv[joueurActif.id] || {}
+      const pmaxAbs = fv.Pmax || fv.pmax || null
+      const pmaxRel = fv.Pmaxkg || fv.pmaxkg || fv.PmaxRel || null
+
+      const allPmaxAbs = joueurs.map(j => {
+        const f = performancesData.fv[j.id] || {}
+        return { poste: j.poste, val: f.Pmax || f.pmax || null }
+      }).filter(x => x.val)
+      const allPmaxRel = joueurs.map(j => {
+        const f = performancesData.fv[j.id] || {}
+        return { poste: j.poste, val: f.Pmaxkg || f.pmaxkg || f.PmaxRel || null }
+      }).filter(x => x.val)
+
+      container.appendChild(createPerfMetricCard('Pmax absolue F-V', pmaxAbs, 'W', null, computeRankInfo(pmaxAbs, getPosteValues(allPmaxAbs, joueurActif.poste, true), true)))
+      container.appendChild(createPerfMetricCard('Pmax relative F-V', pmaxRel, 'W/kg', null, computeRankInfo(pmaxRel, getPosteValues(allPmaxRel, joueurActif.poste, true), true)))
+
+      ;[
+        { key: 'keiserSquat', label: 'Keiser Squat', unit: 'W' },
+        { key: 'broadJump', label: 'Broad Jump', unit: 'cm' },
+        { key: 'cmj', label: 'CMJ', unit: 'cm' },
+        { key: 'sj', label: 'SJ', unit: 'cm' }
+      ].forEach(m => {
+        const val = pd[m.key] || null
+        const allValues = joueurs.map(j => {
+          const p = performancesData.puissance[j.id] || {}
+          return { poste: j.poste, val: p[m.key] || null }
+        }).filter(x => x.val)
+        container.appendChild(createPerfMetricCard(m.label, val, m.unit, null, computeRankInfo(val, getPosteValues(allValues, joueurActif.poste, true), true)))
+      })
+    }
+
+    function renderPerfEndurance(container) {
+      const rd = performancesData.rfu[joueurActif.id] || {}
+      const total = rd.total || null
+      const type = rd.type || 'avant'
+      const posteKey = normalizePosteKey(joueurActif.poste)
+      const standard = getRFUStandards(posteKey)
+      const categorie = total ? getCategorieRFU(total, posteKey) : null
+
+      const allTotals = joueurs.map(j => {
+        const r = performancesData.rfu[j.id] || {}
+        return { poste: j.poste, val: r.total || null }
+      }).filter(x => x.val)
+
+      const rankInfo = computeRankInfo(total, getPosteValues(allTotals, joueurActif.poste, true), false)
+
+      const card = document.createElement('div')
+      card.className = 'perf-metric-card'
+      const valStr = formatPerfValue(total)
+      card.innerHTML = `
+        <div class="perf-metric-header">
+          <div class="perf-metric-name">RFU fitness test (${type === 'tq' ? 'TQ 6 passages' : 'Avant 5 passages'})</div>
+          <div>${valStr !== null ? `<span class="perf-metric-value">${valStr}</span><span class="perf-metric-unit">s</span>` : '<span class="perf-metric-empty">Pas de donnée</span>'}</div>
+        </div>
+      `
+
+      if (standard) {
+        const stdRow = document.createElement('div')
+        stdRow.className = 'perf-compare-row'
+        const stdPct = getStandardPct(total, standard)
+        const stdColor = getStandardColor(total, standard)
+        stdRow.innerHTML = `
+          <div class="perf-compare-item">
+            <div class="perf-compare-label">Standard</div>
+            <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${stdPct}%; background:${stdColor}"></div></div>
+            <div class="perf-std-value">${standard.ok.toFixed(1)}s</div>
+          </div>
+          <div class="perf-compare-text" style="color:${categorie ? categorie.color : stdColor};">${categorie ? 'Catégorie : ' + categorie.label : 'Standard OK du poste'}</div>
+        `
+        card.appendChild(stdRow)
+      }
+
+      if (rankInfo) {
+        card.appendChild(createRankRow(rankInfo))
+      }
+
+      container.appendChild(card)
+    }
 
 // Fonctions auxiliaires
     function norm(s){return String(s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
