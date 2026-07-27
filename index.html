@@ -6915,11 +6915,15 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         { key: 'boulot', label: 'Au boulot', color: '#E24B4A' },
         { key: 'pas', label: 'Pas invité', color: '#333' }
       ]
+      let hasValid = false
       for (const c of cats) {
-        if (desc ? value >= standard[c.key] : value <= standard[c.key]) return c
+        const seuil = standard[c.key]
+        if (seuil === undefined || seuil === null || seuil === '' || Number(seuil) <= 0) continue
+        hasValid = true
+        if (desc ? value >= seuil : value <= seuil) return c
       }
-      // Au-delà du seuil "pas" -> reste "Pas invité"
-      return cats[cats.length - 1]
+      // Au-delà du seuil "pas" -> reste "Pas invité" s'il y a au moins un seuil renseigné
+      return hasValid ? cats[cats.length - 1] : null
     }
 
     function getStandardPct(value, standard, desc = false) {
@@ -6939,13 +6943,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
     function getStandardColor(value, standard, desc = false) {
       if (value === null || value === undefined || !standard) return '#555'
-      if (desc ? value >= standard.goat : value <= standard.goat) return '#FFD700'
-      if (desc ? value >= standard.tb : value <= standard.tb) return '#1D9E75'
-      if (desc ? value >= standard.bien : value <= standard.bien) return '#3B82F6'
-      if (desc ? value >= standard.ok : value <= standard.ok) return '#6B7280'
-      if (desc ? value >= standard.moyen : value <= standard.moyen) return '#EF9F27'
-      if (desc ? value >= standard.boulot : value <= standard.boulot) return '#E24B4A'
-      return '#333'
+      const cat = getStandardCategorie(value, standard, desc)
+      return cat ? cat.color : '#555'
     }
 
     function getPosteValues(valuesMap, currentPoste) {
@@ -6991,7 +6990,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       for (let i = idx - 1; i >= 0; i--) {
         const candidate = PERF_CATS[i]
         const candidateVal = standard[candidate.key]
-        if (candidateVal !== undefined && candidateVal !== null) {
+        if (candidateVal !== undefined && candidateVal !== null && candidateVal !== '' && Number(candidateVal) > 0) {
           val = candidateVal
           nextLabel = candidate.label
           break
