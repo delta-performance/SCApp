@@ -7123,6 +7123,15 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       c.innerHTML = '<div class="empty-msg">Chargement de tes performances...</div>'
       if (!joueurActif) return
 
+      try {
+        const poidsSnap = await getDocs(query(collection(db, 'poids'), where('joueurId', '==', joueurActif.id)))
+        const poidsDocs = poidsSnap.docs.map(d => d.data()).filter(p => p.date && p.poids !== undefined)
+        poidsDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        poidsJoueur = poidsDocs.length ? parseFloat(poidsDocs[0].poids) || null : joueurActif.poids || null
+      } catch (e) {
+        poidsJoueur = joueurActif.poids || null
+      }
+
       const cacheKey = 'performances_v2_' + joueurActif.id
       if (!force && getCache(cacheKey)) {
         performancesData = getCache(cacheKey)
