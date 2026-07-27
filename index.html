@@ -432,7 +432,7 @@
 
     // Force reload if app version changed (ensures players get latest code)
     (function() {
-      const CURRENT_VERSION = '1.0.31';
+      const CURRENT_VERSION = '1.0.32';
       try {
         const stored = localStorage.getItem('__playerAppVersion');
         if (stored && stored !== CURRENT_VERSION) {
@@ -6850,6 +6850,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
       metrics.forEach(m => {
         const val = performancesData.maxTestes[joueurActif.id]?.[m.key] || null
+        if (!val) return
         const allValues = Object.entries(performancesData.maxTestes)
           .map(([jid, data]) => {
             const j = joueurs.find(x => x.id === jid)
@@ -6874,8 +6875,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         return { poste: j.poste, val: s.vmaxSaison || v.vmaxManuel || null }
       }).filter(x => x.val)
 
-      const vmaxStd = getStandardsFor('vitesse', 'vmax', joueurActif.poste)
-      container.appendChild(createPerfMetricCard('Vmax', vmax, 'km/h', vmaxStd, computeRankInfo(vmax, getPosteValues(allVmax, joueurActif.poste), true), true))
+      if (vmax) {
+        const vmaxStd = getStandardsFor('vitesse', 'vmax', joueurActif.poste)
+        container.appendChild(createPerfMetricCard('Vmax', vmax, 'km/h', vmaxStd, computeRankInfo(vmax, getPosteValues(allVmax, joueurActif.poste), true), true))
+      }
 
       ;[
         { key: 'test10m', label: 'Test 10m', unit: 's', desc: false },
@@ -6883,6 +6886,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         { key: 'test50m', label: 'Test 50m', unit: 's', desc: false }
       ].forEach(m => {
         const val = vd[m.key] || null
+        if (!val) return
         const allValues = joueurs.map(j => {
           const v = performancesData.vitesse[j.id] || {}
           return { poste: j.poste, val: v[m.key] || null }
@@ -6907,10 +6911,12 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         return { poste: j.poste, val: f.Pmaxkg || f.pmaxkg || f.PmaxRel || null }
       }).filter(x => x.val)
 
-      container.appendChild(createPerfMetricCard('Pmax absolue F-V', pmaxAbs, 'W', null, computeRankInfo(pmaxAbs, getPosteValues(allPmaxAbs, joueurActif.poste), true), true))
+      if (pmaxAbs) container.appendChild(createPerfMetricCard('Pmax absolue F-V', pmaxAbs, 'W', null, computeRankInfo(pmaxAbs, getPosteValues(allPmaxAbs, joueurActif.poste), true), true))
 
-      const pmaxRelStd = getStandardsFor('puissance', 'pmaxRel', joueurActif.poste)
-      container.appendChild(createPerfMetricCard('Pmax relative F-V', pmaxRel, 'W/kg', pmaxRelStd, computeRankInfo(pmaxRel, getPosteValues(allPmaxRel, joueurActif.poste), true), true))
+      if (pmaxRel) {
+        const pmaxRelStd = getStandardsFor('puissance', 'pmaxRel', joueurActif.poste)
+        container.appendChild(createPerfMetricCard('Pmax relative F-V', pmaxRel, 'W/kg', pmaxRelStd, computeRankInfo(pmaxRel, getPosteValues(allPmaxRel, joueurActif.poste), true), true))
+      }
 
       ;[
         { key: 'keiserSquat', label: 'Keiser Squat', unit: 'W' },
@@ -6919,6 +6925,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         { key: 'sj', label: 'SJ', unit: 'cm' }
       ].forEach(m => {
         const val = pd[m.key] || null
+        if (!val) return
         const allValues = joueurs.map(j => {
           const p = performancesData.puissance[j.id] || {}
           return { poste: j.poste, val: p[m.key] || null }
@@ -6932,10 +6939,11 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
     function renderPerfEndurance(container) {
       const rd = performancesData.rfu[joueurActif.id] || {}
       const total = rd.total || null
+      if (!total) return
       const type = rd.type || 'avant'
       const posteKey = normalizePosteKey(joueurActif.poste)
       const standard = getRFUStandards(posteKey)
-      const categorie = total ? getStandardCategorie(total, standard, false) : null
+      const categorie = getStandardCategorie(total, standard, false)
 
       const allTotals = joueurs.map(j => {
         const r = performancesData.rfu[j.id] || {}
