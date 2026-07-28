@@ -6970,10 +6970,16 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       return cat ? cat.color : '#555'
     }
 
+    function getPosteGroupe(poste) {
+      const key = normalizePosteKey(poste)
+      const p = PERF_POSTES_BARÈME.find(p => p.key === key)
+      return p ? p.groupe : 'inconnu'
+    }
+
     function getPosteValues(valuesMap, currentPoste) {
-      const exactKey = normalizePosteKey(currentPoste)
+      const currentGroup = getPosteGroupe(currentPoste)
       return valuesMap
-        .filter(x => normalizePosteKey(x.poste) === exactKey)
+        .filter(x => getPosteGroupe(x.poste) === currentGroup)
         .map(x => x.val)
     }
 
@@ -7030,13 +7036,15 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       const width = Math.max(5, 100 - ((rankInfo.rank - 1) / Math.max(rankInfo.total - 1, 1)) * 100)
       const color = rankInfo.top ? '#1D9E75' : '#FECC00'
       const suffix = rankInfo.rank === 1 ? 'er' : 'ème'
+      const group = joueurActif ? getPosteGroupe(joueurActif.poste) : 'inconnu'
+      const label = group === 'avant' ? 'Avant' : group === 'tq' ? 'Trois-quarts' : 'au poste'
       row.innerHTML = `
         <div class="perf-compare-item">
           <div class="perf-compare-label">Classement</div>
           <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${width}%; background:${color}"></div></div>
           <div class="perf-std-value">${rankInfo.rank}/${rankInfo.total}</div>
         </div>
-        <div class="perf-compare-text" style="color:${color};">Top ${rankInfo.pct}% au poste · ${rankInfo.rank}${suffix} sur ${rankInfo.total}</div>
+        <div class="perf-compare-text" style="color:${color};">Top ${rankInfo.pct}% ${label} · ${rankInfo.rank}${suffix} sur ${rankInfo.total}</div>
       `
       return row
     }
