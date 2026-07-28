@@ -7141,7 +7141,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         history[jid].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
         const byExo = {}
         history[jid].forEach(p => {
-          if (byExo[p.exercice] === undefined && p.oneRM !== undefined && p.oneRM !== null) byExo[p.exercice] = p.oneRM
+          if (p.oneRM !== undefined && p.oneRM !== null) {
+            const v = parseFloat(p.oneRM) || 0
+            if (v > 0) byExo[p.exercice] = Math.max(byExo[p.exercice] || 0, v)
+          }
         })
         latest[jid] = byExo
       }
@@ -7277,9 +7280,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       const latestByJoueur = performancesData.muscu || {}
       const myData = latestByJoueur[joueurActif.id] || {}
       metrics.forEach(m => {
-        const mt = maxTestes[m.key]
-        const dp = myData[m.key]
-        const val = (mt !== undefined && parseFloat(mt) > 0) ? parseFloat(mt) : (dp || null)
+        const mt = parseFloat(maxTestes[m.key]) || 0
+        const dp = parseFloat(myData[m.key]) || 0
+        const val = mt > 0 || dp > 0 ? Math.max(mt, dp) : null
         if (!val) return
         const allValues = Object.entries(latestByJoueur)
           .map(([jid, data]) => {
