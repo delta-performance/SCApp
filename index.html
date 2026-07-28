@@ -799,9 +799,11 @@
 
     // Charge la lib partagée de calcul des charges ; fallback local si le fichier n'est pas déployé
     let labelCharge
+    let calcOneRM
     try {
       const mod = await import('./seances-charges.js')
       labelCharge = mod.labelCharge
+      calcOneRM = mod.calcOneRM
     } catch (e) {
       console.warn('seances-charges.js non disponible, fallback local', e)
       labelCharge = function(exercice, rpe, nbReps, maxTestes, ratios, intensityUnit, poids) {
@@ -814,6 +816,7 @@
         if (unit === 'W') return rpe + ' W'
         return 'RPE ' + rpe
       }
+      calcOneRM = function(charge, reps) { return parseFloat(charge) * (1 + parseInt(reps) / 30) }
     }
 
     const app=initializeApp({apiKey:"AIzaSyCvMs-5LX9Ivk3OkzUR3iz9Kk1E5b9_7Vk",authDomain:"delta-rugby-app.firebaseapp.com",projectId:"delta-rugby-app",storageBucket:"delta-rugby-app.firebasestorage.app",messagingSenderId:"61187079762",appId:"1:61187079762:web:56cd1eaa8beb9e1a2ee98b"})
@@ -2114,7 +2117,7 @@
                   const vs=chargesReelles[clefS1]||''
                   const ckId='ck_'+Math.random().toString(36).slice(2)
                   const box=document.createElement('div');box.className='serie-box';box.style.maxWidth='140px'
-                  box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div><input class="serie-inp" type="number" step="0.5" placeholder="${reco}" value="${vs}" style="font-size:18px;${vs?'color:#1D9E75':''}" onchange="sauverToutesLesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                  box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div><input class="serie-inp" type="number" step="0.5" placeholder="${reco}" value="${vs}" style="font-size:18px;${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${exo.nbReps||''}" onchange="sauverToutesLesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                   gr.appendChild(box)
                 } else {
                   // Saisie série par série
@@ -2128,7 +2131,7 @@
                     const serieRepsLabel=sData?` · ${sData.reps} reps${seriePctLabel}`:''
                     const serieReps=sData?sData.reps:null
                     const box=document.createElement('div');box.className='serie-box'
-                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="0.5" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="0.5" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${serieReps!==null?serieReps:(exo.nbReps||'')}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                     gr.appendChild(box)
                   }
                 }
@@ -3709,6 +3712,23 @@
       }
     }
 
+    async function updateMaxTestesIfNeeded(joueurId, exercice, charge, reps) {
+      if (!joueurId || !exercice || !charge || !reps) return
+      const nbReps = parseInt(reps)
+      const ch = parseFloat(charge)
+      if (!nbReps || nbReps <= 0 || !ch || ch <= 0) return
+      if (!calcOneRM) return
+      const oneRM = parseFloat(calcOneRM(ch, nbReps))
+      if (isNaN(oneRM) || oneRM <= 0) return
+      const current = parseFloat(maxTestes[exercice]) || 0
+      if (oneRM <= current) return
+      maxTestes[exercice] = oneRM
+      try {
+        await setDoc(doc(db, 'maxTestes', joueurId), { [exercice]: oneRM }, { merge: true })
+        _notifyShellChange('maxTestes', joueurId, 'updateDoc')
+      } catch(e) { console.error('[maxTestes] erreur maj:', e) }
+    }
+
     window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId,reps){
       if(!val)return
       chargesReelles[clef]=val;inp.style.color='#1D9E75'
@@ -3716,6 +3736,8 @@
       const updates={[clef]:val,updatedAt:serverTimestamp()}
       if(reps!=null&&reps!==undefined)updates[clef+'_reps']=reps
       try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+      const repsForMax = (reps != null && reps !== undefined) ? reps : (inp && inp.dataset && inp.dataset.reps ? parseFloat(inp.dataset.reps) : null)
+      await updateMaxTestesIfNeeded(joueurId, inp && inp.dataset ? inp.dataset.exo : null, val, repsForMax)
       _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
     }
 
@@ -3731,6 +3753,7 @@
       inp.style.color='#1D9E75'
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
       try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+      await updateMaxTestesIfNeeded(joueurId, inp && inp.dataset ? inp.dataset.exo : null, val, inp && inp.dataset ? inp.dataset.reps : null)
       _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
     }
 
@@ -7178,6 +7201,11 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         }
       }
 
+      try {
+        const mx = await getDoc(doc(db, 'maxTestes', joueurActif.id))
+        maxTestes = mx.exists() ? mx.data() : {}
+      } catch(e) { maxTestes = {} }
+
       await loadPerformanceStandards()
       renderPerformances(currentPerfTab || 'muscu')
     }
@@ -7241,7 +7269,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       const latestByJoueur = performancesData.muscu || {}
       const myData = latestByJoueur[joueurActif.id] || {}
       metrics.forEach(m => {
-        const val = myData[m.key] || null
+        const mt = maxTestes[m.key]
+        const dp = myData[m.key]
+        const val = (mt !== undefined && parseFloat(mt) > 0) ? parseFloat(mt) : (dp || null)
         if (!val) return
         const allValues = Object.entries(latestByJoueur)
           .map(([jid, data]) => {
