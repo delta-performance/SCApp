@@ -316,6 +316,9 @@
     .nrg-exo-type-badge.autre { background: #88822222; color: #888; border: 1px solid #888444; }
     .nrg-exo-type-badge.wattbike { background: #FF6B0022; color: #FF6B00; border: 1px solid #FF6B0044; }
     .nrg-exo-type-badge.rameur { background: #00B4D822; color: #00B4D8; border: 1px solid #00B4D844; }
+    .nrg-exo-type-badge.assaultbike { background: #6B728022; color: #9CA3AF; border: 1px solid #6B728044; }
+    .nrg-exo-type-badge.crossfit { background: #FACC1522; color: #FACC15; border: 1px solid #FACC1544; }
+    .nrg-exo-type-badge.rhie { background: #EF444422; color: #EF4444; border: 1px solid #EF444444; }
 
     /* ====== RPE ÉNERGÉTIQUE ====== */
     .rpe-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
@@ -2243,7 +2246,7 @@
     function tempsTotalEnergetique(exo){ return Math.round((exo.tempsManuel||0) * (exo.nbReps||1) * (exo.nbSeries||1)) }
     function fmtCalEnergetique(c){ if(!c) return '—'; return c + ' cal' }
     function fmtTempsEnergetique(t){ if(!t) return '—'; const m=Math.floor(t/60), s=t%60; return m+"'"+String(s).padStart(2,'0') }
-    const TYPE_ICONS_ENERGETIQUE = { course:'🏃', velo:'🚴', wattbike:'⚡', rameur:'🚣', ski:'⛷️', natation:'🏊', autre:'🔧' }
+    const TYPE_ICONS_ENERGETIQUE = { course:'🏃', velo:'🚴', wattbike:'⚡', rameur:'🚣', ski:'⛷️', natation:'🏊', assaultbike:'🚲', crossfit:'🏋️', rhie:'🔥', autre:'🔧' }
 
     // ===== TIMER ÉNERGÉTIQUE =====
     const nrgTimers = {}
@@ -2359,7 +2362,7 @@
       return m + "'" + String(s).padStart(2,'0')
     }
 
-    const TYPE_LABELS_ENERGETIQUE = { course:'Course', velo:'Vélo', wattbike:'Wattbike', rameur:'Rameur', ski:'Ski', natation:'Natation', autre:'Autre' }
+    const TYPE_LABELS_ENERGETIQUE = { course:'Course', velo:'Vélo', wattbike:'Wattbike', rameur:'Rameur', ski:'Ski', natation:'Natation', assaultbike:'Assault Bike', crossfit:'Crossfit', rhie:'RHIE', autre:'Autre' }
 
     function nrgResumeTimerExo(exo){
       if(!exo.timerMode) return null
