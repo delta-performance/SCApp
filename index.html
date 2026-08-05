@@ -3758,6 +3758,7 @@
         if(!isNaN(v) && v > 0){
           const pDocId = (joueurId + '_' + date).replace(/[^a-zA-Z0-9_.:\-]/g, '_')
           await setDoc(doc(db,'puissanceData',pDocId),{joueurId,date,broadJump:v,updatedAt:serverTimestamp()},{merge:true})
+          _notifyShellChange('puissanceData', pDocId)
         }
       }
       if(!isBroadJump(exoName) && unit !== 's' && unit !== 'SECONDES'){
@@ -3788,6 +3789,7 @@
         if(!isNaN(v) && v > 0){
           const pDocId = (joueurId + '_' + date).replace(/[^a-zA-Z0-9_.:\-]/g, '_')
           await setDoc(doc(db,'puissanceData',pDocId),{joueurId,date,broadJump:v,updatedAt:serverTimestamp()},{merge:true})
+          _notifyShellChange('puissanceData', pDocId)
         }
       }
       if(!isBroadJump(exoName) && unit !== 's' && unit !== 'SECONDES'){
