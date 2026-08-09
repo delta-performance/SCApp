@@ -1704,6 +1704,35 @@
       const n=(nom||'').toLowerCase().replace(/[-_]/g,' ').trim()
       return n==='broad jump'
     }
+    function isKeiserExercice(nom){
+      const n=(nom||'').toLowerCase().replace(/[-_]/g,' ').trim()
+      return n.includes('keiser')
+    }
+    function calculerChargeKeiser(rpe){
+      const boxSquat = parseFloat(maxTestes && maxTestes['Box squat']) || 0
+      if (boxSquat <= 0) return ''
+      const r = parseFloat(rpe) || 100
+      const pct = r > 1.5 ? r / 100 : r
+      return (boxSquat * 1.25 * pct).toFixed(1)
+    }
+    async function dernierPmaxKeiser(joueurId){
+      try{
+        const q = query(collection(db,'puissanceData'), where('joueurId','==',joueurId))
+        const snap = await getDocs(q)
+        let last = null
+        let lastMs = 0
+        snap.forEach(d=>{
+          const data = d.data()
+          if (data.keiserSquat == null) return
+          const t = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : (data.date ? new Date(data.date).getTime() : 0)
+          if (t > lastMs) {
+            lastMs = t
+            last = data.keiserSquat
+          }
+        })
+        return last
+      }catch(e){ console.error('[dernierPmaxKeiser]', e); return null }
+    }
     // Affiche le nombre de reps d'un exercice, y compris les clusters et les séries variables
     function clusterRepsDisplay(exo){
       if (exo.clusterSplit && exo.clusterSplit.length > 1) {
@@ -2063,10 +2092,11 @@
               
               const unit=exo.intensityUnit||exo.intensityType||'RPE'
               const isBroad=isBroadJump(exo.exercice)
-              const reco= isBroad ? 'cm' : labelChargeReco(exo)
+              const isKeiser=isKeiserExercice(exo.exercice)
+              const reco= isBroad ? 'cm' : (isKeiser ? 'Pmax (W)' : labelChargeReco(exo))
               const traction=isTraction(exo.exercice)
               const unitLabel = isBroad ? 'cm' : unit === 'PCT' || unit === '%' ? '%' : unit === 'Vitesse (m/s)' || unit === 'VITESSE' ? 'm/s' : unit === 'PDC' ? 'PDC' : unit === '% PDC' ? '% PDC' : unit === 'kg' ? 'kg' : unit === 'W' ? 'W' : (unit === 's' || unit === 'SECONDES' ? 's' : 'RPE')
-              const hasInput=(unit!=='RPE'&&unit!=='kg'&&unit!=='W'&&unit!=='PDC')||traction||isBroad
+              const hasInput=(unit!=='RPE'&&unit!=='kg'&&unit!=='W'&&unit!=='PDC')||traction||isBroad||isKeiser
               
               const eEl=document.createElement('div');eEl.className='seance-exo'
               eEl.style.display='flex'
@@ -2131,8 +2161,12 @@
                   const clefS1=clefBase+'_s1'
                   const vs=chargesReelles[clefS1]||''
                   const ckId='ck_'+Math.random().toString(36).slice(2)
+                  const keiserCharge = isKeiser ? (calculerChargeKeiser(exo.rpe) || '—') : ''
+                  const inputHtml = isKeiser
+                    ? `<button class="serie-keiser-btn" onclick="ouvrirModalKeiser('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}','${exo.exercice}','${sa.date||''}','${ckId}',true,'${exo.rpe}')" style="width:100%;background:#0f0f0f;border:1px solid #333;border-radius:6px;color:#FECC00;padding:10px 8px;font-size:14px;font-weight:700;cursor:pointer;">Remplir</button>`
+                    : `<input class="serie-inp" type="number" step="${isBroad?'0.1':'0.5'}" placeholder="${reco}" value="${vs}" style="font-size:18px;${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${exo.nbReps||''}" data-unit="${unit}" data-date="${sa.date||''}" onchange="sauverToutesLesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}',this.value,this,'${ckId}')" />`
                   const box=document.createElement('div');box.className='serie-box';box.style.maxWidth='140px'
-                  box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div><input class="serie-inp" type="number" step="${isBroad?'0.1':'0.5'}" placeholder="${reco}" value="${vs}" style="font-size:18px;${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${exo.nbReps||''}" data-unit="${unit}" data-date="${sa.date||''}" onchange="sauverToutesLesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                  box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div>${inputHtml}<div class="serie-pre">${isKeiser ? (keiserCharge ? keiserCharge + ' kg' : '—') : reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                   gr.appendChild(box)
                 } else {
                   // Saisie série par série
@@ -2145,9 +2179,13 @@
                     const seriePctLabel=sData?` · ${sData.intensity ?? exo.rpe} ${unitLabel}`:''
                     const serieRepsLabel=sData?` · ${sData.reps} reps${seriePctLabel}`:''
                     const serieReps=sData?sData.reps:null
-                    const step = isBroad ? '0.1' : '0.5'
+                    const step = isBroad ? '0.1' : (isKeiser ? '1' : '0.5')
+                    const keiserChargeS = isKeiser ? (calculerChargeKeiser(sData ? sData.intensity : exo.rpe) || '—') : ''
+                    const inputHtmlS = isKeiser
+                      ? `<button class="serie-keiser-btn" onclick="ouvrirModalKeiser('${sa.id}','${clef}',1,'${joueurActif.id}','${exo.exercice}','${sa.date||''}','${ckId}',false,'${sData ? sData.intensity : exo.rpe}')" style="width:100%;background:#0f0f0f;border:1px solid #333;border-radius:6px;color:#FECC00;padding:10px 8px;font-size:14px;font-weight:700;cursor:pointer;">Remplir</button>`
+                      : `<input class="serie-inp" type="number" step="${step}" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${serieReps!==null?serieReps:(exo.nbReps||'')}" data-unit="${unit}" data-date="${sa.date||''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" />`
                     const box=document.createElement('div');box.className='serie-box'
-                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="${step}" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${serieReps!==null?serieReps:(exo.nbReps||'')}" data-unit="${unit}" data-date="${sa.date||''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div>${inputHtmlS}<div class="serie-pre">${isKeiser ? (keiserChargeS ? keiserChargeS + ' kg' : '—') : serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                     gr.appendChild(box)
                   }
                 }
@@ -3764,7 +3802,7 @@
           _notifyShellChange('puissanceData', pDocId)
         }
       }
-      if(!isBroadJump(exoName) && unit !== 's' && unit !== 'SECONDES'){
+      if(!isBroadJump(exoName) && !isKeiserExercice(exoName) && unit !== 's' && unit !== 'SECONDES'){
         const repsForMax = (reps != null && reps !== undefined) ? reps : (inp && inp.dataset.reps ? parseFloat(inp.dataset.reps) : null)
         await updateMaxTestesIfNeeded(joueurId, exoName, val, repsForMax)
       }
@@ -3795,8 +3833,58 @@
           _notifyShellChange('puissanceData', pDocId)
         }
       }
-      if(!isBroadJump(exoName) && unit !== 's' && unit !== 'SECONDES'){
+      if(!isBroadJump(exoName) && !isKeiserExercice(exoName) && unit !== 's' && unit !== 'SECONDES'){
         await updateMaxTestesIfNeeded(joueurId, exoName, val, inp && inp.dataset ? inp.dataset.reps : null)
+      }
+      _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
+    }
+
+    window.ouvrirModalKeiser=async function(seanceId, clefBase, nbSets, joueurId, exoName, date, ckId, allSeries, rpe){
+      const overlay=document.createElement('div'); overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;display:flex;align-items:center;justify-content:center;'
+      const chargePrevue = calculerChargeKeiser(rpe)
+      const dernierPmax = await dernierPmaxKeiser(joueurId)
+      const pmaxPredefini = dernierPmax !== null ? dernierPmax : ''
+      const dernierLabel = dernierPmax !== null ? `<div style="font-size:11px;color:#1D9E75;margin-bottom:10px;">Dernière Pmax : ${dernierPmax} W</div>` : ''
+      overlay.innerHTML=`<div style="background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:20px;width:320px;max-width:90%;color:#fff;">
+        <div style="font-weight:700;margin-bottom:12px;font-size:16px;">Keiser - ${exoName}</div>
+        ${dernierLabel}
+        <div style="margin-bottom:10px;"><label style="display:block;font-size:12px;color:#aaa;margin-bottom:4px;">Charge (kg)</label><input id="keiser-charge" type="number" step="0.5" value="${chargePrevue}" style="width:100%;background:#0f0f0f;border:1px solid #333;border-radius:6px;color:#fff;padding:8px;" /></div>
+        <div style="margin-bottom:16px;"><label style="display:block;font-size:12px;color:#aaa;margin-bottom:4px;">Pmax (W)</label><input id="keiser-pmax" type="number" step="1" value="${pmaxPredefini}" style="width:100%;background:#0f0f0f;border:1px solid #333;border-radius:6px;color:#fff;padding:8px;" /></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="keiser-annuler" style="background:#333;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">Annuler</button>
+          <button id="keiser-ok" style="background:#1D9E75;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;">Enregistrer</button>
+        </div>
+      </div>`
+      document.body.appendChild(overlay)
+      document.getElementById('keiser-ok').onclick=async function(){
+        const charge=document.getElementById('keiser-charge').value.replace(',','.')
+        const pmax=document.getElementById('keiser-pmax').value.replace(',','.')
+        overlay.remove()
+        await sauverKeiser(seanceId, clefBase, nbSets, joueurId, exoName, date, ckId, allSeries, charge, pmax)
+      }
+      document.getElementById('keiser-annuler').onclick=function(){ overlay.remove() }
+    }
+
+    window.sauverKeiser=async function(seanceId, clefBase, nbSets, joueurId, exoName, date, ckId, allSeries, charge, pmax){
+      const chargeVal=parseFloat(charge)
+      const pmaxVal=parseFloat(pmax)
+      const updates={updatedAt:serverTimestamp()}
+      if(allSeries){
+        for(let s=1;s<=nbSets;s++){
+          const clefS=clefBase+'_s'+s
+          chargesReelles[clefS]=charge
+          updates[clefS]=charge
+        }
+      } else {
+        chargesReelles[clefBase]=charge
+        updates[clefBase]=charge
+      }
+      const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
+      try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+      if(!isNaN(pmaxVal) && pmaxVal > 0){
+        const pDocId=(joueurId+'_'+date).replace(/[^a-zA-Z0-9_.:\-]/g,'_')
+        await setDoc(doc(db,'puissanceData',pDocId),{joueurId,date,keiserSquat:pmaxVal,keiserCharge:isNaN(chargeVal)?null:chargeVal,updatedAt:serverTimestamp()},{merge:true})
+        _notifyShellChange('puissanceData',pDocId)
       }
       _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
     }
