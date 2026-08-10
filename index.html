@@ -5938,6 +5938,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           return {
             nomGPS: j.nomGPS,
             posteGPS: j.posteGPS,
+            statut: j.statut,
             stats: {
               distHI,
               mMin,
@@ -5966,11 +5967,18 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
         METRIQUES.forEach(m => {
           // Filtrer selon le mode ET ne garder que les joueurs avec des données
-          let joueursFiltres = statsAllJoueurs.filter(j => j.stats !== null)
+          // Ne pas afficher les joueurs blessés dans les classements
+          const estBlesse = (j) => j?.statut === 'blesse'
+          const estJoueurBlesse = joueur?.statut === 'blesse'
+          let joueursFiltres = statsAllJoueurs.filter(j =>
+            j.stats !== null &&
+            !estBlesse(j) &&
+            (!estJoueurBlesse || j.nomGPS !== s.nomGPS)
+          )
           if (rangMode === 'ligne') {
-            joueursFiltres = statsAllJoueurs.filter(j => j.stats !== null && normaliserPoste(j.posteGPS) === monPoste)
+            joueursFiltres = joueursFiltres.filter(j => normaliserPoste(j.posteGPS) === monPoste)
           } else if (rangMode === 'poste') {
-            joueursFiltres = statsAllJoueurs.filter(j => j.stats !== null && String(j.posteGPS || '').trim() === monPosteExact)
+            joueursFiltres = joueursFiltres.filter(j => String(j.posteGPS || '').trim() === monPosteExact)
           }
           
           // Nombre total de joueurs avec données dans ce groupe
@@ -5998,7 +6006,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           }))
           
           // Valeur sur la période filtrée pour le joueur actuel
-          const valeurFiltre = statsFiltre[m.k]
+          const valeurFiltre = estJoueurBlesse ? null : statsFiltre[m.k]
 
           const card = document.createElement('div')
           card.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:12px;margin-bottom:10px;'
@@ -6013,12 +6021,13 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             ? `<span style="font-size:9px;color:#444;margin-left:6px;">(${sansDonnees} sans données)</span>` 
             : ''
           
+          const valeurAffichee = valeurFiltre != null ? valeurFiltre.toFixed(m.d) : '—'
           card.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;margin-bottom:10px;">
             ${m.l}
             <span style="float:right;">${rangTexte}/${total}${infoManquante}</span>
           </div>
           <div style="font-size:10px;color:#666;margin-bottom:8px;padding:4px 8px;background:#FECC0011;border-radius:4px;">
-            Ta ${vueMode === 'derniere' ? 'somme du jour' : 'moyenne période'}: <b style="color:#FECC00;">${valeurFiltre.toFixed(m.d)} ${m.u}</b>
+            Ta ${vueMode === 'derniere' ? 'somme du jour' : 'moyenne période'}: <b style="color:#FECC00;">${valeurAffichee} ${m.u}</b>
           </div>`
 
           const MEDALS = ['🥇','🥈','🥉']
@@ -6029,8 +6038,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             const estMoi = entry.estMoi
             const valeurTop = entry.valeur
             // Comparer la valeur filtrée au top3
-            const diff = valeurFiltre - valeurTop
-            const diffStr = diff > 0 ? `(+${diff.toFixed(m.d)})` : diff < 0 ? `(${diff.toFixed(m.d)})` : ''
+            const diff = valeurFiltre != null ? valeurFiltre - valeurTop : null
+            const diffStr = diff == null ? '' : (diff > 0 ? `(+${diff.toFixed(m.d)})` : diff < 0 ? `(${diff.toFixed(m.d)})` : '')
             
             const nomTop = estMoi ? `${joueur.prenom} ${joueur.nom}` : '—'
             row.innerHTML = `
@@ -6053,7 +6062,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             row.innerHTML = `
               <div style="width:22px;text-align:center;font-size:11px;color:#FECC00;font-weight:600;">#${monRang}</div>
               <div style="flex:1;font-size:12px;color:#FECC00;font-weight:600;">${joueur.prenom} ${joueur.nom}</div>
-              <div style="font-size:11px;font-weight:600;color:#FECC00;">${valeurFiltre.toFixed(m.d)} ${m.u}</div>
+              <div style="font-size:11px;font-weight:600;color:#FECC00;">${valeurAffichee} ${m.u}</div>
             `
             card.appendChild(row)
           }
