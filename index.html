@@ -5473,7 +5473,7 @@ function renderPosteTab(c, match) {
   const byGroupe = {}
   const joueurs = match.joueurs.map(calcStats)
   joueurs.forEach(j => {
-    const gr = getPosteGroupe(j.posteGPS) || 'Autre'
+    const gr = getRapportPosteGroupe(j.posteGPS) || 'Autre'
     if (!byGroupe[gr]) byGroupe[gr] = []
     byGroupe[gr].push(j)
   })
@@ -5542,8 +5542,8 @@ function renderPosteTab(c, match) {
   // Radar avants vs 3/4 (simplifié)
   const avantNoms = ['1ère ligne','2ème ligne','3ème ligne']
   const troisQNoms = ['Demi de mêlée',"Demi d'ouverture",'Centre','Triangle arrière']
-  const avantRows = joueurs.filter(j => avantNoms.includes(getPosteGroupe(j.posteGPS)))
-  const troisQRows = joueurs.filter(j => troisQNoms.includes(getPosteGroupe(j.posteGPS)))
+  const avantRows = joueurs.filter(j => avantNoms.includes(getRapportPosteGroupe(j.posteGPS)))
+  const troisQRows = joueurs.filter(j => troisQNoms.includes(getRapportPosteGroupe(j.posteGPS)))
   if (avantRows.length && troisQRows.length) {
     const mAv = calcMoyennes(avantRows)
     const m3Q = calcMoyennes(troisQRows)
@@ -5615,7 +5615,7 @@ function drawRadarSimple(canvas, a, b, labels, colors) {
   ctx.fillStyle = '#fff'; ctx.fillText('3/4', w-95, h-22)
 }
 
-function getPosteGroupe(poste) {
+function getRapportPosteGroupe(poste) {
   const p = (poste || '').toLowerCase().trim()
   if (['pilier','talonneur','1ère ligne'].some(x=>p.includes(x))) return '1ère ligne'
   if (['2ème ligne','deuxième ligne','2nd ligne','deuxieme ligne'].some(x=>p.includes(x))) return '2ème ligne'
