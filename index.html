@@ -5557,8 +5557,9 @@ function renderMatchTab(c, match, persoHist) {
 
   if (persoRow) {
     const banner = document.createElement('div')
-    banner.style.cssText = 'background:#1D9E7511;border:1px solid #1D9E7533;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#1D9E75;'
-    banner.textContent = `Tu as participé à ce match (${match.nbJoueurs} joueurs analysés).`
+    banner.style.cssText = 'background:#1D9E7511;border:1px solid #1D9E7533;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#1D9E75;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;'
+    banner.innerHTML = `<span>Tu as participé à ce match : voir tes stats individuelles</span><span style="font-size:14px;">→</span>`
+    banner.onclick = () => setRapportMatchTab('individuel')
     c.appendChild(banner)
   } else {
     const banner = document.createElement('div')
@@ -5619,20 +5620,6 @@ function renderMatchTab(c, match, persoHist) {
     c.appendChild(tjeTotal)
   }
 
-  // Top 3 du match (anonymisé)
-  if (match.top3 && match.top3.distTot && match.top3.distTot.length) {
-    const podium = document.createElement('div')
-    podium.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
-    podium.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Top 3 distance</div>`
-    const medal = ['🥇', '🥈', '🥉']
-    match.top3.distTot.forEach((j, i) => {
-      const row = document.createElement('div')
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;background:#0f0f0f;border-radius:8px;padding:8px 10px;margin-bottom:6px;'
-      row.innerHTML = `<span style="font-size:18px;width:24px;text-align:center;">${medal[i]}</span><span style="font-size:12px;font-weight:600;flex:1;color:#fff;">Joueur ${j.rang}</span><span style="font-size:12px;font-weight:700;color:#FECC00;min-width:48px;text-align:right;">${fmtKm(j.valeur)}</span>`
-      podium.appendChild(row)
-    })
-    c.appendChild(podium)
-  }
 }
 
 function renderPosteTab(c, match) {
