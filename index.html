@@ -795,6 +795,28 @@
       <div id="energetique-content"><div class="empty-msg">Chargement...</div></div>
     </div>
 
+    <!-- POIDS -->
+    <div class="screen" id="screen-poids">
+      <div class="section-header">
+        <button class="back-btn" onclick="allerVers('menu')">← Retour</button>
+        <div class="section-title">Mon poids</div>
+      </div>
+      <div class="wellness-card">
+        <div class="wellness-card-title">Dernière pesée</div>
+        <div id="poids-last" style="font-size:22px;font-weight:700;color:#FECC00;">— kg</div>
+        <div id="poids-last-date" style="font-size:12px;color:#555;margin-top:4px;">Aucune donnée</div>
+      </div>
+      <div class="wellness-card">
+        <div class="wellness-card-title">Nouvelle pesée</div>
+        <div style="display:flex;align-items:center;gap:10px;margin:12px 0;">
+          <input type="text" inputmode="decimal" pattern="[0-9.,]*" id="poids-input" placeholder="--" style="width:120px;padding:12px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f0f;color:#FECC00;font-size:20px;font-weight:700;text-align:center;outline:none;" oninput="analyserPoids(this.value)">
+          <span style="font-size:16px;color:#888;">kg</span>
+        </div>
+        <div id="poids-msg" style="font-size:12px;min-height:18px;margin-bottom:8px;"></div>
+        <button class="submit-btn" id="submit-poids" disabled onclick="soumettrePoids()">Valider mon poids</button>
+      </div>
+    </div>
+
   </div>
 
   <script type="module">
@@ -1014,7 +1036,8 @@
       { id: 'seance', label: 'Ma séance', sub: 'Programme muscu', icon: '🏋️', active: true },
       { id: 'energetique', label: 'Énergétique', sub: 'Course, vélo, ski...', icon: '🏃', active: true },
       { id: 'gps', label: 'Stats GPS', sub: 'Mes données', icon: '📡', active: true },
-      { id: 'performances', label: 'Performances', sub: 'Stats physiques', icon: '⚡', active: true }
+      { id: 'performances', label: 'Performances', sub: 'Stats physiques', icon: '⚡', active: true },
+      { id: 'poids', label: 'Poids', sub: 'Suivi du poids', icon: '⚖️', active: true }
     ]
 
     window.renderMenuGrid = function() {
@@ -1022,7 +1045,7 @@
       if (!grid) return
       
       const data = window.__playerModulesData || {}
-      const defaultStates = { wellness: true, seance: true, planning: false, gps: true, energetique: true, performances: true }
+      const defaultStates = { wellness: true, seance: true, planning: false, gps: true, energetique: true, performances: true, poids: true }
 
       grid.innerHTML = MODULES.map(m => {
         // 1. Déterminer si le module est actif globalement
@@ -1489,6 +1512,9 @@
       if(screen==='performances'){
         const perfContent=document.getElementById('performances-content')
         if(perfContent) chargerPerformances()
+      }
+      if(screen==='poids'){
+        chargerPoids()
       }
     }
 
@@ -7554,6 +7580,126 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       addMetricHistory(card, performancesData.rfuHistory[joueurActif.id], 'total', 's', 1)
 
       container.appendChild(card)
+    }
+
+    let poidsHistory = []
+    let poidsLast = null
+    let poidsMoyenne = null
+
+    async function chargerPoids() {
+      if (!joueurActif) return
+      const input = document.getElementById('poids-input')
+      if (input) input.value = ''
+      analyserPoids('')
+      await chargerHistoriquePoids()
+    }
+
+    async function chargerHistoriquePoids() {
+      if (!joueurActif) return
+      try {
+        const poidsSnap = await getDocs(query(collection(db, 'poids'), where('joueurId', '==', joueurActif.id)))
+        const poidsDocs = poidsSnap.docs.map(d => d.data()).filter(p => p.date && p.poids !== undefined)
+        poidsDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        poidsHistory = poidsDocs
+
+        const lastEl = document.getElementById('poids-last')
+        const dateEl = document.getElementById('poids-last-date')
+        if (poidsDocs.length) {
+          poidsLast = parseFloat(poidsDocs[0].poids)
+          const sum = poidsDocs.reduce((a, p) => a + (parseFloat(p.poids) || 0), 0)
+          poidsMoyenne = poidsDocs.length ? (sum / poidsDocs.length) : null
+
+          if (lastEl) lastEl.textContent = poidsLast.toFixed(1) + ' kg'
+          if (dateEl) dateEl.textContent = 'Le ' + (poidsDocs[0].date ? new Date(poidsDocs[0].date).toLocaleDateString('fr-FR') : '—')
+        } else {
+          poidsLast = null
+          poidsMoyenne = null
+          if (lastEl) lastEl.textContent = '— kg'
+          if (dateEl) dateEl.textContent = 'Aucune donnée'
+        }
+      } catch (e) {
+        console.error('[Poids] Erreur chargement:', e)
+      }
+    }
+
+    window.analyserPoids = function(valeur) {
+      const msg = document.getElementById('poids-msg')
+      const btn = document.getElementById('submit-poids')
+      const raw = String(valeur || '').replace(/,/g, '.')
+      const clean = raw.replace(/[^0-9.]/g, '')
+      const val = parseFloat(clean)
+
+      if (!clean || isNaN(val)) {
+        if (msg) { msg.textContent = ''; msg.style.color = '' }
+        if (btn) btn.disabled = true
+        return
+      }
+
+      if (poidsLast !== null) {
+        const diff = val - poidsLast
+        if (Math.abs(diff) > 15) {
+          if (msg) { msg.textContent = '⚠️ Variation de plus de 15 kg — vérifie ta saisie'; msg.style.color = '#E24B4A' }
+          if (btn) btn.disabled = true
+          return
+        }
+        if (diff < -0.5) {
+          if (msg) { msg.textContent = `📉 Baisse de ${Math.abs(diff).toFixed(1)} kg par rapport à ta dernière pesée`; msg.style.color = '#EF9F27' }
+        } else if (diff > 0.5) {
+          if (msg) { msg.textContent = `📈 Augmentation de ${diff.toFixed(1)} kg par rapport à ta dernière pesée`; msg.style.color = '#EF9F27' }
+        } else {
+          if (msg) { msg.textContent = '✅ Dans ta moyenne'; msg.style.color = '#1D9E75' }
+        }
+      } else {
+        if (val < 30 || val > 250) {
+          if (msg) { msg.textContent = '⚠️ Poids incohérent — vérifie ta saisie'; msg.style.color = '#E24B4A' }
+          if (btn) btn.disabled = true
+          return
+        }
+        if (msg) { msg.textContent = 'Poids à valider'; msg.style.color = '#888' }
+      }
+
+      if (btn) btn.disabled = false
+    }
+
+    window.soumettrePoids = async function() {
+      const input = document.getElementById('poids-input')
+      if (!input || !joueurActif) return
+      const raw = String(input.value || '').replace(/,/g, '.').replace(/[^0-9.]/g, '')
+      const val = parseFloat(raw)
+
+      if (!raw || isNaN(val)) return
+      if (poidsLast !== null && Math.abs(val - poidsLast) > 15) {
+        alert('Variation de plus de 15 kg détectée. Vérifie ta saisie.')
+        return
+      }
+      if (val < 30 || val > 250) {
+        alert('Poids incohérent. Vérifie ta saisie.')
+        return
+      }
+
+      const btn = document.getElementById('submit-poids')
+      if (btn) { btn.disabled = true; btn.textContent = 'Envoi...' }
+
+      try {
+        const data = {
+          joueurId: joueurActif.id,
+          date: aujourdhui,
+          poids: val,
+          updatedAt: serverTimestamp()
+        }
+        await setDoc(doc(db, 'poids', `${joueurActif.id}_${aujourdhui}`), data, { merge: true })
+        _notifyShellChange('poids', `${joueurActif.id}_${aujourdhui}`)
+        poidsJoueur = val
+        await chargerHistoriquePoids()
+        input.value = ''
+        analyserPoids('')
+        alert('Poids enregistré : ' + val.toFixed(1) + ' kg')
+      } catch (e) {
+        console.error('[Poids] Erreur sauvegarde:', e)
+        alert('Erreur lors de l\'enregistrement')
+      } finally {
+        if (btn) { btn.textContent = 'Valider mon poids'; btn.disabled = false }
+      }
     }
 
 // Fonctions auxiliaires
