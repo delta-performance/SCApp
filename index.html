@@ -5328,7 +5328,11 @@ async function chargerRapportMatch() {
       allMatches = [...matches.values()]
     }
 
-    const persoHist = (sPerso.historique || []).filter(h => isMatchSession(h)).map(h => ({ ...h, matchKey: getMatchKey(h) }))
+    // matchKey = Activity Name brut (h.seance), même format que les clés de
+    // statsGPS/_collectif.matchs (calcMatchCommon côté gps-match.html). Ne pas
+    // utiliser getMatchKey() ici : il combine date (format YYYY-MM-DD) + seance,
+    // ce qui ne correspond jamais à la clé Activity Name utilisée par le sync.
+    const persoHist = (sPerso.historique || []).filter(h => isMatchSession(h)).map(h => ({ ...h, matchKey: h.seance || h.period || getMatchKey(h) }))
 
     let selectedKey = window.__selectedMatchKey
     if (!selectedKey || !rawMatchs[selectedKey]) {
