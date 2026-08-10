@@ -5440,6 +5440,54 @@ function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
   else renderIndividuelTab(c, persoHist)
 }
 
+function renderQTBarChart(c, qtStats, field, title, unit, color) {
+  const vals = qtStats.map(q => q[field] || 0)
+  if (!vals.some(v => v > 0)) return
+  const maxV = Math.max(...vals, 1)
+  const sec = document.createElement('div')
+  sec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:12px;'
+  sec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">${title} par QT <span style="font-size:9px;color:#444;font-weight:400;text-transform:none;">(${unit})</span></div>`
+  const W = Math.min(340, (document.body.clientWidth || 360) - 56)
+  const PAD_TOP = 10, PAD_BOT = 22, PAD_L = 8, PAD_R = 8, BAR_H = 110
+  const totalH = PAD_TOP + BAR_H + PAD_BOT
+  const canvas = document.createElement('canvas')
+  canvas.width = W * 2; canvas.height = totalH * 2
+  canvas.style.cssText = `width:100%;height:${totalH}px;display:block;`
+  sec.appendChild(canvas)
+  c.appendChild(sec)
+
+  const ctx = canvas.getContext('2d')
+  ctx.scale(2, 2)
+  const n = qtStats.length
+  const chartW = W - PAD_L - PAD_R
+  const gap = chartW / n
+  const barW = Math.max(10, Math.floor(gap * 0.6))
+
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 1
+  for (let i = 0; i <= 2; i++) {
+    const gy = PAD_TOP + BAR_H - i * (BAR_H / 2)
+    ctx.beginPath(); ctx.moveTo(PAD_L, gy); ctx.lineTo(PAD_L + chartW, gy); ctx.stroke()
+  }
+
+  qtStats.forEach((q, i) => {
+    const v = q[field] || 0
+    const h = maxV > 0 ? (v / maxV) * BAR_H : 0
+    const x = PAD_L + i * gap + (gap - barW) / 2
+    const y = PAD_TOP + BAR_H - h
+    ctx.fillStyle = color
+    ctx.fillRect(x, y, barW, h)
+    ctx.fillStyle = '#888'
+    ctx.font = '9px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(q.qt.replace('QT', 'Q'), x + barW / 2, PAD_TOP + BAR_H + 12)
+    if (v > 0) {
+      ctx.fillStyle = '#fff'
+      ctx.font = 'bold 9px sans-serif'
+      ctx.fillText(v < 10 ? v.toFixed(1) : Math.round(v), x + barW / 2, y - 4)
+    }
+  })
+}
+
 function renderScoreSectionMobile(c, ffr, match) {
   const sec = document.createElement('div')
   sec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:16px;margin-bottom:14px;'
@@ -5563,8 +5611,15 @@ function renderMatchTab(c, match, persoHist) {
   seqSec.appendChild(seqWrap)
   c.appendChild(seqSec)
 
-  // Tableau récap par QT
+  // Graphiques par QT (comme gps-match.html)
   if (match.qtStats && match.qtStats.length) {
+    renderQTBarChart(c, match.qtStats, 'mMin', 'm/min', 'm/min', '#FECC00')
+    renderQTBarChart(c, match.qtStats, 'distTot', 'Distance', 'm', '#E24B4A')
+    renderQTBarChart(c, match.qtStats, 'volumeHI', 'Volume HI', 'UA', '#378ADD')
+    renderQTBarChart(c, match.qtStats, 'accB23', 'Acc B2+B3', 'eff', '#EF9F27')
+    renderQTBarChart(c, match.qtStats, 'vmax', 'Vmax', 'km/h', '#1D9E75')
+
+    // Tableau récap par QT
     const qtSec = document.createElement('div')
     qtSec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;overflow-x:auto;'
     qtSec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Récap par QT</div>`
@@ -5575,7 +5630,6 @@ function renderMatchTab(c, match, persoHist) {
       <th style="padding:5px 6px;text-align:right;color:#378ADD;">Vol HI</th>
       <th style="padding:5px 6px;text-align:right;color:#EF9F27;">Acc</th>
       <th style="padding:5px 6px;text-align:right;color:#1D9E75;">Vmax</th>
-      <th style="padding:5px 6px;text-align:right;color:#ED93B1;">Ratio</th>
     </tr></thead><tbody>`
     match.qtStats.forEach(q => {
       html += `<tr style="border-bottom:1px solid #111;">
@@ -5585,7 +5639,6 @@ function renderMatchTab(c, match, persoHist) {
         <td style="padding:5px 6px;text-align:right;color:#378ADD;">${fmtNum(q.volumeHI, 0)}</td>
         <td style="padding:5px 6px;text-align:right;color:#EF9F27;">${fmtNum(q.accB23, 0)}</td>
         <td style="padding:5px 6px;text-align:right;color:#1D9E75;">${fmtNum(q.vmax, 1)}</td>
-        <td style="padding:5px 6px;text-align:right;color:#ED93B1;">—</td>
       </tr>`
     })
     html += `</tbody></table>`
