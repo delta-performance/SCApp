@@ -5306,7 +5306,7 @@ async function chargerRapportMatch() {
     // Nouveau : stats communes par match calculées dans gps-match.html
     const rawMatchs = sCol.matchs || {}
     let allMatches = Object.values(rawMatchs)
-      .map(m => ({ ...m, key: m.matchKey, date: m.date || '', nom: m.adversaire || m.theme || m.matchKey }))
+      .map(m => ({ ...m, key: m.matchKey, date: m.dateISO || m.date || '', nom: m.adversaire || m.theme || m.matchKey }))
       .sort((a, b) => {
         const da = parseDate(a.date), db = parseDate(b.date)
         if (!da || !db) return 0
@@ -5338,6 +5338,7 @@ async function chargerRapportMatch() {
     window.__allMatches = allMatches
     window.__persoHist = persoHist
     window.__rawMatchs = rawMatchs
+    window.__ffrCache = window.__ffrCache || {}
     window.__rapportMatchTab = window.__rapportMatchTab || 'match'
 
     renderRapportMatch(c, allMatches, persoHist, selectedKey)
@@ -5355,6 +5356,57 @@ window.setRapportMatchTab = function(tab) {
 window.selectRapportMatch = function(key) {
   window.__selectedMatchKey = key
   renderRapportMatch(document.getElementById('rapport-match-content'), window.__allMatches, window.__persoHist, key)
+}
+
+// Lecture seule du score/événements FFR déjà scrapés et sauvegardés depuis gps-match.html
+async function loadFFRScoreReadOnly(matchKey) {
+  if (window.__ffrCache[matchKey] !== undefined) return window.__ffrCache[matchKey]
+  try {
+    const snap = await getDoc(doc(db, 'ffr_match_data', matchKey))
+    if (!snap.exists()) { window.__ffrCache[matchKey] = null; return null }
+    const docData = snap.data()
+    const raw = docData.raw || docData.data || null
+    if (!raw || !raw.evenements || !raw.equipe_domicile) { window.__ffrCache[matchKey] = null; return null }
+
+    const domicileTeam = (raw.equipe_domicile || '').toLowerCase()
+    const visiteurTeam = (raw.equipe_visiteur || '').toLowerCase()
+    let clubIsDomicile
+    if (raw.albi_position) clubIsDomicile = raw.albi_position === 'domicile'
+    else if (domicileTeam.includes('albi')) clubIsDomicile = true
+    else if (visiteurTeam.includes('albi')) clubIsDomicile = false
+    else clubIsDomicile = true
+
+    const typeMap = { 'essai':'essai','essai de pénalité':'essai_penalite','penalite':'penalite','transformation':'transformation','drop':'drop','carton_jaune':'carton_jaune','carton_rouge':'carton_rouge','changement':'changement','autre':'essai' }
+    const pictos = { essai:'🏉', essai_penalite:'🏉', transformation:'⚽', penalite:'🥅', drop:'⬇', carton_jaune:'🟨', carton_rouge:'🟥', changement:'↔' }
+    const events = (raw.evenements || []).map(evt => {
+      const isClub = (evt.equipe === 'domicile' && clubIsDomicile) || (evt.equipe === 'visiteur' && !clubIsDomicile)
+      let minute = typeof evt.minute === 'string' ? parseInt(evt.minute.replace(/[^\d]/g, '')) || 0 : evt.minute || 0
+      const type = typeMap[evt.type] || 'essai'
+      return {
+        minute,
+        equipe: isClub ? 'club' : 'adv',
+        type,
+        picto: pictos[type] || '•',
+        points: type === 'essai_penalite' ? 7 : type === 'essai' ? 5 : type === 'penalite' ? 3 : type === 'drop' ? 3 : type === 'transformation' ? 2 : 0,
+        joueur: type === 'essai_penalite' ? 'Essai de pénalité' : (evt.joueur || (evt.joueur_entrant ? `${evt.joueur_entrant} → ${evt.joueur_sortant}` : 'Inconnu'))
+      }
+    }).sort((a, b) => a.minute - b.minute)
+
+    const scoreClub = clubIsDomicile ? (raw.score_domicile || 0) : (raw.score_visiteur || 0)
+    const scoreAdv = clubIsDomicile ? (raw.score_visiteur || 0) : (raw.score_domicile || 0)
+    const logos = raw.logos || {}
+    const logoClub = clubIsDomicile ? (logos.domicile || '') : (logos.visiteur || '')
+    const logoAdv = clubIsDomicile ? (logos.visiteur || '') : (logos.domicile || '')
+    const nomAdv = clubIsDomicile ? (raw.equipe_visiteur || 'Adversaire') : (raw.equipe_domicile || 'Adversaire')
+
+    const result = { events, scoreClub, scoreAdv, logoClub, logoAdv, nomAdv }
+    window.__ffrCache[matchKey] = result
+    return result
+  } catch (e) {
+    console.error('Erreur chargement score FFR:', e)
+    window.__ffrCache[matchKey] = null
+    return null
+  }
 }
 
 function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
@@ -5388,6 +5440,50 @@ function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
   else renderIndividuelTab(c, persoHist)
 }
 
+function renderScoreSectionMobile(c, ffr, match) {
+  const sec = document.createElement('div')
+  sec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:16px;margin-bottom:14px;'
+  if (!ffr) {
+    sec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Score & événements</div>
+      <div style="font-size:12px;color:#666;text-align:center;padding:10px 0;">Score non disponible pour ce match.</div>`
+    c.appendChild(sec)
+    return
+  }
+  const clubMene = ffr.scoreClub > ffr.scoreAdv
+  const advMene = ffr.scoreAdv > ffr.scoreClub
+  const colClub = clubMene ? '#1D9E75' : advMene ? '#E24B4A' : '#FECC00'
+  const colAdv = advMene ? '#1D9E75' : clubMene ? '#E24B4A' : '#FECC00'
+  let html = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Score final</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:14px;">
+      <div style="text-align:center;flex:1;">
+        ${ffr.logoClub ? `<img src="${ffr.logoClub}" style="width:36px;height:36px;object-fit:contain;margin-bottom:4px;">` : ''}
+        <div style="font-size:11px;color:#aaa;">Nous</div>
+      </div>
+      <div style="font-size:32px;font-weight:900;color:${colClub};">${ffr.scoreClub}</div>
+      <div style="font-size:16px;color:#555;">—</div>
+      <div style="font-size:32px;font-weight:900;color:${colAdv};">${ffr.scoreAdv}</div>
+      <div style="text-align:center;flex:1;">
+        ${ffr.logoAdv ? `<img src="${ffr.logoAdv}" style="width:36px;height:36px;object-fit:contain;margin-bottom:4px;">` : ''}
+        <div style="font-size:11px;color:#aaa;">${ffr.nomAdv}</div>
+      </div>
+    </div>`
+  if (ffr.events && ffr.events.length) {
+    html += `<div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Fil du match</div>
+      <div style="display:flex;flex-direction:column;gap:5px;max-height:260px;overflow-y:auto;">
+        ${ffr.events.map(e => `
+          <div style="display:flex;align-items:center;gap:8px;background:#0f0f0f;border-radius:8px;padding:6px 10px;border-left:3px solid ${e.equipe === 'club' ? '#FECC00' : '#378ADD'};">
+            <div style="font-size:11px;color:#666;width:32px;">${e.minute}'</div>
+            <div style="font-size:14px;">${e.picto}</div>
+            <div style="flex:1;font-size:11px;color:#ccc;">${e.joueur}</div>
+            ${e.points ? `<div style="font-size:11px;font-weight:700;color:${e.equipe === 'club' ? '#FECC00' : '#378ADD'};">+${e.points}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>`
+  }
+  sec.innerHTML = html
+  c.appendChild(sec)
+}
+
 function renderMatchTab(c, match, persoHist) {
   const persoRow = persoHist.find(h => h.matchKey === match.key)
   const equipe = match.equipe || {}
@@ -5397,6 +5493,15 @@ function renderMatchTab(c, match, persoHist) {
   head.style.cssText = 'background:#FECC00;border-radius:14px;padding:16px 24px;text-align:center;margin-bottom:14px;'
   head.innerHTML = `<div style="font-size:18px;font-weight:900;color:#0f0f0f;">Match ${match.adversaire || match.nom} — ${match.dateLabel || fmtDate(match.date)}</div>`
   c.appendChild(head)
+
+  // Score & événements (lecture seule, données FFR déjà scrapées côté staff)
+  const scorePlaceholder = document.createElement('div')
+  scorePlaceholder.innerHTML = '<div class="empty-msg" style="margin-bottom:14px;">Chargement du score...</div>'
+  c.appendChild(scorePlaceholder)
+  loadFFRScoreReadOnly(match.key).then(ffr => {
+    scorePlaceholder.innerHTML = ''
+    renderScoreSectionMobile(scorePlaceholder, ffr, match)
+  })
 
   // Temps de jeu effectif
   const tje = document.createElement('div')
