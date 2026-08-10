@@ -5235,6 +5235,10 @@ function isMatchSession(h) {
   return combined.includes('match') || /_j\d+/.test(combined)
 }
 
+function getMatchKey(h) {
+  return (h.date || '') + '::' + (h.seance || h.period || 'inconnu')
+}
+
 async function chargerRapportMatch() {
   const c = document.getElementById('rapport-match-content')
   if (!c) return
@@ -5244,152 +5248,237 @@ async function chargerRapportMatch() {
   }
   c.innerHTML = '<div class="empty-msg">Chargement...</div>'
   try {
-    const snap = await getDoc(doc(db, 'statsGPS', joueurActif.id))
-    const s = snap.exists() ? snap.data() : {}
-    const hist = (s.historique || []).filter(h => isMatchSession(h))
-    hist.sort((a, b) => {
+    const [snapPerso, snapCol] = await Promise.all([
+      getDoc(doc(db, 'statsGPS', joueurActif.id)),
+      getDoc(doc(db, 'statsGPS', '_collectif'))
+    ])
+    const sPerso = snapPerso.exists() ? snapPerso.data() : {}
+    const sCol = snapCol.exists() ? snapCol.data() : {}
+    const colJoueurs = sCol.joueurs || []
+
+    const matches = new Map()
+    colJoueurs.forEach(j => {
+      (j.historique || []).forEach(h => {
+        if (!isMatchSession(h)) return
+        const key = getMatchKey(h)
+        if (!matches.has(key)) {
+          matches.set(key, { key, date: h.date, nom: h.seance || h.period || 'Match', joueurs: [] })
+        }
+        matches.get(key).joueurs.push({ ...h, nomGPS: j.nomGPS, posteGPS: j.posteGPS })
+      })
+    })
+
+    const allMatches = [...matches.values()].sort((a, b) => {
       const da = parseDate(a.date), db = parseDate(b.date)
       if (!da || !db) return 0
       return db - da
     })
-    renderRapportMatch(c, hist)
+
+    const persoHist = (sPerso.historique || []).filter(h => isMatchSession(h)).map(h => ({ ...h, matchKey: getMatchKey(h) }))
+
+    let selectedKey = window.__selectedMatchKey
+    if (!selectedKey || !matches.has(selectedKey)) {
+      selectedKey = persoHist.length ? persoHist[0].matchKey : (allMatches[0]?.key || null)
+    }
+    window.__selectedMatchKey = selectedKey
+    window.__allMatches = allMatches
+    window.__persoHist = persoHist
+
+    renderRapportMatch(c, allMatches, persoHist, selectedKey)
   } catch (e) {
     console.error('Erreur chargement rapport match:', e)
     c.innerHTML = '<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'
   }
 }
 
-function renderRapportMatch(c, hist) {
+function fmtNum(n, d = 0) {
+  return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d).replace(/\.0+$/, '')
+}
+function fmtKm(m) {
+  return (m == null || isNaN(m)) ? '—' : (m / 1000).toFixed(2) + ' km'
+}
+function fmtMin(s) {
+  if (s == null || isNaN(s)) return '—'
+  const m = Math.floor(s / 60)
+  const sec = Math.round(s % 60)
+  return m + 'min' + (sec ? ' ' + sec + 's' : '')
+}
+function fmtDate(str) {
+  const d = parseDate(str)
+  if (!d) return str || '—'
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
+}
+
+window.setRapportMatchTab = function(tab) {
+  window.__rapportMatchTab = tab
+  renderRapportMatch(document.getElementById('rapport-match-content'), window.__allMatches, window.__persoHist, window.__selectedMatchKey)
+}
+
+window.selectRapportMatch = function(key) {
+  window.__selectedMatchKey = key
+  renderRapportMatch(document.getElementById('rapport-match-content'), window.__allMatches, window.__persoHist, key)
+}
+
+function calcMoyennesMatch(joueurs) {
+  const n = joueurs.length || 1
+  const sum = key => joueurs.reduce((acc, j) => acc + (j[key] || 0), 0)
+  return {
+    distTot: sum('distTot') / n,
+    distHI: sum('distHI') / n,
+    vmax: Math.max(...joueurs.map(j => j.vmax || 0)),
+    load: sum('load') / n,
+    accB2: sum('accB2') / n,
+    accB3: sum('accB3') / n,
+    duree: sum('duree') / n
+  }
+}
+
+function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
   c.innerHTML = ''
-  if (hist.length === 0) {
+  if (!allMatches.length) {
     c.innerHTML = '<div class="empty-msg">Aucune donnée de match.</div>'
     return
   }
+  const selectedMatch = allMatches.find(m => m.key === selectedKey) || allMatches[0]
+  const persoRow = persoHist.find(h => h.matchKey === selectedKey)
+  const tab = window.__rapportMatchTab || (persoRow ? 'match' : 'collectif')
 
-  const fmtNum = (n, d = 0) => (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d).replace(/\\.0+$/, '')
-  const fmtKm = (m) => (m == null || isNaN(m)) ? '—' : (m / 1000).toFixed(2) + ' km'
-  const fmtMin = (s) => {
-    if (s == null || isNaN(s)) return '—'
-    const m = Math.floor(s / 60)
-    const sec = Math.round(s % 60)
-    return m + 'min' + (sec ? ' ' + sec + 's' : '')
+  const header = document.createElement('div')
+  header.style.cssText = 'margin-bottom:12px;'
+  header.innerHTML = `
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Match analysé</div>
+      <select onchange="selectRapportMatch(this.value)" style="width:100%;background:#0f0f0f;border:1px solid #333;border-radius:6px;color:#fff;padding:8px 10px;font-size:13px;outline:none;">
+        ${allMatches.map(m => `<option value="${m.key}" ${m.key === selectedKey ? 'selected' : ''}>${fmtDate(m.date)} — ${m.nom}</option>`).join('')}
+      </select>
+    </div>
+    <div class="tabs" style="display:flex;gap:4px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:3px;">
+      <button class="tab-btn" id="tab-match-btn" onclick="setRapportMatchTab('match')" style="flex:1;padding:6px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:#666;${tab === 'match' || tab === 'collectif' ? 'background:#FECC00;color:#0f0f0f;' : ''}">🏉 Stats Match</button>
+      <button class="tab-btn" id="tab-post-btn" onclick="setRapportMatchTab('poste')" style="flex:1;padding:6px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:#666;${tab === 'poste' ? 'background:#FECC00;color:#0f0f0f;' : ''}">👕 Par Poste</button>
+    </div>
+  `
+  c.appendChild(header)
+
+  if (tab === 'match' || tab === 'collectif') {
+    if (persoRow) {
+      renderMatchKPI(c, persoRow, `Mes stats — ${fmtDate(selectedMatch.date)}`, false)
+    } else {
+      const moyennes = calcMoyennesMatch(selectedMatch.joueurs)
+      const info = document.createElement('div')
+      info.style.cssText = 'background:#1D9E7511;border:1px solid #1D9E7533;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#1D9E75;'
+      info.textContent = `Tu n'as pas participé à ce match. Voici les stats collectives.`
+      c.appendChild(info)
+      renderMatchKPI(c, moyennes, `Stats collectives — ${fmtDate(selectedMatch.date)}`, true)
+    }
+  } else if (tab === 'poste') {
+    renderParPoste(c, selectedMatch)
   }
-  const fmtDate = (str) => {
-    const d = parseDate(str)
-    if (!d) return str || '—'
-    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
-  }
+}
 
-  const last = hist[0]
-  const totalDist = hist.reduce((acc, h) => acc + (h.distTot || 0), 0)
-  const totalHI = hist.reduce((acc, h) => acc + (h.distHI || 0), 0)
-  const totalLoad = hist.reduce((acc, h) => acc + (h.load || 0), 0)
-  const totalAcc = hist.reduce((acc, h) => acc + ((h.accB2 || 0) + (h.accB3 || 0)), 0)
-  const avgVmax = hist.length ? hist.reduce((acc, h) => acc + (h.vmax || 0), 0) / hist.length : 0
-  const totalDuree = hist.reduce((acc, h) => acc + ((h.duree || 0) * 60), 0)
-
-  // HERO — dernier match
-  const hero = document.createElement('div')
-  hero.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
-  hero.innerHTML = `
-    <div style="font-size:11px;color:#FECC00;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Dernier match — ${fmtDate(last.date)}</div>
-    <div style="font-size:13px;color:#aaa;margin-bottom:12px;">${last.seance || last.period || 'Match'}</div>
+function renderMatchKPI(c, data, titre, isCollectif) {
+  const kpi = document.createElement('div')
+  kpi.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
+  kpi.innerHTML = `
+    <div style="font-size:11px;color:#FECC00;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">${titre}</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtKm(last.distTot)}</div>
+        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtKm(data.distTot)}</div>
         <div style="font-size:10px;color:#666;">Distance</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#E24B4A;">${fmtNum(last.distHI, 0)} m</div>
+        <div style="font-size:20px;font-weight:700;color:#E24B4A;">${fmtNum(data.distHI, 0)} m</div>
         <div style="font-size:10px;color:#666;">Distance HI</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#FECC00;">${fmtNum(last.vmax, 1)} km/h</div>
+        <div style="font-size:20px;font-weight:700;color:#FECC00;">${fmtNum(data.vmax, 1)} km/h</div>
         <div style="font-size:10px;color:#666;">Vmax</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#1D9E75;">${fmtNum(last.load, 0)}</div>
+        <div style="font-size:20px;font-weight:700;color:#1D9E75;">${fmtNum(data.load, 0)}</div>
         <div style="font-size:10px;color:#666;">Player Load</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#378ADD;">${fmtNum((last.accB2 || 0) + (last.accB3 || 0), 0)}</div>
+        <div style="font-size:20px;font-weight:700;color:#378ADD;">${fmtNum((data.accB2 || 0) + (data.accB3 || 0), 0)}</div>
         <div style="font-size:10px;color:#666;">Accélérations</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtMin((last.duree || 0) * 60)}</div>
+        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtMin((data.duree || 0) * 60)}</div>
         <div style="font-size:10px;color:#666;">Durée</div>
       </div>
     </div>
   `
-  c.appendChild(hero)
+  c.appendChild(kpi)
 
-  // TABLEAU HISTORIQUE
-  const wrap = document.createElement('div')
-  wrap.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;overflow-x:auto;'
-  const table = document.createElement('table')
-  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px;'
-  table.innerHTML = `
-    <thead>
-      <tr style="color:#888;border-bottom:1px solid #2a2a2a;">
-        <th style="text-align:left;padding:6px 4px;">Date</th>
-        <th style="text-align:right;padding:6px 4px;">Dist.</th>
-        <th style="text-align:right;padding:6px 4px;">HI</th>
-        <th style="text-align:right;padding:6px 4px;">Vmax</th>
-        <th style="text-align:right;padding:6px 4px;">Load</th>
-        <th style="text-align:right;padding:6px 4px;">Acc</th>
-        <th style="text-align:right;padding:6px 4px;">Durée</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${hist.slice(0, 10).map(h => `
-        <tr style="border-bottom:1px solid #222;">
-          <td style="padding:8px 4px;color:#fff;">${fmtDate(h.date)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#aaa;">${fmtKm(h.distTot)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#E24B4A;">${fmtNum(h.distHI, 0)}m</td>
-          <td style="text-align:right;padding:8px 4px;color:#FECC00;">${fmtNum(h.vmax, 1)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#1D9E75;">${fmtNum(h.load, 0)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#378ADD;">${fmtNum((h.accB2 || 0) + (h.accB3 || 0), 0)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#aaa;">${fmtMin((h.duree || 0) * 60)}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  `
-  wrap.appendChild(table)
-  c.appendChild(wrap)
+  if (isCollectif) return
+  // Si stats perso, on ajoute le classement du joueur vs le collectif sur ce match
+  const selectedMatch = window.__allMatches.find(m => m.key === window.__selectedMatchKey) || window.__allMatches[0]
+  const joueurs = (selectedMatch?.joueurs || []).slice().sort((a, b) => (b.distTot || 0) - (a.distTot || 0))
+  const monIndex = joueurs.findIndex(j => (j.distTot || 0) === (data.distTot || 0) && (j.vmax || 0) === (data.vmax || 0))
+  if (monIndex >= 0) {
+    const rankDiv = document.createElement('div')
+    rankDiv.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
+    rankDiv.innerHTML = `
+      <div style="font-size:11px;color:#FECC00;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Classement équipe</div>
+      <div style="font-size:13px;color:#aaa;margin-bottom:10px;">Tu es <strong style="color:#FECC00;">${monIndex + 1}e / ${joueurs.length}</strong> en distance parcourue.</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${joueurs.slice(0, 5).map((j, i) => `
+          <div style="display:flex;align-items:center;gap:8px;background:#0f0f0f;border-radius:6px;padding:6px 8px;font-size:11px;">
+            <span style="color:#888;min-width:22px;">${i + 1}.</span>
+            <span style="flex:1;color:${i === monIndex ? '#FECC00' : '#aaa'};font-weight:${i === monIndex ? '700' : '400'};">${j.nomGPS || '—'}</span>
+            <span style="color:#fff;font-weight:600;">${fmtKm(j.distTot)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `
+    c.appendChild(rankDiv)
+  }
+}
 
-  // CUMULS
-  const cumul = document.createElement('div')
-  cumul.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;'
-  cumul.innerHTML = `
-    <div style="font-size:11px;color:#FECC00;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Cumuls saison (${hist.length} matchs)</div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
-      <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:#fff;">${fmtKm(totalDist)}</div>
-        <div style="font-size:10px;color:#666;">Distance totale</div>
+function renderParPoste(c, match) {
+  const byPoste = {}
+  match.joueurs.forEach(j => {
+    const poste = j.posteGPS || 'Autre'
+    if (!byPoste[poste]) byPoste[poste] = []
+    byPoste[poste].push(j)
+  })
+
+  const section = document.createElement('div')
+  section.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
+
+  Object.keys(byPoste).sort().forEach(poste => {
+    const joueurs = byPoste[poste]
+    const moy = calcMoyennesMatch(joueurs)
+    const posteDiv = document.createElement('div')
+    posteDiv.style.cssText = 'margin-bottom:14px;border-bottom:1px solid #222;padding-bottom:10px;'
+    posteDiv.innerHTML = `
+      <div style="font-size:12px;font-weight:700;color:#FECC00;margin-bottom:8px;">${poste} <span style="font-size:10px;color:#666;font-weight:400;">(${joueurs.length})</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+        <div style="background:#0f0f0f;border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:14px;font-weight:700;color:#fff;">${fmtKm(moy.distTot)}</div>
+          <div style="font-size:9px;color:#666;">Dist.</div>
+        </div>
+        <div style="background:#0f0f0f;border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:14px;font-weight:700;color:#E24B4A;">${fmtNum(moy.distHI, 0)}m</div>
+          <div style="font-size:9px;color:#666;">HI</div>
+        </div>
+        <div style="background:#0f0f0f;border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:14px;font-weight:700;color:#FECC00;">${fmtNum(moy.vmax, 1)}</div>
+          <div style="font-size:9px;color:#666;">Vmax</div>
+        </div>
       </div>
-      <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:#E24B4A;">${fmtNum(totalHI, 0)} m</div>
-        <div style="font-size:10px;color:#666;">HI totale</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${joueurs.slice().sort((a, b) => (b.distTot || 0) - (a.distTot || 0)).map(j => `
+          <div style="display:flex;align-items:center;justify-content:space-between;background:#0f0f0f;border-radius:6px;padding:6px 8px;font-size:11px;">
+            <span style="color:#aaa;">${j.nomGPS || '—'}</span>
+            <span style="color:#fff;font-weight:600;">${fmtKm(j.distTot)}</span>
+          </div>
+        `).join('')}
       </div>
-      <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:#FECC00;">${fmtNum(avgVmax, 1)} km/h</div>
-        <div style="font-size:10px;color:#666;">Vmax moyenne</div>
-      </div>
-      <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:#1D9E75;">${fmtNum(totalLoad, 0)}</div>
-        <div style="font-size:10px;color:#666;">Load total</div>
-      </div>
-      <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:#378ADD;">${fmtNum(totalAcc, 0)}</div>
-        <div style="font-size:10px;color:#666;">Accélérations</div>
-      </div>
-      <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:18px;font-weight:700;color:#fff;">${fmtMin(totalDuree)}</div>
-        <div style="font-size:10px;color:#666;">Durée totale</div>
-      </div>
-    </div>
-  `
-  c.appendChild(cumul)
+    `
+    section.appendChild(posteDiv)
+  })
+
+  c.appendChild(section)
 }
 
 // ===== RENDU GPS COMPLET =====
