@@ -5077,8 +5077,36 @@
     // Corriger les données si nécessaire
     function corrigerDonneesGPS(historique) {
       if (!historique) return []
+      const isSessionLike = (pn) => {
+        const p = String(pn || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+        return p === 'session' || p.includes('session') || p.includes('complet')
+      }
+      const isSessionEntry = (h) => {
+        if (isSessionLike(h.period)) return true
+        const pNames = h.periodNames || (h.period ? [h.period] : [])
+        return pNames.length > 0 && pNames.every(pn => isSessionLike(pn))
+      }
+      const byDate = {}
+      historique.forEach(h => { (byDate[h.date] ||= []).push(h) })
+
       return historique.map(h => {
         const hCorr = { ...h }
+        // Nettoyer periodNames : exclure les périodes "Session" / résumé
+        if (Array.isArray(hCorr.periodNames)) {
+          hCorr.periodNames = hCorr.periodNames.filter(pn => !isSessionLike(pn))
+        }
+        // Nettoyer perPeriod
+        if (hCorr.perPeriod && typeof hCorr.perPeriod === 'object') {
+          const perPeriodClean = {}
+          Object.keys(hCorr.perPeriod).forEach(pn => {
+            if (!isSessionLike(pn)) perPeriodClean[pn] = hCorr.perPeriod[pn]
+          })
+          hCorr.perPeriod = perPeriodClean
+        }
+        // Si period est une Session, prendre le premier periodName valide
+        if (isSessionLike(hCorr.period)) {
+          hCorr.period = hCorr.periodNames?.[0] || ''
+        }
         // Fallback: dériver period depuis periodNames si manquant
         if (!hCorr.period && Array.isArray(hCorr.periodNames) && hCorr.periodNames.length > 0) {
           hCorr.period = hCorr.periodNames[0]
@@ -5094,6 +5122,13 @@
           if (isFinite(dureeCalc) && dureeCalc > 0) hCorr.duree = dureeCalc
         }
         return hCorr
+      }).filter((hCorr, i) => {
+        // Si l'entrée d'origine est une Session et qu'il y a une autre activité
+        // non-Session le même jour, on la supprime pour éviter le double comptage
+        const original = historique[i]
+        const autresMemeJour = (byDate[original.date] || []).filter(o => o !== original)
+        if (isSessionEntry(original) && autresMemeJour.some(o => !isSessionEntry(o))) return false
+        return true
       })
     }
     
@@ -5391,8 +5426,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
       // ===== FONCTIONS DE CALCUL DES STATS PAR PERIODE =====
       function isValidPeriod(period) {
-        const validPeriods = ['Collectif', 'Extra', 'Rehab', 'Séparé', 'Vitesse', 'QT1', 'QT2', 'QT3', 'QT4']
-        return validPeriods.some(vp => period.toLowerCase().includes(vp.toLowerCase()))
+        if (!period) return false
+        const p = String(period).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+        if (p === 'autre' || p.includes('session') || p.includes('complet')) return false
+        return true
       }
 
       function calculerStatsParPeriode(hist) {
