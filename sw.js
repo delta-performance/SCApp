@@ -1,5 +1,5 @@
 const CACHE_NAME = 'sca-player-v3';
-const APP_VERSION = '1.0.28';
+const APP_VERSION = '1.0.33';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -46,16 +46,24 @@ self.addEventListener('fetch', e => {
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then(c => c.put(req, copy));
+        if (res.ok && res.type !== 'error') {
+          // Normaliser la requête de cache : ignorer le cache-busting "?v="
+          const cacheUrl = new URL(req.url);
+          cacheUrl.searchParams.delete('v');
+          const cacheReq = new Request(cacheUrl.toString(), { mode: 'navigate', credentials: req.credentials });
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(cacheReq, copy).catch(() => {}));
+        }
         return res;
       }).catch(() => caches.match(req).then(r => r || new Response('Hors ligne')))
     );
   } else {
     e.respondWith(
       fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then(c => c.put(req, copy));
+        if (res.ok && res.type !== 'error') {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(req, copy).catch(() => {}));
+        }
         return res;
       }).catch(() => caches.match(req))
     );
