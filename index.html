@@ -5236,7 +5236,7 @@ function isMatchSession(h) {
 }
 
 function getMatchKey(h) {
-  return (h.date || '') + '::' + (h.seance || h.period || 'inconnu')
+  return (h.date || '') + '_' + (h.seance || h.period || 'inconnu')
 }
 
 function fmtNum(n, d = 0) {
@@ -5302,35 +5302,42 @@ async function chargerRapportMatch() {
     ])
     const sPerso = snapPerso.exists() ? snapPerso.data() : {}
     const sCol = snapCol.exists() ? snapCol.data() : {}
-    const colJoueurs = sCol.joueurs || []
 
-    const matches = new Map()
-    colJoueurs.forEach(j => {
-      (j.historique || []).forEach(h => {
-        if (!isMatchSession(h)) return
-        const key = getMatchKey(h)
-        if (!matches.has(key)) {
-          matches.set(key, { key, date: h.date, nom: h.seance || h.period || 'Match', joueurs: [] })
-        }
-        matches.get(key).joueurs.push({ ...h, nomGPS: j.nomGPS, posteGPS: j.posteGPS })
+    // Nouveau : stats communes par match calculées dans gps-match.html
+    const rawMatchs = sCol.matchs || {}
+    let allMatches = Object.values(rawMatchs)
+      .map(m => ({ ...m, key: m.matchKey, date: m.date || '', nom: m.adversaire || m.theme || m.matchKey }))
+      .sort((a, b) => {
+        const da = parseDate(a.date), db = parseDate(b.date)
+        if (!da || !db) return 0
+        return db - da
       })
-    })
 
-    const allMatches = [...matches.values()].sort((a, b) => {
-      const da = parseDate(a.date), db = parseDate(b.date)
-      if (!da || !db) return 0
-      return db - da
-    })
+    // Fallback legacy si matchs vides (ancienne structure)
+    if (!allMatches.length) {
+      const colJoueurs = sCol.joueurs || []
+      const matches = new Map()
+      colJoueurs.forEach(j => {
+        (j.historique || []).forEach(h => {
+          if (!isMatchSession(h)) return
+          const key = getMatchKey(h)
+          if (!matches.has(key)) matches.set(key, { key, date: h.date, nom: h.seance || h.period || 'Match', joueurs: [] })
+          matches.get(key).joueurs.push({ ...h, nomGPS: j.nomGPS, posteGPS: j.posteGPS })
+        })
+      })
+      allMatches = [...matches.values()]
+    }
 
     const persoHist = (sPerso.historique || []).filter(h => isMatchSession(h)).map(h => ({ ...h, matchKey: getMatchKey(h) }))
 
     let selectedKey = window.__selectedMatchKey
-    if (!selectedKey || !matches.has(selectedKey)) {
+    if (!selectedKey || !rawMatchs[selectedKey]) {
       selectedKey = persoHist.length ? persoHist[0].matchKey : (allMatches[0]?.key || null)
     }
     window.__selectedMatchKey = selectedKey
     window.__allMatches = allMatches
     window.__persoHist = persoHist
+    window.__rawMatchs = rawMatchs
     window.__rapportMatchTab = window.__rapportMatchTab || 'match'
 
     renderRapportMatch(c, allMatches, persoHist, selectedKey)
@@ -5383,21 +5390,24 @@ function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
 
 function renderMatchTab(c, match, persoHist) {
   const persoRow = persoHist.find(h => h.matchKey === match.key)
-  const joueurs = match.joueurs.map(calcStats).sort((a, b) => (b.distTot || 0) - (a.distTot || 0))
-  const equipe = calcMoyennes(joueurs)
+  const equipe = match.equipe || {}
 
   // Header jaune comme gps-match.html
   const head = document.createElement('div')
-  head.style.cssText = 'background:#FECC00;border-radius:14px;padding:14px 16px;text-align:center;margin-bottom:14px;'
-  head.innerHTML = `<div style="font-size:18px;font-weight:900;color:#0f0f0f;">${match.nom} — ${fmtDate(match.date)}</div>`
+  head.style.cssText = 'background:#FECC00;border-radius:14px;padding:16px 24px;text-align:center;margin-bottom:14px;'
+  head.innerHTML = `<div style="font-size:18px;font-weight:900;color:#0f0f0f;">Match ${match.adversaire || match.nom} — ${match.dateLabel || fmtDate(match.date)}</div>`
   c.appendChild(head)
 
+  // Temps de jeu effectif
+  const tje = document.createElement('div')
+  tje.style.cssText = 'background:#0f0f0f;border:1px solid #2a2a2a;border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;'
+  tje.innerHTML = `<div style="font-size:11px;color:#888;">Temps de jeu effectif moyen</div><div style="font-size:18px;font-weight:700;color:#FECC00;">${match.tje || '—'}</div>`
+  c.appendChild(tje)
+
   if (persoRow) {
-    const moi = calcStats({ ...persoRow, nomGPS: 'Moi' })
-    const idx = joueurs.findIndex(j => j.nomGPS === (joueurActif?.nom || '') && (j.distTot || 0) === (moi.distTot || 0))
     const banner = document.createElement('div')
     banner.style.cssText = 'background:#1D9E7511;border:1px solid #1D9E7533;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#1D9E75;'
-    banner.textContent = `Tu as participé à ce match. Classement distance : ${idx >= 0 ? (idx + 1) + 'e / ' + joueurs.length : '—'}.`
+    banner.textContent = `Tu as participé à ce match (${match.nbJoueurs} joueurs analysés).`
     c.appendChild(banner)
   } else {
     const banner = document.createElement('div')
@@ -5411,73 +5421,90 @@ function renderMatchTab(c, match, persoHist) {
   const kpiTitle = persoRow ? 'Mes stats' : 'Stats collectives'
   renderKPIs(c, kpiData, kpiTitle)
 
-  // WCS (indispo, placeholder style)
-  const wcs = document.createElement('div')
-  wcs.style.cssText = 'background:#FEF9E7;border:1px solid #FECC0044;border-radius:12px;padding:14px;margin-bottom:14px;'
-  wcs.innerHTML = `
-    <div style="font-size:12px;font-weight:900;color:#0f0f0f;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Worstcase Scenario (WCS)</div>
-    <div style="font-size:10px;color:#888;font-style:italic;margin-bottom:12px;">Distance max sur 1 / 3 / 5 min (non disponible sur mobile)</div>
-    <div style="display:flex;justify-content:space-around;gap:10px;">
-      <div style="text-align:center;"><div style="font-size:28px;font-weight:900;color:#0f0f0f;">—</div><div style="font-size:10px;color:#888;">1 min</div></div>
-      <div style="text-align:center;"><div style="font-size:28px;font-weight:900;color:#0f0f0f;">—</div><div style="font-size:10px;color:#888;">3 min</div></div>
-      <div style="text-align:center;"><div style="font-size:28px;font-weight:900;color:#0f0f0f;">—</div><div style="font-size:10px;color:#888;">5 min</div></div>
+  // WCS
+  const wcs = match.wcs || {}
+  const wcsSec = document.createElement('div')
+  wcsSec.style.cssText = 'background:#FEF9E7;border:1px solid #FECC0044;border-radius:12px;padding:18px;margin-bottom:14px;'
+  wcsSec.innerHTML = `
+    <div style="font-size:13px;font-weight:900;color:#0f0f0f;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Worstcase Scenario (WCS)</div>
+    <div style="font-size:10px;color:#888;font-style:italic;margin-bottom:14px;">Distance maximale sur une période de temps (moyenne équipe)</div>
+    <div style="display:flex;justify-content:space-around;gap:12px;flex-wrap:wrap;">
+      <div style="text-align:center;"><div style="font-size:36px;font-weight:900;color:#0f0f0f;">${wcs.wcs1 || '—'}</div><div style="font-size:11px;color:#888;margin-top:4px;">1 min</div></div>
+      <div style="text-align:center;"><div style="font-size:36px;font-weight:900;color:#0f0f0f;">${wcs.wcs3 || '—'}</div><div style="font-size:11px;color:#888;margin-top:4px;">3 min</div></div>
+      <div style="text-align:center;"><div style="font-size:36px;font-weight:900;color:#0f0f0f;">${wcs.wcs5 || '—'}</div><div style="font-size:11px;color:#888;margin-top:4px;">5 min</div></div>
     </div>`
-  c.appendChild(wcs)
+  c.appendChild(wcsSec)
 
-  // Top 3 du match
-  const podium = document.createElement('div')
-  podium.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
-  podium.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Top 3 distance</div>`
-  joueurs.slice(0, 3).forEach((j, i) => {
-    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'
-    const row = document.createElement('div')
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;background:#0f0f0f;border-radius:8px;padding:8px 10px;margin-bottom:6px;'
-    row.innerHTML = `<span style="font-size:18px;width:24px;text-align:center;">${medal}</span><span style="font-size:12px;font-weight:600;flex:1;color:#fff;">${j.nomGPS || '—'}</span><span style="font-size:12px;font-weight:700;color:#FECC00;min-width:48px;text-align:right;">${fmtKm(j.distTot)}</span>`
-    podium.appendChild(row)
+  // Séquences de jeu
+  const seq = match.sequences || {}
+  const seqSec = document.createElement('div')
+  seqSec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:18px;margin-bottom:14px;'
+  const seqDef = [
+    { label: "<40''", val: seq.nb40 || 0, col: '#1D9E75' },
+    { label: ">40'' et <1'", val: seq.nb40_1 || 0, col: '#FECC00' },
+    { label: ">1' et <1'30", val: seq.nb1_130 || 0, col: '#E24B4A' },
+    { label: ">1'30 et <2'", val: seq.nb130_2 || 0, col: '#E24B4A' },
+    { label: ">2'", val: seq.nb2 || 0, col: '#333' }
+  ]
+  seqSec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;">Séquences de jeu (durée) · ${seq.total || 0} séquences</div>`
+  const seqWrap = document.createElement('div')
+  seqWrap.style.cssText = 'display:flex;gap:8px;justify-content:space-around;flex-wrap:wrap;'
+  seqDef.forEach(s => {
+    const b = document.createElement('div')
+    b.style.cssText = `text-align:center;min-width:56px;background:#0f0f0f;border-radius:10px;padding:10px 8px;border:1px solid ${s.col}33;`
+    b.innerHTML = `<div style="font-size:22px;font-weight:800;color:${s.col};">${s.val}</div><div style="font-size:9px;color:#888;margin-top:3px;">${s.label}</div>`
+    seqWrap.appendChild(b)
   })
-  c.appendChild(podium)
+  seqSec.appendChild(seqWrap)
+  c.appendChild(seqSec)
 
-  // Tableau complet des joueurs
-  const tbl = document.createElement('div')
-  tbl.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;overflow-x:auto;'
-  tbl.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Détail par joueur</div>`
-  const table = document.createElement('table')
-  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:11px;'
-  table.innerHTML = `
-    <thead>
-      <tr style="border-bottom:1px solid #2a2a2a;color:#555;">
-        <th style="text-align:left;padding:5px 4px;">Joueur</th>
-        <th style="text-align:right;padding:5px 4px;">Dist</th>
-        <th style="text-align:right;padding:5px 4px;">HI</th>
-        <th style="text-align:right;padding:5px 4px;">Vmax</th>
-        <th style="text-align:right;padding:5px 4px;">Load</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${joueurs.map(j => `
-        <tr style="border-bottom:1px solid #111;">
-          <td style="padding:6px 4px;color:#fff;">${j.nomGPS || '—'}</td>
-          <td style="text-align:right;padding:6px 4px;color:#aaa;">${fmtKm(j.distTot)}</td>
-          <td style="text-align:right;padding:6px 4px;color:#E24B4A;">${fmtNum(j.distHI, 0)}</td>
-          <td style="text-align:right;padding:6px 4px;color:#FECC00;">${fmtNum(j.vmax, 1)}</td>
-          <td style="text-align:right;padding:6px 4px;color:#1D9E75;">${fmtNum(j.load, 0)}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  `
-  tbl.appendChild(table)
-  c.appendChild(tbl)
+  // Tableau récap par QT
+  if (match.qtStats && match.qtStats.length) {
+    const qtSec = document.createElement('div')
+    qtSec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;overflow-x:auto;'
+    qtSec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Récap par QT</div>`
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="border-bottom:1px solid #2a2a2a;color:#555;">
+      <th style="padding:5px 6px;text-align:left;">QT</th>
+      <th style="padding:5px 6px;text-align:right;color:#E24B4A;">Dist</th>
+      <th style="padding:5px 6px;text-align:right;color:#FECC00;">m/min</th>
+      <th style="padding:5px 6px;text-align:right;color:#378ADD;">Vol HI</th>
+      <th style="padding:5px 6px;text-align:right;color:#EF9F27;">Acc</th>
+      <th style="padding:5px 6px;text-align:right;color:#1D9E75;">Vmax</th>
+      <th style="padding:5px 6px;text-align:right;color:#ED93B1;">Ratio</th>
+    </tr></thead><tbody>`
+    match.qtStats.forEach(q => {
+      html += `<tr style="border-bottom:1px solid #111;">
+        <td style="padding:5px 6px;color:#fff;font-weight:600;">${q.qt}</td>
+        <td style="padding:5px 6px;text-align:right;color:#E24B4A;">${fmtKm(q.distTot)}</td>
+        <td style="padding:5px 6px;text-align:right;color:#FECC00;font-weight:600;">${fmtNum(q.mMin, 1)}</td>
+        <td style="padding:5px 6px;text-align:right;color:#378ADD;">${fmtNum(q.volumeHI, 0)}</td>
+        <td style="padding:5px 6px;text-align:right;color:#EF9F27;">${fmtNum(q.accB23, 0)}</td>
+        <td style="padding:5px 6px;text-align:right;color:#1D9E75;">${fmtNum(q.vmax, 1)}</td>
+        <td style="padding:5px 6px;text-align:right;color:#ED93B1;">—</td>
+      </tr>`
+    })
+    html += `</tbody></table>`
+    qtSec.innerHTML += html
+    c.appendChild(qtSec)
+  }
+
+  // Top 3 du match (anonymisé)
+  if (match.top3 && match.top3.distTot && match.top3.distTot.length) {
+    const podium = document.createElement('div')
+    podium.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
+    podium.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Top 3 distance</div>`
+    const medal = ['🥇', '🥈', '🥉']
+    match.top3.distTot.forEach((j, i) => {
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;background:#0f0f0f;border-radius:8px;padding:8px 10px;margin-bottom:6px;'
+      row.innerHTML = `<span style="font-size:18px;width:24px;text-align:center;">${medal[i]}</span><span style="font-size:12px;font-weight:600;flex:1;color:#fff;">Joueur ${j.rang}</span><span style="font-size:12px;font-weight:700;color:#FECC00;min-width:48px;text-align:right;">${fmtKm(j.valeur)}</span>`
+      podium.appendChild(row)
+    })
+    c.appendChild(podium)
+  }
 }
 
 function renderPosteTab(c, match) {
-  const byGroupe = {}
-  const joueurs = match.joueurs.map(calcStats)
-  joueurs.forEach(j => {
-    const gr = getRapportPosteGroupe(j.posteGPS) || 'Autre'
-    if (!byGroupe[gr]) byGroupe[gr] = []
-    byGroupe[gr].push(j)
-  })
-
   const ordre = ['1ère ligne','2ème ligne','3ème ligne','Demi de mêlée',"Demi d'ouverture",'Centre','Triangle arrière','Autre']
   const metriques = [
     {k:'distHI',l:'Dist HI',u:'m',c:'#E24B4A',fn:m=>m.distHI},
@@ -5487,10 +5514,11 @@ function renderPosteTab(c, match) {
     {k:'vmax',l:'Vmax',u:'km/h',c:'#1D9E75',fn:m=>m.vmax},
     {k:'load',l:'Charge',u:'UA',c:'#7F77DD',fn:m=>m.load},
   ]
+  const posteStats = match.posteStats || {}
 
   // Barres comparaison inter-postes
   metriques.forEach(met => {
-    const vals = ordre.map(gr => byGroupe[gr] ? met.fn(calcMoyennes(byGroupe[gr])) : 0)
+    const vals = ordre.map(gr => posteStats[gr] ? met.fn(posteStats[gr]) : 0)
     const maxV = Math.max(...vals, 1)
     const sec = document.createElement('div')
     sec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:12px;'
@@ -5498,10 +5526,9 @@ function renderPosteTab(c, match) {
     const bars = document.createElement('div')
     bars.style.cssText = 'display:flex;flex-direction:column;gap:6px;'
     ordre.forEach((gr, i) => {
-      if (!byGroupe[gr]) return
+      if (!posteStats[gr]) return
       const val = vals[i]
       const pct = Math.max(2, Math.round(val / maxV * 100))
-      const nbJ = byGroupe[gr].length
       const row = document.createElement('div')
       row.style.cssText = 'display:flex;align-items:center;gap:8px;'
       row.innerHTML = `
@@ -5509,8 +5536,7 @@ function renderPosteTab(c, match) {
         <div style="flex:1;height:16px;background:#111;border-radius:8px;overflow:hidden;position:relative;">
           <div style="height:100%;width:${pct}%;background:${met.c};border-radius:8px;"></div>
         </div>
-        <div style="width:42px;font-size:11px;color:${met.c};font-weight:700;text-align:left;">${fmtNum(val, val < 10 ? 1 : 0)}</div>
-        <div style="width:24px;font-size:9px;color:#444;text-align:left;">${nbJ}j</div>`
+        <div style="width:42px;font-size:11px;color:${met.c};font-weight:700;text-align:left;">${fmtNum(val, val < 10 ? 1 : 0)}</div>`
       bars.appendChild(row)
     })
     sec.appendChild(bars)
@@ -5523,30 +5549,27 @@ function renderPosteTab(c, match) {
   tblSec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Tableau récap par poste</div>`
   let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="border-bottom:1px solid #2a2a2a;">
     <th style="padding:5px 6px;text-align:left;color:#555;font-size:9px;">Poste</th>
-    <th style="padding:5px 6px;text-align:center;color:#555;font-size:9px;">N</th>
     ${metriques.map(m=>`<th style="padding:5px 6px;text-align:right;color:${m.c};font-size:9px;">${m.l}</th>`).join('')}
   </tr></thead><tbody>`
   ordre.forEach(gr => {
-    const g = byGroupe[gr]; if (!g) return
-    const m = calcMoyennes(g)
+    const ps = posteStats[gr]; if (!ps) return
     html += `<tr style="border-bottom:1px solid #111;">
       <td style="padding:5px 6px;font-weight:600;color:#ccc;">${gr}</td>
-      <td style="padding:5px 6px;text-align:center;color:#555;">${g.length}</td>
-      ${metriques.map(met=>`<td style="padding:5px 6px;text-align:right;color:${met.c};font-weight:600;">${fmtNum(met.fn(m), met.k==='vmax' || met.k==='mMin' ? 1 : 0)}</td>`).join('')}
+      ${metriques.map(met=>`<td style="padding:5px 6px;text-align:right;color:${met.c};font-weight:600;">${fmtNum(met.fn(ps), met.k==='vmax' || met.k==='mMin' ? 1 : 0)}</td>`).join('')}
     </tr>`
   })
   html += `</tbody></table>`
   tblSec.innerHTML += html
   c.appendChild(tblSec)
 
-  // Radar avants vs 3/4 (simplifié)
+  // Radar avants vs 3/4
   const avantNoms = ['1ère ligne','2ème ligne','3ème ligne']
   const troisQNoms = ['Demi de mêlée',"Demi d'ouverture",'Centre','Triangle arrière']
-  const avantRows = joueurs.filter(j => avantNoms.includes(getRapportPosteGroupe(j.posteGPS)))
-  const troisQRows = joueurs.filter(j => troisQNoms.includes(getRapportPosteGroupe(j.posteGPS)))
-  if (avantRows.length && troisQRows.length) {
-    const mAv = calcMoyennes(avantRows)
-    const m3Q = calcMoyennes(troisQRows)
+  const avantStats = avantNoms.map(gr => posteStats[gr]).filter(Boolean)
+  const troisQStats = troisQNoms.map(gr => posteStats[gr]).filter(Boolean)
+  if (avantStats.length && troisQStats.length) {
+    const mAv = calcMoyennes(avantStats)
+    const m3Q = calcMoyennes(troisQStats)
     const radar = document.createElement('div')
     radar.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:12px;'
     radar.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Radar Avants / 3/4</div>`
@@ -5555,7 +5578,7 @@ function renderPosteTab(c, match) {
     can.style.cssText = 'width:100%;max-width:320px;height:auto;display:block;margin:0 auto;'
     radar.appendChild(can)
     c.appendChild(radar)
-    drawRadarSimple(can, mAv, m3Q, ['Dist HI','m/min','Vol HI','Acc','Vmax','Charge'], ['#FECC00','#378ADD'])
+    drawRadarSimple(can, mAv, m3Q, ['Dist HI','m/min','Vol HI','Acc','Vmax','Charge'], ['#FECC00','#E24B4A'])
   }
 }
 
