@@ -5551,12 +5551,6 @@ function renderMatchTab(c, match, persoHist) {
     renderScoreSectionMobile(scorePlaceholder, ffr, match)
   })
 
-  // Temps de jeu effectif
-  const tje = document.createElement('div')
-  tje.style.cssText = 'background:#0f0f0f;border:1px solid #2a2a2a;border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;'
-  tje.innerHTML = `<div style="font-size:11px;color:#888;">Temps de jeu effectif moyen</div><div style="font-size:18px;font-weight:700;color:#FECC00;">${match.tje || '—'}</div>`
-  c.appendChild(tje)
-
   if (persoRow) {
     const banner = document.createElement('div')
     banner.style.cssText = 'background:#1D9E7511;border:1px solid #1D9E7533;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#1D9E75;'
@@ -5568,11 +5562,6 @@ function renderMatchTab(c, match, persoHist) {
     banner.textContent = `Tu n'as pas participé à ce match. Affichage des stats collectives.`
     c.appendChild(banner)
   }
-
-  // KPI match / perso
-  const kpiData = persoRow ? calcStats(persoRow) : equipe
-  const kpiTitle = persoRow ? 'Mes stats' : 'Stats collectives'
-  renderKPIs(c, kpiData, kpiTitle)
 
   // WCS
   const wcs = match.wcs || {}
@@ -5611,39 +5600,19 @@ function renderMatchTab(c, match, persoHist) {
   seqSec.appendChild(seqWrap)
   c.appendChild(seqSec)
 
-  // Graphiques par QT (comme gps-match.html)
+  // Graphiques par QT (m/min, HI/min, temps de jeu effectif) — comme gps-match.html
   if (match.qtStats && match.qtStats.length) {
     renderQTBarChart(c, match.qtStats, 'mMin', 'm/min', 'm/min', '#FECC00')
-    renderQTBarChart(c, match.qtStats, 'distTot', 'Distance', 'm', '#E24B4A')
-    renderQTBarChart(c, match.qtStats, 'volumeHI', 'Volume HI', 'UA', '#378ADD')
-    renderQTBarChart(c, match.qtStats, 'accB23', 'Acc B2+B3', 'eff', '#EF9F27')
-    renderQTBarChart(c, match.qtStats, 'vmax', 'Vmax', 'km/h', '#1D9E75')
+    renderQTBarChart(c, match.qtStats, 'hiMin', 'HI/min', 'm/min', '#EF9F27')
+    renderQTBarChart(c, match.qtStats, 'tjeSec', 'Temps de jeu effectif', 'sec', '#378ADD')
 
-    // Tableau récap par QT
-    const qtSec = document.createElement('div')
-    qtSec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;overflow-x:auto;'
-    qtSec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Récap par QT</div>`
-    let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="border-bottom:1px solid #2a2a2a;color:#555;">
-      <th style="padding:5px 6px;text-align:left;">QT</th>
-      <th style="padding:5px 6px;text-align:right;color:#E24B4A;">Dist</th>
-      <th style="padding:5px 6px;text-align:right;color:#FECC00;">m/min</th>
-      <th style="padding:5px 6px;text-align:right;color:#378ADD;">Vol HI</th>
-      <th style="padding:5px 6px;text-align:right;color:#EF9F27;">Acc</th>
-      <th style="padding:5px 6px;text-align:right;color:#1D9E75;">Vmax</th>
-    </tr></thead><tbody>`
-    match.qtStats.forEach(q => {
-      html += `<tr style="border-bottom:1px solid #111;">
-        <td style="padding:5px 6px;color:#fff;font-weight:600;">${q.qt}</td>
-        <td style="padding:5px 6px;text-align:right;color:#E24B4A;">${fmtKm(q.distTot)}</td>
-        <td style="padding:5px 6px;text-align:right;color:#FECC00;font-weight:600;">${fmtNum(q.mMin, 1)}</td>
-        <td style="padding:5px 6px;text-align:right;color:#378ADD;">${fmtNum(q.volumeHI, 0)}</td>
-        <td style="padding:5px 6px;text-align:right;color:#EF9F27;">${fmtNum(q.accB23, 0)}</td>
-        <td style="padding:5px 6px;text-align:right;color:#1D9E75;">${fmtNum(q.vmax, 1)}</td>
-      </tr>`
-    })
-    html += `</tbody></table>`
-    qtSec.innerHTML += html
-    c.appendChild(qtSec)
+    // Temps de jeu effectif total (mm:ss), même calcul que Stats Match
+    const tjeTotal = document.createElement('div')
+    tjeTotal.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:18px;margin-bottom:14px;text-align:center;'
+    tjeTotal.innerHTML = `
+      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Temps de jeu effectif total</div>
+      <div style="font-size:48px;font-weight:900;color:#FECC00;">${match.tje || '—'}</div>`
+    c.appendChild(tjeTotal)
   }
 
   // Top 3 du match (anonymisé)
