@@ -5338,9 +5338,13 @@ async function chargerRapportMatch() {
     if (!selectedKey || !rawMatchs[selectedKey]) {
       selectedKey = persoHist.length ? persoHist[0].matchKey : (allMatches[0]?.key || null)
     }
+    // Stats individuelles par match (calculées depuis les données brutes côté gps-match.html)
+    const persoMatchs = sPerso.matchs || {}
+
     window.__selectedMatchKey = selectedKey
     window.__allMatches = allMatches
     window.__persoHist = persoHist
+    window.__persoMatchs = persoMatchs
     window.__rawMatchs = rawMatchs
     window.__ffrCache = window.__ffrCache || {}
     window.__rapportMatchTab = window.__rapportMatchTab || 'match'
@@ -5441,7 +5445,7 @@ function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
 
   if (tab === 'match') renderMatchTab(c, selectedMatch, persoHist)
   else if (tab === 'poste') renderPosteTab(c, selectedMatch)
-  else renderIndividuelTab(c, persoHist)
+  else renderIndividuelTab(c, persoHist, window.__persoMatchs || {})
 }
 
 function renderQTBarChart(c, qtStats, field, title, unit, color) {
@@ -5803,7 +5807,7 @@ function renderKPIs(c, data, titre) {
   c.appendChild(kpi)
 }
 
-function renderIndividuelTab(c, persoHist) {
+function renderIndividuelTab(c, persoHist, persoMatchs) {
   if (!persoHist.length) {
     c.innerHTML += '<div class="empty-msg" style="margin-top:20px;">Aucune donnée individuelle de match.</div>'
     return
@@ -5814,6 +5818,17 @@ function renderIndividuelTab(c, persoHist) {
     return db - da
   })
   const last = hist[0]
+  // Récupérer les stats détaillées du dernier match depuis persoMatchs (données brutes)
+  const lastMatchKey = last.matchKey || last.seance || ''
+  const lastMatchStats = (persoMatchs && persoMatchs[lastMatchKey]) || null
+
+  // Utiliser les stats brutes si disponibles (HI correct), sinon fallback sur l'historique
+  const lastHI = lastMatchStats ? lastMatchStats.distHI : (last.distHI || 0)
+  const lastDist = lastMatchStats ? lastMatchStats.distTot : (last.distTot || 0)
+  const lastVmax = lastMatchStats ? lastMatchStats.vmax : (last.vmax || 0)
+  const lastLoad = lastMatchStats ? lastMatchStats.load : (last.load || 0)
+  const lastAcc = lastMatchStats ? lastMatchStats.accB23 : ((last.accB2 || 0) + (last.accB3 || 0))
+  const lastDuree = lastMatchStats ? lastMatchStats.duree : (last.duree || 0)
 
   const totalDist = hist.reduce((acc, h) => acc + (h.distTot || 0), 0)
   const totalHI = hist.reduce((acc, h) => acc + (h.distHI || 0), 0)
@@ -5822,7 +5837,7 @@ function renderIndividuelTab(c, persoHist) {
   const avgVmax = hist.length ? hist.reduce((acc, h) => acc + (h.vmax || 0), 0) / hist.length : 0
   const totalDuree = hist.reduce((acc, h) => acc + ((h.duree || 0) * 60), 0)
 
-  // Dernier match
+  // Dernier match — KPIs
   const hero = document.createElement('div')
   hero.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;'
   hero.innerHTML = `
@@ -5830,38 +5845,101 @@ function renderIndividuelTab(c, persoHist) {
     <div style="font-size:13px;color:#aaa;margin-bottom:12px;">${last.seance || last.period || 'Match'}</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtKm(last.distTot)}</div>
+        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtKm(lastDist)}</div>
         <div style="font-size:10px;color:#666;">Distance</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#E24B4A;">${fmtNum(last.distHI, 0)} m</div>
+        <div style="font-size:20px;font-weight:700;color:#E24B4A;">${fmtNum(lastHI, 0)} m</div>
         <div style="font-size:10px;color:#666;">Distance HI</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#FECC00;">${fmtNum(last.vmax, 1)} km/h</div>
+        <div style="font-size:20px;font-weight:700;color:#FECC00;">${fmtNum(lastVmax, 1)} km/h</div>
         <div style="font-size:10px;color:#666;">Vmax</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#1D9E75;">${fmtNum(last.load, 0)}</div>
+        <div style="font-size:20px;font-weight:700;color:#1D9E75;">${fmtNum(lastLoad, 0)}</div>
         <div style="font-size:10px;color:#666;">Player Load</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#378ADD;">${fmtNum((last.accB2 || 0) + (last.accB3 || 0), 0)}</div>
+        <div style="font-size:20px;font-weight:700;color:#378ADD;">${fmtNum(lastAcc, 0)}</div>
         <div style="font-size:10px;color:#666;">Accélérations</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
-        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtMin((last.duree || 0) * 60)}</div>
+        <div style="font-size:20px;font-weight:700;color:#fff;">${fmtMin((lastDuree || 0) * 60)}</div>
         <div style="font-size:10px;color:#666;">Durée</div>
       </div>
     </div>
   `
   c.appendChild(hero)
 
+  // === Graphiques individuels du dernier match (même que Stats Match) ===
+  if (lastMatchStats) {
+    // WCS individuel
+    const wcs = lastMatchStats.wcs || {}
+    if (wcs.distMax1 || wcs.distMax3 || wcs.distMax5) {
+      const wcsSec = document.createElement('div')
+      wcsSec.style.cssText = 'background:#FEF9E7;border:1px solid #FECC0044;border-radius:12px;padding:18px;margin-bottom:14px;'
+      wcsSec.innerHTML = `
+        <div style="font-size:13px;font-weight:900;color:#0f0f0f;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Worstcase Scenario (WCS)</div>
+        <div style="font-size:10px;color:#888;font-style:italic;margin-bottom:14px;">Ta distance maximale sur une période de temps</div>
+        <div style="display:flex;justify-content:space-around;gap:12px;flex-wrap:wrap;">
+          <div style="text-align:center;"><div style="font-size:36px;font-weight:900;color:#0f0f0f;">${wcs.distMax1 || '—'}</div><div style="font-size:11px;color:#888;margin-top:4px;">1 min</div></div>
+          <div style="text-align:center;"><div style="font-size:36px;font-weight:900;color:#0f0f0f;">${wcs.distMax3 || '—'}</div><div style="font-size:11px;color:#888;margin-top:4px;">3 min</div></div>
+          <div style="text-align:center;"><div style="font-size:36px;font-weight:900;color:#0f0f0f;">${wcs.distMax5 || '—'}</div><div style="font-size:11px;color:#888;margin-top:4px;">5 min</div></div>
+        </div>`
+      c.appendChild(wcsSec)
+    }
+
+    // Séquences de jeu individuelles
+    const seq = lastMatchStats.sequences || {}
+    if (seq.total) {
+      const seqSec = document.createElement('div')
+      seqSec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:18px;margin-bottom:14px;'
+      const seqDef = [
+        { label: "<40''", val: seq.nb40 || 0, col: '#1D9E75' },
+        { label: ">40'' et <1'", val: seq.nb40_1 || 0, col: '#FECC00' },
+        { label: ">1' et <1'30", val: seq.nb1_130 || 0, col: '#E24B4A' },
+        { label: ">1'30 et <2'", val: seq.nb130_2 || 0, col: '#E24B4A' },
+        { label: ">2'", val: seq.nb2 || 0, col: '#333' }
+      ]
+      seqSec.innerHTML = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;">Tes séquences de jeu (durée) · ${seq.total} séquences</div>`
+      const seqWrap = document.createElement('div')
+      seqWrap.style.cssText = 'display:flex;gap:8px;justify-content:space-around;flex-wrap:wrap;'
+      seqDef.forEach(s => {
+        const b = document.createElement('div')
+        b.style.cssText = `text-align:center;min-width:56px;background:#0f0f0f;border-radius:10px;padding:10px 8px;border:1px solid ${s.col}33;`
+        b.innerHTML = `<div style="font-size:22px;font-weight:800;color:${s.col};">${s.val}</div><div style="font-size:9px;color:#888;margin-top:3px;">${s.label}</div>`
+        seqWrap.appendChild(b)
+      })
+      seqSec.appendChild(seqWrap)
+      c.appendChild(seqSec)
+    }
+
+    // Graphiques par QT (m/min, HI/min, TJE) — individuel
+    if (lastMatchStats.qtStats && lastMatchStats.qtStats.length) {
+      renderQTBarChart(c, lastMatchStats.qtStats, 'mMin', 'm/min', 'm/min', '#FECC00')
+      renderQTBarChart(c, lastMatchStats.qtStats, 'hiMin', 'HI/min', 'm/min', '#EF9F27')
+      renderQTBarChart(c, lastMatchStats.qtStats, 'distTot', 'Distance par QT', 'm', '#E24B4A')
+      renderQTBarChart(c, lastMatchStats.qtStats, 'accB23', 'Accélérations par QT', 'eff', '#7F77DD')
+      renderQTBarChart(c, lastMatchStats.qtStats, 'vmax', 'Vmax par QT', 'km/h', '#1D9E75')
+      renderQTBarChart(c, lastMatchStats.qtStats, 'tjeSec', 'Temps de jeu effectif', 'sec', '#378ADD')
+
+      // TJE total individuel
+      const tjeTotal = document.createElement('div')
+      tjeTotal.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:18px;margin-bottom:14px;text-align:center;'
+      tjeTotal.innerHTML = `
+        <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Ton temps de jeu effectif</div>
+        <div style="font-size:48px;font-weight:900;color:#FECC00;">${lastMatchStats.tje || '—'}</div>`
+      c.appendChild(tjeTotal)
+    }
+  }
+
   // Tableau historique
   const wrap = document.createElement('div')
   wrap.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:14px;margin-bottom:14px;overflow-x:auto;'
   const table = document.createElement('table')
   table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px;'
+  // Pour chaque entrée hist, utiliser persoMatchs si disponible pour le HI correct
   table.innerHTML = `
     <thead>
       <tr style="color:#888;border-bottom:1px solid #2a2a2a;">
@@ -5874,16 +5952,24 @@ function renderIndividuelTab(c, persoHist) {
       </tr>
     </thead>
     <tbody>
-      ${hist.map(h => `
+      ${hist.map(h => {
+        const mk = h.matchKey || h.seance || ''
+        const ms = (persoMatchs && persoMatchs[mk]) || null
+        const hi = ms ? ms.distHI : (h.distHI || 0)
+        const dist = ms ? ms.distTot : (h.distTot || 0)
+        const vmax = ms ? ms.vmax : (h.vmax || 0)
+        const load = ms ? ms.load : (h.load || 0)
+        const acc = ms ? ms.accB23 : ((h.accB2 || 0) + (h.accB3 || 0))
+        return `
         <tr style="border-bottom:1px solid #222;">
           <td style="padding:8px 4px;color:#fff;">${fmtDate(h.date)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#aaa;">${fmtKm(h.distTot)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#E24B4A;">${fmtNum(h.distHI, 0)}m</td>
-          <td style="text-align:right;padding:8px 4px;color:#FECC00;">${fmtNum(h.vmax, 1)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#1D9E75;">${fmtNum(h.load, 0)}</td>
-          <td style="text-align:right;padding:8px 4px;color:#378ADD;">${fmtNum((h.accB2 || 0) + (h.accB3 || 0), 0)}</td>
-        </tr>
-      `).join('')}
+          <td style="text-align:right;padding:8px 4px;color:#aaa;">${fmtKm(dist)}</td>
+          <td style="text-align:right;padding:8px 4px;color:#E24B4A;">${fmtNum(hi, 0)}m</td>
+          <td style="text-align:right;padding:8px 4px;color:#FECC00;">${fmtNum(vmax, 1)}</td>
+          <td style="text-align:right;padding:8px 4px;color:#1D9E75;">${fmtNum(load, 0)}</td>
+          <td style="text-align:right;padding:8px 4px;color:#378ADD;">${fmtNum(acc, 0)}</td>
+        </tr>`
+      }).join('')}
     </tbody>
   `
   wrap.appendChild(table)
