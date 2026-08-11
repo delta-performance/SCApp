@@ -1,5 +1,5 @@
-const CACHE_NAME = 'sca-player-v4';
-const APP_VERSION = '1.0.34';
+const CACHE_NAME = 'sca-player';
+const APP_VERSION = '2.0.0';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
