@@ -885,11 +885,12 @@
 
     // Notifier le shell (iPad/desktop) qu'une écriture a eu lieu depuis le player-app
     // Écrit dans changeLog (pour sync incrémentale + rattrapage) et met à jour config/lastWrite (pour notification temps réel)
-    async function _notifyShellChange(collectionName, docId, opType='setDoc'){
+    async function _notifyShellChange(collectionName, docId, opType='setDoc', detailsLabel){
       try{
         const token='p_'+Date.now()+'_'+Math.random().toString(36).slice(2)
         const myEmail=(auth.currentUser&&auth.currentUser.email)||'player-app'
         const playerName=joueurActif?((joueurActif.prenom||'')+' '+(joueurActif.nom||'')).trim():''
+        const label = detailsLabel || ''
         // changeLog pour sync incrémentale et rattrapage au redémarrage
         try {
           await setDoc(doc(db,'changeLog','cl_'+token),{
@@ -900,7 +901,8 @@
             byName:playerName,
             source:'player',
             at:Date.now(),
-            writeToken:token
+            writeToken:token,
+            label:label
           })
         } catch(clErr) { console.error('[notifyShellChange] changeLog error:', clErr) }
         // config/lastWrite pour notification temps réel (sentinelle du shell)
@@ -914,9 +916,10 @@
             source:'player',
             writeToken:token,
             at:serverTimestamp(),
-            page:'player-app'
+            page:'player-app',
+            label:label
           })
-          console.log('[notifyShellChange] config/lastWrite écrit avec token:', token, '| collection:', collectionName, '| docId:', docId)
+          console.log('[notifyShellChange] config/lastWrite écrit avec token:', token, '| collection:', collectionName, '| label:', label)
         } catch(cErr) { console.error('[notifyShellChange] config/lastWrite error:', cErr) }
       }catch(e){console.error('[notifyShellChange] Erreur globale:', e)}
     }
@@ -4032,14 +4035,40 @@
             } else {
               await addDoc(collection(db,'puissanceData'),{joueurId,broadJump:bjVal,date})
             }
-            _notifyShellChange('puissanceData',joueurId,'updateDoc')
+            _notifyShellChange('puissanceData',joueurId,'updateDoc',exoName||'Puissance')
           }catch(e){console.error('[broadJump] erreur:',e)}
         }
       } else {
         const repsForMax = (reps != null && reps !== undefined) ? reps : (inp && inp.dataset && inp.dataset.reps ? parseFloat(inp.dataset.reps) : null)
         await updateMaxTestesIfNeeded(joueurId, exoName, val, repsForMax)
+        // Écrire aussi dans dataPerf pour que l'historique dans performances.html
+        // reflète la modification. On cherche une entrée existante pour le même
+        // joueur + exercice + date, sinon on en crée une nouvelle.
+        if (exoName && exoDate) {
+          try {
+            const chNum = parseFloat(val)
+            const repsNum = parseInt(repsForMax) || 1
+            if (!isNaN(chNum) && chNum > 0) {
+              const oneRMVal = calcOneRM ? parseFloat(calcOneRM(chNum, repsNum)) : chNum * (1 + repsNum / 30)
+              const perfId = `${joueurId}_${exoName}_${exoDate}`
+              const existingPerf = await getDoc(doc(db, 'dataPerf', perfId))
+              if (existingPerf.exists()) {
+                await setDoc(doc(db, 'dataPerf', perfId), {
+                  charge: chNum, reps: repsNum, oneRM: oneRMVal, updatedAt: serverTimestamp()
+                }, { merge: true })
+              } else {
+                await setDoc(doc(db, 'dataPerf', perfId), {
+                  joueurId, exercice: exoName, date: exoDate,
+                  charge: chNum, reps: repsNum, unite: exoUnit || 'kg',
+                  oneRM: oneRMVal, createdAt: serverTimestamp()
+                })
+              }
+              _notifyShellChange('dataPerf', perfId, 'updateDoc', exoName)
+            }
+          } catch(e) { console.error('[dataPerf] erreur écriture:', e) }
+        }
       }
-      _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
+      _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',exoName||'')
     }
 
     window.sauverToutesLesSeries=async function(seanceId,clefBase,nbSets,joueurId,val,inp,ckId){
@@ -4070,13 +4099,38 @@
             } else {
               await addDoc(collection(db,'puissanceData'),{joueurId,broadJump:bjVal,date})
             }
-            _notifyShellChange('puissanceData',joueurId,'updateDoc')
+            _notifyShellChange('puissanceData',joueurId,'updateDoc',exoName||'Puissance')
           }catch(e){console.error('[broadJump] erreur:',e)}
         }
       } else {
-        await updateMaxTestesIfNeeded(joueurId, exoName, val, inp && inp.dataset ? inp.dataset.reps : null)
+        const repsForMax = inp && inp.dataset && inp.dataset.reps ? parseFloat(inp.dataset.reps) : null
+        await updateMaxTestesIfNeeded(joueurId, exoName, val, repsForMax)
+        // Écrire aussi dans dataPerf pour l'historique
+        if (exoName && exoDate) {
+          try {
+            const chNum = parseFloat(val)
+            const repsNum = parseInt(repsForMax) || 1
+            if (!isNaN(chNum) && chNum > 0) {
+              const oneRMVal = calcOneRM ? parseFloat(calcOneRM(chNum, repsNum)) : chNum * (1 + repsNum / 30)
+              const perfId = `${joueurId}_${exoName}_${exoDate}`
+              const existingPerf = await getDoc(doc(db, 'dataPerf', perfId))
+              if (existingPerf.exists()) {
+                await setDoc(doc(db, 'dataPerf', perfId), {
+                  charge: chNum, reps: repsNum, oneRM: oneRMVal, updatedAt: serverTimestamp()
+                }, { merge: true })
+              } else {
+                await setDoc(doc(db, 'dataPerf', perfId), {
+                  joueurId, exercice: exoName, date: exoDate,
+                  charge: chNum, reps: repsNum, unite: exoUnit || 'kg',
+                  oneRM: oneRMVal, createdAt: serverTimestamp()
+                })
+              }
+              _notifyShellChange('dataPerf', perfId, 'updateDoc', exoName)
+            }
+          } catch(e) { console.error('[dataPerf] erreur écriture:', e) }
+        }
       }
-      _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc')
+      _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',exoName||'')
     }
 
     window.toggleSaisieMode=function(checked){
