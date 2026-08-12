@@ -3977,39 +3977,13 @@
         maxTestes[exercice] = oneRM
         try {
           await setDoc(doc(db, 'maxTestes', joueurId), { [exercice]: oneRM }, { merge: true })
-          _notifyShellChange('maxTestes', joueurId, 'updateDoc')
+          _notifyShellChange('maxTestes', joueurId, 'updateDoc', exercice)
         } catch(e) { console.error('[maxTestes] erreur maj:', e) }
         return
       }
-      // Si la nouvelle valeur est inférieure au max actuel, il se peut que
-      // l'ancienne saisie (erronée) ait établi le max. Il faut recalculer
-      // depuis toutes les charges réelles du joueur pour cet exercice.
-      try {
-        const crQuery = query(collection(db, 'chargesReelles'), where('joueurId', '==', joueurId))
-        const crSnap = await getDocs(crQuery)
-        let maxOneRM = 0
-        crSnap.docs.forEach(d => {
-          const data = d.data()
-          // Les charges sont stockées sous forme de clés composite :
-          // seanceId_blocId_groupeId_exoId_joueurId_sN = valeur
-          // et seanceId_blocId_groupeId_exoId_joueurId_sN_reps = reps
-          Object.keys(data).forEach(k => {
-            if (k === 'id' || k === 'updatedAt' || k.endsWith('_reps') || k.endsWith('_mode') || k.endsWith('_leste')) return
-            const val = parseFloat(data[k])
-            if (isNaN(val) || val <= 0) return
-            const repsVal = parseInt(data[k + '_reps']) || nbReps
-            const rm = parseFloat(calcOneRM(val, repsVal))
-            if (!isNaN(rm) && rm > maxOneRM) maxOneRM = rm
-          })
-        })
-        // Si le max recalculé est différent du current, mettre à jour
-        if (maxOneRM > 0 && maxOneRM !== current) {
-          maxTestes[exercice] = maxOneRM
-          await setDoc(doc(db, 'maxTestes', joueurId), { [exercice]: maxOneRM }, { merge: true })
-          _notifyShellChange('maxTestes', joueurId, 'updateDoc')
-          console.log('[maxTestes] Recalculé:', exercice, '→', maxOneRM, '(était', current, ')')
-        }
-      } catch(e) { console.error('[maxTestes] erreur recalcul:', e) }
+      // Si la nouvelle valeur est inférieure au max actuel, on ne recalcule pas
+      // automatiquement (trop complexe et fragile avec la structure charges_reelles).
+      // Le coach peut corriger manuellement le maxTestes depuis performances.html.
     }
 
     window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId,reps){
