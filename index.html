@@ -4054,13 +4054,13 @@
               const existingPerf = await getDoc(doc(db, 'dataPerf', perfId))
               if (existingPerf.exists()) {
                 await setDoc(doc(db, 'dataPerf', perfId), {
-                  charge: chNum, reps: repsNum, oneRM: oneRMVal, updatedAt: serverTimestamp()
+                  charge: chNum, reps: repsNum, oneRM: oneRMVal
                 }, { merge: true })
               } else {
                 await setDoc(doc(db, 'dataPerf', perfId), {
                   joueurId, exercice: exoName, date: exoDate,
                   charge: chNum, reps: repsNum, unite: exoUnit || 'kg',
-                  oneRM: oneRMVal, createdAt: serverTimestamp()
+                  oneRM: oneRMVal
                 })
               }
               _notifyShellChange('dataPerf', perfId, 'updateDoc', exoName)
@@ -4116,13 +4116,13 @@
               const existingPerf = await getDoc(doc(db, 'dataPerf', perfId))
               if (existingPerf.exists()) {
                 await setDoc(doc(db, 'dataPerf', perfId), {
-                  charge: chNum, reps: repsNum, oneRM: oneRMVal, updatedAt: serverTimestamp()
+                  charge: chNum, reps: repsNum, oneRM: oneRMVal
                 }, { merge: true })
               } else {
                 await setDoc(doc(db, 'dataPerf', perfId), {
                   joueurId, exercice: exoName, date: exoDate,
                   charge: chNum, reps: repsNum, unite: exoUnit || 'kg',
-                  oneRM: oneRMVal, createdAt: serverTimestamp()
+                  oneRM: oneRMVal
                 })
               }
               _notifyShellChange('dataPerf', perfId, 'updateDoc', exoName)
