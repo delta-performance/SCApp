@@ -380,6 +380,14 @@
     .perf-history-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; color: #ccc; border-bottom: 1px solid #1a1a1a; }
     .perf-history-row:last-child { border-bottom: none; }
     .perf-history-date { color: #888; }
+
+    /* ===== FEU D'ARTIFICE + ANNIVERSAIRE ===== */
+    .fireworks-canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000; }
+    .birthday-banner { position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%) scale(0.9); background: linear-gradient(135deg, #FECC00 0%, #ff8c00 100%); color: #0f0f0f; padding: 24px 34px; border-radius: 18px; text-align: center; z-index: 1001; display: none; opacity: 0; transition: opacity .5s, transform .5s; box-shadow: 0 10px 40px rgba(0,0,0,.5); border: 3px solid #fff; max-width: 90%; }
+    .birthday-banner.show { display: block; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    .birthday-icon { font-size: 36px; margin-bottom: 8px; }
+    .birthday-text { font-size: 22px; font-weight: 800; }
+    .birthday-sub { font-size: 14px; font-weight: 600; margin-top: 4px; }
   </style>
   <link rel="manifest" href="./manifest.json?v=20260714">
   <meta name="theme-color" content="#FECC00">
@@ -467,6 +475,13 @@
   </script>
 </head>
 <body>
+
+  <canvas id="fireworks-canvas" class="fireworks-canvas"></canvas>
+  <div id="birthday-banner" class="birthday-banner">
+    <div class="birthday-icon">🎉</div>
+    <div class="birthday-text" id="birthday-text">Bon anniversaire !</div>
+    <div class="birthday-sub" id="birthday-sub"></div>
+  </div>
 
   <div class="header">
     <img src="https://www.sca-albi.fr/wp-content/uploads/2023/10/cropped-SCA-bis.png">
@@ -1014,12 +1029,12 @@
     const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 
     let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
-    let isBypassUser=false
     let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
     let currentPerfTab='muscu',performancesData=null
     let recapVisible = localStorage.getItem('player_recap_visible') === 'true'
     let tapCount=0,tapStarted=false,tapDone=false,tapRemaining=10,tapTimer=null
     let wellnessHistory=[]
+    let openingFireworksDone=false
 
     // ==================== OPTIONS EXO (alternatives) ====================
     // Détermine l'exo réel à afficher/saisir pour un joueur sur un exo à options.
@@ -1087,7 +1102,8 @@
         card.style.cssText = 'display:flex;gap:12px;align-items:center;padding:12px;border:1px solid #2a2a2a;border-radius:12px;background:#1a1a1a;cursor:pointer;'
         const photoHtml = it.photo ? `<img src="${it.photo}" style="width:64px;height:64px;border-radius:10px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"/>` : `<div style="width:64px;height:64px;border-radius:10px;background:#0f0f0f;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#444;">?</div>`
         const p = it.params
-        const paramsTxt = `${p.nbSets || 3} × ${p.nbReps || 10} · ${p.intensityUnit || 'RPE'} ${p.rpe || ''}${p.recup ? ' · ' + p.recup : ''}`
+        const repsTxt = p.repsIsTime ? (p.nbReps || '') + 's' : p.repsIsMeters ? (p.nbReps || '') + 'm' : (p.nbReps || 10)
+        const paramsTxt = `${p.nbSets || 3} × ${repsTxt} · ${p.intensityUnit || 'RPE'} ${p.rpe || ''}${p.recup ? ' · récup=' + p.recup : ''}`
         card.innerHTML = `${photoHtml}<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:#fff;">${it.id === 'principal' ? 'Exercice principal : ' : ''}${it.nom || '—'}</div><div style="font-size:11px;color:#888;margin-top:3px;">${paramsTxt}</div></div>`
         card.onmouseover = () => card.style.borderColor = '#FECC0066'
         card.onmouseout = () => card.style.borderColor = '#2a2a2a'
@@ -1383,32 +1399,6 @@
       }
     }
 
-    async function checkStaffBypass(user){
-      isBypassUser = false;
-      if(!user || !user.email) return;
-      const email = user.email.toLowerCase();
-      if(email === 'pellier.david@gmail.com'){
-        isBypassUser = true;
-        return;
-      }
-      try{
-        const snap = await getDoc(doc(db, 'config', 'staff_roles'));
-        if(snap.exists()){
-          const data = snap.data();
-          const roles = data.roles || {};
-          const perms = data.permissions || {};
-          const role = roles[email];
-          if(role === 'owner'){
-            isBypassUser = true;
-          } else if(role && perms[role] && perms[role].player_app === true){
-            isBypassUser = true;
-          }
-        }
-      }catch(e){
-        console.error('[Player-app] Erreur vérification permissions staff:', e);
-      }
-    }
-
     // ===== INIT =====
     async function init(){
       // Check persistent connection via Auth State Observer
@@ -1425,7 +1415,7 @@
             renderMenuGrid();
             buildHooper();
             
-            await checkStaffBypass(user);
+            const isBypassUser = user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
             const btnChange = document.getElementById('btn-admin-change-player');
             if (btnChange) {
               btnChange.style.display = isBypassUser ? 'block' : 'none';
@@ -1539,6 +1529,8 @@
 
     window.filtrerJoueurs=function(q){
       const ql=q.toLowerCase().trim();
+      const user = auth.currentUser;
+      const isBypassUser = user && user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
       
       const filtered = joueurs.filter(j => {
         const matchesName = ((j.nom||'')+' '+(j.prenom||'')).toLowerCase().includes(ql) || ((j.prenom||'')+' '+(j.nom||'')).toLowerCase().includes(ql);
@@ -1553,6 +1545,8 @@
     async function selectionnerJoueur(j){
       const user = auth.currentUser;
       if (!user) return;
+      
+      const isBypassUser = user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
 
       // If this player profile is already linked to a DIFFERENT account, block it!
       if (!isBypassUser && j.uid && j.uid !== user.uid) {
@@ -1725,6 +1719,10 @@
       }
       if(screen==='poids'){
         chargerPoids()
+      }
+      if(screen==='menu' && joueurActif && !openingFireworksDone){
+        openingFireworksDone=true
+        launchOpeningFireworks()
       }
     }
 
@@ -1977,11 +1975,13 @@
     // Affiche le nombre de reps d'un exercice, y compris les clusters et les séries variables
     function clusterRepsDisplay(exo){
       if (exo.clusterSplit && exo.clusterSplit.length > 1) {
-        return exo.clusterSplit.map(s => s.type === 'time' ? s.value + 's' : s.value).join('+')
+        return exo.clusterSplit.map(s => s.type === 'time' ? s.value + 's' : s.type === 'meters' ? s.value + 'm' : s.value).join('+')
       }
       if (exo.variableSeries && exo.seriesData?.length > 0) {
         return exo.seriesData.map((s, i) => `S${i+1}:${s.reps ?? exo.nbReps}`).join(' ')
       }
+      if (exo.repsIsTime) return (exo.nbReps || '') + 's'
+      if (exo.repsIsMeters) return (exo.nbReps || '') + 'm'
       return exo.nbReps || ''
     }
     // Helpers pour affichage des exercices énergétiques intégrés dans une séance muscu
@@ -2059,7 +2059,7 @@
       else{if(exo.objectifTemps)objTxt+=' · 🎯 '+_nrgFormatMmSsP(exo.objectifTemps)}
       const intensite=exo.nrgIntensite?(' · '+exo.nrgIntensite):''
       const timerTxt=_nrgResumeTimerP(exo)
-      const recup=exo.nrgRecupApres?(' · Récup après '+_nrgFormatMmSsP(exo.nrgRecupApres)):(exo.recup?(' · Récup '+exo.recup):'')
+      const recup=exo.nrgRecupApres?(' · Récup après '+_nrgFormatMmSsP(exo.nrgRecupApres)):(exo.recup?(' · récup='+exo.recup):'')
       const comment=exo.nrgComment?(' · '+exo.nrgComment):(exo.comment?(' · '+exo.comment):'')
       const optBadge=optRes?.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig?.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')
       const typeLabel=_nrgTypeLabelP(exo.nrgType)
@@ -2470,13 +2470,37 @@
           body.style.display='none'
           
           let aBlocPourMoi=false
-          ;[...(sa.blocs || []), ...(sa.blocsBlesses || [])].forEach(bloc=>{
-            const gJ=bloc.groupes?.find(g=>g.joueurs?.includes(joueurActif.id))
-            if(!gJ)return;aBlocPourMoi=true
+          const allBlocsP = [...(sa.blocs || []), ...(sa.blocsBlesses || [])]
+          const renderedLeaders = new Set()
+          allBlocsP.forEach(bloc => {
+            const playerGJ = bloc.groupes?.find(g => g.joueurs?.includes(joueurActif.id))
+            if (!playerGJ && !bloc.linkedTo) return
+            const leaderId = bloc.linkedTo || bloc.id
+            if (renderedLeaders.has(leaderId)) return
+            const leader = allBlocsP.find(b => b.id === leaderId) || bloc
+            const mega = [leader, ...allBlocsP.filter(b => b.id !== leader.id && b.linkedTo === leader.id)]
+            const playerGroupes = mega.flatMap(b => (b.groupes || []).filter(g => (g.joueurs || []).includes(joueurActif.id)))
+            if (!playerGroupes.length) return
+            aBlocPourMoi = true
+            const megaExos = []
+            mega.forEach(b => (b.groupes || []).forEach(g => (g.exercices || []).forEach(exo => {
+              const m = String(exo.numExo || '').match(/^(\d+)/)
+              const base = m ? parseInt(m[1]) : 1
+              megaExos.push({ b, g, exo, base })
+            })))
+            const counters = {}
+            megaExos.forEach(item => {
+              if (!counters[item.base]) counters[item.base] = 0
+              item.megaLabel = item.base + String.fromCharCode(65 + counters[item.base])
+              counters[item.base]++
+            })
+            const playerExos = megaExos.filter(item => (item.g.joueurs || []).includes(joueurActif.id))
+            renderedLeaders.add(leaderId)
             const bEl=document.createElement('div');bEl.className='seance-bloc'
             bEl.style.border='none';bEl.style.borderRadius='0';bEl.style.marginBottom='0'
-            bEl.innerHTML=`<div class="seance-bloc-header">${bloc.nom}<span class="seance-groupe-badge">${gJ.nom}</span></div>${bloc.comment?`<div class="seance-bloc-comment">📝 ${bloc.comment}</div>`:''}${gJ.comment?`<div class="seance-bloc-comment" style="color:#666;">💬 ${gJ.comment}</div>`:''}`
-            gJ.exercices?.forEach(exoOrig=>{
+            const groupBadges = playerGroupes.map(g => g.nom).join(' / ')
+            bEl.innerHTML=`<div class="seance-bloc-header">${leader.nom}<span class="seance-groupe-badge">${groupBadges}</span></div>${leader.comment?`<div class="seance-bloc-comment">📝 ${leader.comment}</div>`:''}${playerGroupes.map(gJ => gJ.comment ? `<div class="seance-bloc-comment" style="color:#666;">💬 ${gJ.comment}</div>` : '').join('')}`
+            playerExos.forEach(item => { const exoOrig=item.exo; const gJ=item.g; const bloc=item.b; const megaLabel=item.megaLabel;
               if(!exoOrig.exercice)return
 
               // Résoudre l'option : exo principal OU option choisie/imposée
@@ -2487,7 +2511,7 @@
                 eEl.style.display='flex';eEl.style.gap='10px';eEl.style.alignItems='flex-start'
                 const optPhotoUrl = exoPhotoUrl(exoOrig.exercice)
                 const optPhotoHtml = optPhotoUrl ? `<img src="${optPhotoUrl}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"/>` : ''
-                eEl.innerHTML = `${optPhotoHtml}<div style="flex:1;"><div class="seance-exo-nom">${exoOrig.isSuperset?'↳ ':''}${exoOrig.numExo||''}. ${exoOrig.exercice} <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option à choisir</span></div><div class="seance-exo-params">Cliquez pour choisir votre exercice alternatif.</div></div>`
+                eEl.innerHTML = `${optPhotoHtml}<div style="flex:1;"><div class="seance-exo-nom">${exoOrig.isSuperset?'↳ ':''}${megaLabel||''}. ${exoOrig.exercice} <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option à choisir</span></div><div class="seance-exo-params">Cliquez pour choisir votre exercice alternatif.</div></div>`
                 const btn=document.createElement('button')
                 btn.style.cssText='margin-top:8px;padding:10px 16px;border-radius:10px;border:none;background:#4A9EFF;color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:100%;'
                 btn.textContent='🔀 Choisir l\'option'
@@ -2522,7 +2546,7 @@
               
               const repsDisplay = clusterRepsDisplay(exo)
               const clusterSuffix = exo.clusterSplit?.length > 1 ? ' (cluster)' : ''
-              const repsSuffix = (repsDisplay && !exo.variableSeries && !(exo.clusterSplit?.length > 1)) ? ' reps' : ''
+              const repsSuffix = (repsDisplay && !exo.variableSeries && !(exo.clusterSplit?.length > 1) && !exo.repsIsTime && !exo.repsIsMeters) ? ' reps' : ''
               const paramsText = unit === 'PDC'
                 ? `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix} · PDC`
                 : `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix}${repsSuffix} · ${unitLabel} ${exo.rpe}${variableSeriesIntensityDisplay(exo)}`
@@ -2532,8 +2556,8 @@
                 ${exo.isEnergetique
                   ? energetiqueMuscuDisplayHTML(exo,exoOrig,optRes)
                   : `<div style="flex:1;">
-                  <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${exo.numExo||''}. ${exo.exercice}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')}</div>
-                  <div class="seance-exo-params">${paramsText}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · '+exo.recup:''}</div>
+                  <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${exo.exercice}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')}</div>
+                  <div class="seance-exo-params">${paramsText}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · récup='+exo.recup:''}</div>
                   <div class="seance-charge">${reco}</div>
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
                 </div>`}
@@ -9148,6 +9172,94 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
     function norm(s){return String(s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
     function parseD(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
     function parseDate(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
+
+    // ===== FEU D'ARTIFICE D'OUVERTURE + ANNIVERSAIRE =====
+    function getPlayerBirthDate(j){
+      if(!j)return null
+      let v=j.date_naissance||j.dateNaissance||j.naissance||j.anniversaire||j.birthday
+      if(v==null)return null
+      if(v instanceof Date)return v
+      if(typeof v.toDate==='function'){try{return v.toDate()}catch(e){return null}}
+      return parseD(v)
+    }
+    function isTodayBirthday(j){
+      const d=getPlayerBirthDate(j)
+      if(!d)return false
+      const now=new Date()
+      return d.getDate()===now.getDate() && d.getMonth()===now.getMonth()
+    }
+    function showBirthday(j){
+      const banner=document.getElementById('birthday-banner')
+      const text=document.getElementById('birthday-text')
+      const sub=document.getElementById('birthday-sub')
+      if(!banner)return
+      text.textContent='Bon anniversaire '+(j.prenom||'')+' !'
+      sub.textContent='Le SCA Albi te souhaite une superbe journée'
+      banner.classList.add('show')
+      setTimeout(()=>{banner.classList.remove('show')},5200)
+    }
+    function launchOpeningFireworks(){
+      if(!joueurActif)return
+      const isBirthday=isTodayBirthday(joueurActif)
+      if(isBirthday)showBirthday(joueurActif)
+      startFireworks({duration:isBirthday?4200:2400,density:isBirthday?3:2})
+    }
+    function startFireworks(opts){
+      const canvas=document.getElementById('fireworks-canvas')
+      if(!canvas)return
+      const ctx=canvas.getContext('2d')
+      let w=canvas.width=window.innerWidth
+      let h=canvas.height=window.innerHeight
+      const resize=()=>{w=canvas.width=window.innerWidth;h=canvas.height=window.innerHeight}
+      window.addEventListener('resize',resize)
+      const particles=[]
+      const colors=['#FECC00','#FF5E5E','#5E9FFF','#5EFF8C','#FF85E4','#FFF45E']
+      function createBurst(x,y,color){
+        const count=24+Math.random()*20
+        for(let i=0;i<count;i++){
+          const angle=(Math.PI*2*i)/count+Math.random()*0.3
+          const speed=2+Math.random()*4
+          particles.push({x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,life:1,decay:0.015+Math.random()*0.015,color,size:2+Math.random()*2})
+        }
+      }
+      let last=performance.now()
+      let ended=false
+      function spawn(){
+        if(Math.random()<0.06*(opts.density||1)){
+          const x=Math.random()*w*0.8+w*0.1
+          const y=h-(Math.random()*h*0.4+h*0.1)
+          const color=colors[Math.floor(Math.random()*colors.length)]
+          createBurst(x,y,color)
+        }
+      }
+      function loop(now){
+        if(ended)return
+        ctx.clearRect(0,0,w,h)
+        spawn()
+        for(let i=particles.length-1;i>=0;i--){
+          const p=particles[i]
+          p.x+=p.vx;p.y+=p.vy
+          p.vy+=0.08
+          p.vx*=0.96;p.vy*=0.96
+          p.life-=p.decay
+          if(p.life<=0){particles.splice(i,1);continue}
+          ctx.globalAlpha=p.life
+          ctx.fillStyle=p.color
+          ctx.beginPath()
+          ctx.arc(p.x,p.y,p.size,0,Math.PI*2)
+          ctx.fill()
+        }
+        ctx.globalAlpha=1
+        if(now-last<(opts.duration||2000)){
+          requestAnimationFrame(loop)
+        }else{
+          ended=true
+          ctx.clearRect(0,0,w,h)
+          window.removeEventListener('resize',resize)
+        }
+      }
+      requestAnimationFrame(loop)
+    }
   </script>
 
   <!-- MODAL COMING SOON -->
