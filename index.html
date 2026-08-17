@@ -2482,25 +2482,18 @@
             const playerGroupes = mega.flatMap(b => (b.groupes || []).filter(g => (g.joueurs || []).includes(joueurActif.id)))
             if (!playerGroupes.length) return
             aBlocPourMoi = true
-            const megaExos = []
-            mega.forEach(b => (b.groupes || []).forEach(g => (g.exercices || []).forEach(exo => {
-              const m = String(exo.numExo || '').match(/^(\d+)/)
-              const base = m ? parseInt(m[1]) : 1
-              megaExos.push({ b, g, exo, base })
-            })))
-            const counters = {}
-            megaExos.forEach(item => {
-              if (!counters[item.base]) counters[item.base] = 0
-              item.megaLabel = item.base + String.fromCharCode(65 + counters[item.base])
-              counters[item.base]++
-            })
-            const playerExos = megaExos.filter(item => (item.g.joueurs || []).includes(joueurActif.id))
+            const playerExos = []
+            mega.forEach(b => (b.groupes || []).forEach(g => {
+              if ((g.joueurs || []).includes(joueurActif.id)) {
+                (g.exercices || []).forEach(exo => playerExos.push({ b, g, exo }))
+              }
+            }))
             renderedLeaders.add(leaderId)
             const bEl=document.createElement('div');bEl.className='seance-bloc'
             bEl.style.border='none';bEl.style.borderRadius='0';bEl.style.marginBottom='0'
             const groupBadges = playerGroupes.map(g => g.nom).join(' / ')
             bEl.innerHTML=`<div class="seance-bloc-header">${leader.nom}<span class="seance-groupe-badge">${groupBadges}</span></div>${leader.comment?`<div class="seance-bloc-comment">📝 ${leader.comment}</div>`:''}${playerGroupes.map(gJ => gJ.comment ? `<div class="seance-bloc-comment" style="color:#666;">💬 ${gJ.comment}</div>` : '').join('')}`
-            playerExos.forEach(item => { const exoOrig=item.exo; const gJ=item.g; const bloc=item.b; const megaLabel=item.megaLabel;
+            playerExos.forEach((item, i) => { const exoOrig=item.exo; const gJ=item.g; const bloc=item.b; const megaLabel=String.fromCharCode(65 + i);
               if(!exoOrig.exercice)return
 
               // Résoudre l'option : exo principal OU option choisie/imposée
@@ -5694,6 +5687,10 @@ async function chargerRapportMatch() {
     const rawMatchs = sCol.matchs || {}
     let allMatches = Object.values(rawMatchs)
       .map(m => ({ ...m, key: m.matchKey, date: m.dateISO || m.date || '', nom: m.adversaire || m.theme || m.matchKey }))
+      // Exclut les séances sans données réelles (ex: échauffements synchronisés
+      // par erreur dans "matchs" avec qt_stats/poste_stats vides), qui créent
+      // des doublons fantômes dans le sélecteur (ex: 2x "Carcassonne").
+      .filter(m => (m.qtStats && m.qtStats.length) || (m.posteStats && Object.keys(m.posteStats).length))
       .sort((a, b) => {
         const da = parseDate(a.date), db = parseDate(b.date)
         if (!da || !db) return 0
@@ -6029,6 +6026,20 @@ function renderMatchTab(c, match, persoHist) {
 
 }
 
+// Normalise une clé de poste (accents + casse) pour matcher les données
+// même si elles ont été enregistrées en minuscule (bug historique de
+// sérialisation snake_case/camelCase côté écriture Supabase).
+function normPosteKey(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+function getPosteStat(posteStats, gr) {
+  if (!posteStats) return null
+  if (posteStats[gr]) return posteStats[gr]
+  const target = normPosteKey(gr)
+  const foundKey = Object.keys(posteStats).find(k => normPosteKey(k) === target)
+  return foundKey ? posteStats[foundKey] : null
+}
+
 function renderPosteTab(c, match) {
   const ordre = ['1ère ligne','2ème ligne','3ème ligne','Demi de mêlée',"Demi d'ouverture",'Centre','Triangle arrière','Autre']
   const metriques = [
@@ -6043,7 +6054,7 @@ function renderPosteTab(c, match) {
 
   // Barres comparaison inter-postes
   metriques.forEach(met => {
-    const vals = ordre.map(gr => posteStats[gr] ? met.fn(posteStats[gr]) : 0)
+    const vals = ordre.map(gr => getPosteStat(posteStats, gr) ? met.fn(getPosteStat(posteStats, gr)) : 0)
     const maxV = Math.max(...vals, 1)
     const sec = document.createElement('div')
     sec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:12px;'
@@ -6051,7 +6062,7 @@ function renderPosteTab(c, match) {
     const bars = document.createElement('div')
     bars.style.cssText = 'display:flex;flex-direction:column;gap:6px;'
     ordre.forEach((gr, i) => {
-      if (!posteStats[gr]) return
+      if (!getPosteStat(posteStats, gr)) return
       const val = vals[i]
       const pct = Math.max(2, Math.round(val / maxV * 100))
       const row = document.createElement('div')
@@ -6077,7 +6088,7 @@ function renderPosteTab(c, match) {
     ${metriques.map(m=>`<th style="padding:5px 6px;text-align:right;color:${m.c};font-size:9px;">${m.l}</th>`).join('')}
   </tr></thead><tbody>`
   ordre.forEach(gr => {
-    const ps = posteStats[gr]; if (!ps) return
+    const ps = getPosteStat(posteStats, gr); if (!ps) return
     html += `<tr style="border-bottom:1px solid #111;">
       <td style="padding:5px 6px;font-weight:600;color:#ccc;">${gr}</td>
       ${metriques.map(met=>`<td style="padding:5px 6px;text-align:right;color:${met.c};font-weight:600;">${fmtNum(met.fn(ps), met.k==='vmax' || met.k==='mMin' ? 1 : 0)}</td>`).join('')}
@@ -6090,8 +6101,8 @@ function renderPosteTab(c, match) {
   // Radar avants vs 3/4
   const avantNoms = ['1ère ligne','2ème ligne','3ème ligne']
   const troisQNoms = ['Demi de mêlée',"Demi d'ouverture",'Centre','Triangle arrière']
-  const avantStats = avantNoms.map(gr => posteStats[gr]).filter(Boolean)
-  const troisQStats = troisQNoms.map(gr => posteStats[gr]).filter(Boolean)
+  const avantStats = avantNoms.map(gr => getPosteStat(posteStats, gr)).filter(Boolean)
+  const troisQStats = troisQNoms.map(gr => getPosteStat(posteStats, gr)).filter(Boolean)
   if (avantStats.length && troisQStats.length) {
     const mAv = calcMoyennes(avantStats)
     const m3Q = calcMoyennes(troisQStats)
@@ -6636,8 +6647,13 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
       // ===== FONCTIONS DE CALCUL DES STATS PAR PERIODE =====
       function isValidPeriod(period) {
-        const validPeriods = ['Collectif', 'Extra', 'Rehab', 'Séparé', 'Vitesse', 'QT1', 'QT2', 'QT3', 'QT4']
-        return validPeriods.some(vp => period.toLowerCase().includes(vp.toLowerCase()))
+        // Aligné sur gps-shared.js (appli coach) : on exclut uniquement la
+        // préparation individuelle, on n'utilise plus de whitelist restrictive
+        // qui faisait disparaître des périodes réelles (ex: "Atelier(s)").
+        if (!period) return false
+        const p = String(period).toLowerCase()
+        const excluded = ['prepa indiv', 'prep indiv']
+        return !excluded.some(e => p.includes(e))
       }
 
       function calculerStatsParPeriode(hist) {
