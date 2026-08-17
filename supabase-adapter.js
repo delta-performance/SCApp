@@ -20281,14 +20281,14 @@ var COLLECTION_TO_TABLE = {
   "gps": "stats_gps",
   "progressionsBonus": "progressions_bonus",
   "changeLog": "change_log",
-  "config": "config_generic"
+  "morphoOverrides": "morpho_overrides"
 };
 var UUID_PK_CONFLICT = {
   "wellness": "joueur_id,date",
   "poids": "joueur_id,date",
   "change_log": null
 };
-var DATA_JSONB_TABLES = /* @__PURE__ */ new Set(["blessures", "absences", "joueurs", "creneaux_blesses", "stats_gps", "fv_profils", "vitesse_data", "puissance_data", "rfu_data", "progressions_bonus", "change_log"]);
+var DATA_JSONB_TABLES = /* @__PURE__ */ new Set(["blessures", "absences", "joueurs", "creneaux_blesses", "planifications_blesses", "stats_gps", "fv_profils", "vitesse_data", "puissance_data", "rfu_data", "progressions_bonus", "change_log", "morpho_overrides"]);
 var TABLE_COLUMNS = {
   blessures: /* @__PURE__ */ new Set([
     "id",
@@ -20364,74 +20364,21 @@ var TABLE_COLUMNS = {
     "updated_at",
     "data"
   ]),
-  stats_gps: /* @__PURE__ */ new Set([
-    "id",
-    "club_id",
-    "nb_joueurs",
-    "top3_global",
-    "joueurs",
-    "updated_at",
-    "data"
-  ]),
-  fv_profils: /* @__PURE__ */ new Set([
-    "id",
-    "club_id",
-    "joueur_id",
-    "date",
-    "updated_at",
-    "data"
-  ]),
-  vitesse_data: /* @__PURE__ */ new Set([
-    "id",
-    "club_id",
-    "joueur_id",
-    "date",
-    "updated_at",
-    "data"
-  ]),
-  puissance_data: /* @__PURE__ */ new Set([
-    "id",
-    "club_id",
-    "joueur_id",
-    "date",
-    "updated_at",
-    "data"
-  ]),
-  rfu_data: /* @__PURE__ */ new Set([
-    "id",
-    "club_id",
-    "joueur_id",
-    "date",
-    "updated_at",
-    "data"
-  ]),
-  progressions_bonus: /* @__PURE__ */ new Set([
-    "id",
-    "club_id",
-    "joueur_id",
-    "date",
-    "updated_at",
-    "data"
-  ]),
-  change_log: /* @__PURE__ */ new Set([
-    "id",
-    "club_id",
-    "at",
-    "collection",
-    "doc_id",
-    "op",
-    "created_at",
-    "by",
-    "source",
-    "write_token",
-    "data"
-  ])
+  planifications_blesses: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "planif_values", "objectifs", "updated_at"]),
+  change_log: /* @__PURE__ */ new Set(["id", "club_id", "collection", "doc_id", "op", "by", "source", "at", "write_token", "created_at", "data"]),
+  stats_gps: /* @__PURE__ */ new Set(["id", "club_id", "nb_joueurs", "top3_global", "joueurs", "updated_at", "data"]),
+  fv_profils: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
+  vitesse_data: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
+  puissance_data: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
+  rfu_data: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
+  progressions_bonus: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
+  morpho_overrides: /* @__PURE__ */ new Set(["id", "club_id", "derogation", "poids", "masse_grasse", "updated_at", "data"])
 };
 function camelToSnake(str) {
   if (!/[A-Z]/.test(str)) return str;
   return str.replace(/([A-Z]+)/g, "_$1").toLowerCase().replace(/^_/, "");
 }
-var KNOWN_ACRONYMS = { rm: "RM", pdc: "PDC", acwr: "ACWR", gps: "GPS", rpe: "RPE", ffr: "FFR", url: "URL", vo2: "VO2" };
+var KNOWN_ACRONYMS = { rm: "RM", pdc: "PDC", acwr: "ACWR", gps: "GPS", rpe: "RPE", ffr: "FFR", url: "URL", vo2: "VO2", hi: "HI" };
 function snakeToCamel(str) {
   if (!str.includes("_")) return str;
   return str.replace(/_([a-z]+)/g, (_, c) => KNOWN_ACRONYMS[c] || c.charAt(0).toUpperCase() + c.slice(1));
@@ -20497,7 +20444,8 @@ function getAuth(app) {
       _auth.currentUser = {
         uid: data.session.user.id,
         email: data.session.user.email,
-        displayName: data.session.user.user_metadata?.display_name || data.session.user.email
+        displayName: data.session.user.user_metadata?.display_name || data.session.user.email,
+        userMetadata: data.session.user.user_metadata || {}
       };
     } else {
       _auth.currentUser = null;
@@ -20509,7 +20457,8 @@ function getAuth(app) {
       _auth.currentUser = {
         uid: session.user.id,
         email: session.user.email,
-        displayName: session.user.user_metadata?.display_name || session.user.email
+        displayName: session.user.user_metadata?.display_name || session.user.email,
+        userMetadata: session.user.user_metadata || {}
       };
     } else {
       _auth.currentUser = null;
@@ -20534,7 +20483,8 @@ async function signInWithEmailAndPassword(auth, email, password) {
   auth.currentUser = {
     uid: data.user.id,
     email: data.user.email,
-    displayName: data.user.user_metadata?.display_name || data.user.email
+    displayName: data.user.user_metadata?.display_name || data.user.email,
+    userMetadata: data.user.user_metadata || {}
   };
   auth._sessionReady = true;
   auth._listeners.forEach((cb) => cb(auth.currentUser));
@@ -20548,11 +20498,16 @@ async function createUserWithEmailAndPassword(auth, email, password) {
 async function signOut(auth) {
   await auth._supabase.auth.signOut();
   auth.currentUser = null;
-  auth._listeners.forEach((cb) => cb(null));
 }
 async function updatePassword(auth, newPassword) {
-  const { data, error } = await auth._supabase.auth.updateUser({ password: newPassword });
-  if (error) throw { code: "auth/weak-password", message: error.message };
+  const { data, error } = await auth._supabase.auth.updateUser({
+    password: newPassword,
+    data: { passwordChanged: true }
+  });
+  if (error) throw { code: "auth/operation-not-allowed", message: error.message };
+  if (auth.currentUser) {
+    auth.currentUser.userMetadata = { ...auth.currentUser.userMetadata || {}, passwordChanged: true };
+  }
   return data;
 }
 async function sendPasswordResetEmail(auth, email) {
@@ -20567,13 +20522,9 @@ function setPersistence(auth, persistence) {
 }
 var browserLocalPersistence = "local";
 var browserSessionPersistence = "session";
-var GoogleAuthProvider = { PROVIDER_ID: "google", providerId: "google" };
+var GoogleAuthProvider = { PROVIDER_ID: "google" };
 async function signInWithPopup(auth, provider) {
-  const redirectTo = typeof window !== "undefined" ? window.location.origin + window.location.pathname : void 0;
-  const { data, error } = await auth._supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo }
-  });
+  const { data, error } = await auth._supabase.auth.signInWithOAuth({ provider: "google" });
   if (error) throw error;
   return data;
 }
@@ -20688,20 +20639,23 @@ function applyConstraints(supabaseQuery, constraints) {
 function wrapDoc(row, id) {
   let data = convertKeysToCamel(row);
   if (row.data && typeof row.data === "object" && !Array.isArray(row.data)) {
-    data = { ...row.data, ...data };
+    const extra = convertKeysToCamel(row.data);
+    data = { ...extra, ...data };
     delete data.data;
   }
   return {
     id: id || row.id,
     exists: () => true,
-    data: () => data
+    data: () => data,
+    metadata: { hasPendingWrites: false, fromCache: false }
   };
 }
 function wrapEmpty(id) {
   return {
     id,
     exists: () => false,
-    data: () => null
+    data: () => null,
+    metadata: { hasPendingWrites: false, fromCache: false }
   };
 }
 function wrapSnapshot(rows) {
@@ -20710,7 +20664,8 @@ function wrapSnapshot(rows) {
     docs,
     empty: docs.length === 0,
     size: docs.length,
-    forEach: (cb) => docs.forEach(cb)
+    forEach: (cb) => docs.forEach(cb),
+    metadata: { hasPendingWrites: false, fromCache: false }
   };
 }
 async function getMaxTestesDoc(supabase2, docRef) {
@@ -20941,6 +20896,51 @@ async function getConfigDoc(supabase2, docRef) {
     data: () => rowData.data || rowData
   };
 }
+var _configDocBatch = { timer: null, requests: /* @__PURE__ */ new Map() };
+function _flushConfigDocBatch() {
+  _configDocBatch.timer = null;
+  const requests = _configDocBatch.requests;
+  _configDocBatch.requests = /* @__PURE__ */ new Map();
+  if (requests.size === 0) return;
+  if (requests.size === 1) {
+    const waiters = requests.values().next().value;
+    const first = waiters[0];
+    getConfigDoc(first.supabase, first.docRef).then((snap) => waiters.forEach((w) => w.resolve(snap)), (err) => waiters.forEach((w) => w.reject(err)));
+    return;
+  }
+  const ids = [...requests.keys()];
+  const supabase2 = requests.values().next().value[0].supabase;
+  console.log("[config-batch] 1 requ\xEAte batched pour " + ids.length + " docs config:", ids.join(","));
+  supabase2.from("config_generic").select("data,id").in("id", ids).then(({ data, error }) => {
+    if (error) {
+      requests.forEach((waiters) => waiters.forEach((w) => w.reject(error)));
+      return;
+    }
+    const byId = {};
+    for (const row of data || []) byId[row.id] = row;
+    requests.forEach((waiters, docId) => {
+      const row = byId[docId];
+      const snap = !row ? wrapEmpty(docId) : { id: docId, exists: () => true, data: () => row.data || row };
+      waiters.forEach((w) => w.resolve(snap));
+    });
+  }).catch((err) => {
+    requests.forEach((waiters) => waiters.forEach((w) => w.reject(err)));
+  });
+}
+function getConfigDocBatched(supabase2, docRef) {
+  const docId = docRef.__id;
+  return new Promise((resolve, reject) => {
+    const waiters = _configDocBatch.requests.get(docId);
+    if (waiters) {
+      waiters.push({ resolve, reject, docRef, supabase: supabase2 });
+    } else {
+      _configDocBatch.requests.set(docId, [{ resolve, reject, docRef, supabase: supabase2 }]);
+    }
+    if (!_configDocBatch.timer) {
+      _configDocBatch.timer = setTimeout(_flushConfigDocBatch, 20);
+    }
+  });
+}
 async function setConfigDoc(supabase2, docRef, dataObj, options) {
   const docId = docRef.__id;
   const isMerge = options && options.merge;
@@ -20985,9 +20985,8 @@ var TABLE_SELECT_COLUMNS = {
   // Keep all columns since the page needs them
   // entrainements: donnees_joueurs JSONB can be very large
   entrainements: "id,club_id,seances,joueurs,updated_at",
-  // feuilles_match: feuille JSONB is large but needed when viewing a match
-  // Only load metadata for list views; full data loaded via getDoc
-  feuilles_match: "id,club_id,adversaire,competition,journee,updated_at"
+  // feuilles_match: feuille/feuille2 JSONB needed for stats view and auto-load on page open
+  feuilles_match: "id,club_id,date,lieu,adversaire,compet,journee,feuille,feuille2,staff,updated_at"
   // wellness: hooper JSONB is small, keep all
   // dispo_kine: plages JSONB is small, keep all
 };
@@ -20996,11 +20995,11 @@ async function getDocsRaw(queryRef) {
   const table = queryRef.__table;
   if (!supabase2 || !table) {
     return { docs: [], empty: true, size: 0, forEach: () => {
-    } };
+    }, metadata: { hasPendingWrites: false, fromCache: false } };
   }
   if (table === "max_testes") {
     const docs = await getMaxTestesDocs(supabase2, queryRef);
-    return { docs, empty: docs.length === 0, size: docs.length, forEach: (cb) => docs.forEach(cb) };
+    return { docs, empty: docs.length === 0, size: docs.length, forEach: (cb) => docs.forEach(cb), metadata: { hasPendingWrites: false, fromCache: false } };
   }
   if (table === "charges_reelles") {
     const constraints = queryRef.__constraints || [];
@@ -21024,7 +21023,7 @@ async function getDocsRaw(queryRef) {
           return rest;
         }
       }));
-      return { docs, empty: docs.length === 0, size: docs.length, forEach: (cb) => docs.forEach(cb) };
+      return { docs, empty: docs.length === 0, size: docs.length, forEach: (cb) => docs.forEach(cb), metadata: { hasPendingWrites: false, fromCache: false } };
     }
   }
   const selectCols = TABLE_SELECT_COLUMNS[table] || "*";
@@ -21054,17 +21053,16 @@ async function setDoc(docRef, dataObj, options) {
   let rowData = convertKeysToSnake(dataObj);
   rowData.club_id = DEFAULT_CLUB_ID;
   const uuidConflict = UUID_PK_CONFLICT[table];
-  if (uuidConflict === undefined) {
+  if (uuidConflict === void 0) {
     if (id) rowData.id = id;
   }
   if (DATA_JSONB_TABLES.has(table) && TABLE_COLUMNS[table]) {
     const knownCols = TABLE_COLUMNS[table];
     const extraFields = {};
-    for (const [key, value] of Object.entries(dataObj)) {
-      const snakeKey = camelToSnake(key);
-      if (!knownCols.has(snakeKey) && snakeKey !== "data") {
+    for (const [key, value] of Object.entries(rowData)) {
+      if (!knownCols.has(key) && key !== "data") {
         extraFields[key] = value;
-        delete rowData[snakeKey];
+        delete rowData[key];
       }
     }
     if (Object.keys(extraFields).length > 0) {
@@ -21082,7 +21080,7 @@ async function setDoc(docRef, dataObj, options) {
       rowData[key] = null;
     }
   }
-  if (uuidConflict !== undefined) {
+  if (uuidConflict !== void 0) {
     if (uuidConflict) {
       const { error } = await supabase2.from(table).upsert(rowData, { onConflict: uuidConflict });
       if (error) throw error;
@@ -21117,11 +21115,10 @@ async function addDoc(collectionRef, dataObj) {
   if (DATA_JSONB_TABLES.has(table) && TABLE_COLUMNS[table]) {
     const knownCols = TABLE_COLUMNS[table];
     const extraFields = {};
-    for (const [key, value] of Object.entries(dataObj)) {
-      const snakeKey = camelToSnake(key);
-      if (!knownCols.has(snakeKey) && snakeKey !== "data") {
+    for (const [key, value] of Object.entries(rowData)) {
+      if (!knownCols.has(key) && key !== "data") {
         extraFields[key] = value;
-        delete rowData[snakeKey];
+        delete rowData[key];
       }
     }
     if (Object.keys(extraFields).length > 0) {
@@ -21141,17 +21138,16 @@ async function updateDoc(docRef, dataObj) {
   const id = docRef.__id;
   if (table === "max_testes") return setMaxTestesDoc(supabase2, docRef, dataObj, { merge: true });
   if (table === "charges_reelles") return setChargesReellesDoc(supabase2, docRef, dataObj, { merge: true });
-  if (UUID_PK_CONFLICT[table] !== undefined) return setDoc(docRef, dataObj, { merge: true });
+  if (UUID_PK_CONFLICT[table] !== void 0) return setDoc(docRef, dataObj, { merge: true });
   let updateData = convertKeysToSnake(dataObj);
   delete updateData.id;
   if (DATA_JSONB_TABLES.has(table) && TABLE_COLUMNS[table]) {
     const knownCols = TABLE_COLUMNS[table];
     const extraFields = {};
-    for (const [key, value] of Object.entries(dataObj)) {
-      const snakeKey = camelToSnake(key);
-      if (!knownCols.has(snakeKey) && snakeKey !== "data" && snakeKey !== "id") {
+    for (const [key, value] of Object.entries(updateData)) {
+      if (!knownCols.has(key) && key !== "data") {
         extraFields[key] = value;
-        delete updateData[snakeKey];
+        delete updateData[key];
       }
     }
     if (Object.keys(extraFields).length > 0) {
@@ -21176,9 +21172,9 @@ async function deleteDoc(docRef) {
   const table = docRef.__table;
   const id = docRef.__id;
   if (table === "charges_reelles") return deleteChargesReellesDoc(supabase2, docRef);
-  if (UUID_PK_CONFLICT[table] !== undefined) {
-    const { error } = await supabase2.from(table).delete().eq("id", id);
-    if (error && error.code !== "PGRST116") throw error;
+  if (UUID_PK_CONFLICT[table] !== void 0) {
+    const { error: error2 } = await supabase2.from(table).delete().eq("id", id);
+    if (error2 && error2.code !== "PGRST116") throw error2;
     return;
   }
   const { error } = await supabase2.from(table).delete().eq("id", id);
@@ -21261,14 +21257,15 @@ function onSnapshot(ref, ...args) {
         docs: cachedDocs || [],
         empty: !cachedDocs || cachedDocs.length === 0,
         size: cachedDocs ? cachedDocs.length : 0,
-        forEach: (cb) => (cachedDocs || []).forEach(cb)
+        forEach: (cb) => (cachedDocs || []).forEach(cb),
+        metadata: { hasPendingWrites: false, fromCache: false }
       };
       callback(snap);
     }, 150);
   }
   const fetchInitial = async () => {
     if (isDoc) {
-      const docSnap = await getDoc(ref);
+      const docSnap = ref.__collectionName === "config" ? await getConfigDocBatched(supabase2, ref) : await getDoc(ref);
       callback(docSnap);
     } else {
       const snap = await getDocs(ref);
@@ -21480,8 +21477,8 @@ export {
   signInWithPopup,
   signOut,
   startAfter,
-  updatePassword,
   updateDoc,
+  updatePassword,
   uploadGPSFile,
   where,
   writeBatch
