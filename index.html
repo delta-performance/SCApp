@@ -9200,9 +9200,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
     }
     function launchOpeningFireworks(){
       if(!joueurActif)return
-      const isBirthday=isTodayBirthday(joueurActif)
-      if(isBirthday)showBirthday(joueurActif)
-      startFireworks({duration:isBirthday?4200:2400,density:isBirthday?3:2})
+      if(!isTodayBirthday(joueurActif))return
+      showBirthday(joueurActif)
+      startFireworks({duration:4200,density:3})
     }
     function startFireworks(opts){
       const canvas=document.getElementById('fireworks-canvas')
