@@ -898,6 +898,40 @@
     try { enableIndexedDbPersistence(db).catch(() => {}) } catch(e) { console.warn('Persistence IndexedDB non disponible:', e) }
     const auth=getAuth(app)
 
+    // ===== ACCÈS STAFF "VOIR TOUS LES JOUEURS" =====
+    // Un membre du staff peut être autorisé (case "📱 Appli Joueur (voir tous les
+    // joueurs)" cochée dans le shell, page Paramètres > Rôles & permissions) à
+    // parcourir la fiche de n'importe quel joueur depuis cette appli, comme le
+    // fait l'administrateur principal. On récupère ici les rôles/permissions du
+    // staff (config/staff_roles) pour déterminer ce droit en temps réel.
+    const MASTER_ADMIN_EMAILS = ['pellier.david@gmail.com']
+    let __staffRoles = {}
+    let __staffPermissions = {}
+    let __resolveStaffRolesReady
+    const staffRolesReady = new Promise((resolve) => { __resolveStaffRolesReady = resolve })
+    onSnapshot(doc(db, 'config', 'staff_roles'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data()
+        __staffRoles = data.roles || {}
+        __staffPermissions = data.permissions || {}
+      }
+      if (__resolveStaffRolesReady) { __resolveStaffRolesReady(); __resolveStaffRolesReady = null }
+    }, (err) => {
+      console.warn('[Player-app] Erreur écoute staff_roles:', err)
+      if (__resolveStaffRolesReady) { __resolveStaffRolesReady(); __resolveStaffRolesReady = null }
+    })
+
+    function hasStaffPlayerAppAccess(email) {
+      if (!email) return false
+      const e = email.toLowerCase()
+      if (MASTER_ADMIN_EMAILS.includes(e)) return true
+      const role = __staffRoles[e]
+      if (!role) return false
+      if (role === 'owner') return true
+      const perms = __staffPermissions[role]
+      return !!(perms && perms.player_app)
+    }
+
     // Notifier le shell (iPad/desktop) qu'une écriture a eu lieu depuis le player-app
     // Écrit dans changeLog (pour sync incrémentale + rattrapage) et met à jour config/lastWrite (pour notification temps réel)
     async function _notifyShellChange(collectionName, docId, opType='setDoc', detailsLabel){
@@ -1412,10 +1446,15 @@
             const jSnap = await getDocs(collection(db, 'joueurs'));
             joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived);
 
+            // Attendre que les rôles/permissions du staff soient chargés avant de
+            // déterminer l'accès "voir tous les joueurs" (évite un faux négatif
+            // dû à une course entre l'auth et le listener Firestore).
+            await staffRolesReady;
+
             renderMenuGrid();
             buildHooper();
             
-            const isBypassUser = user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
+            const isBypassUser = hasStaffPlayerAppAccess(user.email);
             const btnChange = document.getElementById('btn-admin-change-player');
             if (btnChange) {
               btnChange.style.display = isBypassUser ? 'block' : 'none';
@@ -1530,7 +1569,7 @@
     window.filtrerJoueurs=function(q){
       const ql=q.toLowerCase().trim();
       const user = auth.currentUser;
-      const isBypassUser = user && user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
+      const isBypassUser = user && hasStaffPlayerAppAccess(user.email);
       
       const filtered = joueurs.filter(j => {
         const matchesName = ((j.nom||'')+' '+(j.prenom||'')).toLowerCase().includes(ql) || ((j.prenom||'')+' '+(j.nom||'')).toLowerCase().includes(ql);
@@ -1546,7 +1585,7 @@
       const user = auth.currentUser;
       if (!user) return;
       
-      const isBypassUser = user.email && user.email.toLowerCase() === 'pellier.david@gmail.com';
+      const isBypassUser = hasStaffPlayerAppAccess(user.email);
 
       // If this player profile is already linked to a DIFFERENT account, block it!
       if (!isBypassUser && j.uid && j.uid !== user.uid) {
