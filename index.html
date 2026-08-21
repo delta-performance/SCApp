@@ -7651,6 +7651,52 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           return /\bhg\b/.test(seance) || period === 'hg'
         }
 
+        // Génère une barre de progression façon renderer/gps.html : une seule barre
+        // avec un marqueur jaune (objectif classique) et un marqueur rouge (objectif classique + HG/Sup)
+        // objExtra/realExtra = HG et/ou Suppléants combinés (extraLabel pour le texte affiché : 'HG', 'Sup', 'HG+Sup')
+        function renderGpsStyleBar(realClassique, realExtra, objClassique, objExtra, extraLabel, suffix) {
+          suffix = suffix || 'm'
+          extraLabel = extraLabel || 'HG'
+          const realTotal = realClassique + realExtra
+          const objTotal = objClassique + objExtra
+          const scaleMax = Math.max(realTotal, objTotal, 1) * 1.05
+          const barPct = Math.min(Math.round((realTotal / scaleMax) * 100), 100)
+          const classiqueMarkerPct = objClassique > 0 ? Math.min(Math.round((objClassique / scaleMax) * 100), 100) : 0
+          const totalMarkerPct = objExtra > 0 ? Math.min(Math.round((objTotal / scaleMax) * 100), 100) : 0
+          const pctAtt = objTotal > 0 ? Math.round((realTotal / objTotal) * 100) : 0
+          const color = objTotal > 0 ? (pctAtt >= 100 ? '#1D9E75' : pctAtt >= 80 ? '#FECC00' : pctAtt >= 50 ? '#EF9F27' : '#E24B4A') : '#555'
+
+          let valDisplay
+          if (objExtra > 0) {
+            valDisplay = `${Math.round(realTotal)}${suffix} <span style="font-size:9px;font-weight:400;color:#555;">/ ${Math.round(objClassique)} / ${Math.round(objExtra)}${extraLabel}</span>`
+          } else if (objClassique > 0) {
+            valDisplay = `${Math.round(realTotal)}${suffix} <span style="font-size:9px;font-weight:400;color:#555;">/ ${Math.round(objClassique)}</span>`
+          } else {
+            valDisplay = `${Math.round(realTotal)}${suffix} <span style="font-size:9px;font-weight:400;color:#555;">/ 0</span>`
+          }
+
+          let markers = ''
+          if (classiqueMarkerPct > 0) {
+            markers += `<div style="position:absolute;top:-1px;left:${classiqueMarkerPct}%;width:2px;height:16px;background:#FECC00;border-radius:1px;z-index:2;" title="Objectif classique: ${Math.round(objClassique)}${suffix}"></div>`
+          } else if (objClassique === 0 && objExtra === 0) {
+            markers += `<div style="position:absolute;top:-1px;left:0;width:2px;height:16px;background:#FECC00;border-radius:1px;z-index:2;" title="Objectif: 0"></div>`
+          }
+          if (objExtra > 0 && totalMarkerPct > 0) {
+            markers += `<div style="position:absolute;top:-1px;left:${totalMarkerPct}%;width:2px;height:16px;background:#E24B4A;border-radius:1px;z-index:2;" title="Objectif total (classique + ${extraLabel}): ${Math.round(objTotal)}${suffix}"></div>`
+          }
+
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+              <span style="font-size:13px;font-weight:700;color:${color};">${valDisplay}</span>
+              ${objTotal > 0 ? `<span style="font-size:11px;font-weight:700;color:${color};">${pctAtt}%</span>` : ''}
+            </div>
+            <div style="position:relative;height:16px;background:#0f0f0f;border-radius:6px;overflow:visible;border:1px solid #222;">
+              <div style="height:100%;width:${barPct}%;background:${color};border-radius:6px;transition:width .4s;"></div>
+              ${markers}
+            </div>
+          `
+        }
+
         function renderObjContent() {
           objContent.innerHTML = ''
 
@@ -7896,39 +7942,17 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             weekSection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">🗓 Résumé par semaine</div>`
 
             perWeekData.forEach(w => {
-              const wPct = w.objHI > 0 ? Math.round((w.realHI / w.objHI) * 100) : 0
-              const wColor = wPct >= 100 ? '#1D9E75' : wPct >= 80 ? '#FECC00' : wPct >= 50 ? '#EF9F27' : '#E24B4A'
-              const barW = Math.min(wPct, 100)
-              const statusIcon = w.hasData ? (wPct >= 100 ? '✅' : wPct >= 80 ? '💪' : wPct >= 50 ? '👍' : '🔥') : '⏳'
-              // Ligne HG/Sup distincte (jaune = HG, bleu = Suppléants), séparée de l'objectif classique
-              const hgPct = w.objHG > 0 ? Math.round((w.realHG / w.objHG) * 100) : 0
-              const supPct = w.objSup > 0 ? Math.round((w.realSup / w.objSup) * 100) : 0
-              const hgLine = w.objHG > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:4px;padding-top:4px;border-top:1px dashed #2a2a2a;">
-                  <span style="color:#FECC00;">🔶 HG: ${Math.round(w.realHG)}m / ${Math.round(w.objHG)}m</span>
-                  <span style="color:${hgPct>=100?'#1D9E75':hgPct>=80?'#FECC00':hgPct>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${hgPct}%</span>
-                </div>` : ''
-              const supLine = w.objSup > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;">
-                  <span style="color:#4A90E2;">🔷 Sup: ${Math.round(w.realSup)}m / ${Math.round(w.objSup)}m</span>
-                  <span style="color:${supPct>=100?'#1D9E75':supPct>=80?'#FECC00':supPct>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${supPct}%</span>
-                </div>` : ''
+              const objExtra = w.objHG + w.objSup
+              const realExtra = w.realHG + w.realSup
+              const extraLabel = w.objHG > 0 && w.objSup > 0 ? 'HG+Sup' : w.objSup > 0 ? 'Sup' : 'HG'
+              const wPctGlobal = (w.objHI + objExtra) > 0 ? Math.round(((w.realHI + realExtra) / (w.objHI + objExtra)) * 100) : 0
+              const statusIcon = w.hasData ? (wPctGlobal >= 100 ? '✅' : wPctGlobal >= 80 ? '💪' : wPctGlobal >= 50 ? '👍' : '🔥') : '⏳'
 
               const row = document.createElement('div')
-              row.style.cssText = 'margin-bottom:10px;'
+              row.style.cssText = 'margin-bottom:16px;'
               row.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                  <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} Semaine ${w.semaine}</span>
-                  <span style="font-size:11px;color:${wColor};font-weight:600;">${w.hasData ? wPct + '%' : '—'}</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
-                    <div style="height:100%;width:${w.hasData ? barW : 0}%;background:${wColor};border-radius:6px;transition:width .4s;"></div>
-                  </div>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
-                  <span style="color:#E24B4A;">${w.hasData ? (w.objHI > 0 ? Math.round(w.realHI) + 'm' : Math.round(w.realHI) + 'm/0') : 'Pas de données'}</span>
-                  <span style="color:#555;">${w.objHI > 0 ? 'Obj: ' + Math.round(w.objHI) + 'm' : 'Obj: 0'}</span>
-                </div>
-                ${hgLine}${supLine}
+                <div style="font-size:12px;font-weight:600;color:#ccc;margin-bottom:6px;">${statusIcon} Semaine ${w.semaine}</div>
+                ${w.hasData ? renderGpsStyleBar(w.realHI, realExtra, w.objHI, objExtra, extraLabel) : '<div style="font-size:11px;color:#444;">Pas de données</div>'}
               `
               weekSection.appendChild(row)
             })
@@ -7942,39 +7966,17 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             daySection.innerHTML = `<div style="font-size:13px;font-weight:700;color:#FECC00;margin-bottom:12px;">📅 Détail par jour</div>`
 
             perDayData.forEach(d => {
-              const dayPct = d.objHI > 0 ? Math.round((d.realHI / d.objHI) * 100) : 0
-              const dayColor = dayPct >= 100 ? '#1D9E75' : dayPct >= 80 ? '#FECC00' : dayPct >= 50 ? '#EF9F27' : '#E24B4A'
-              const barW = Math.min(dayPct, 100)
-              const statusIcon = d.hasData ? (dayPct >= 100 ? '✅' : dayPct >= 80 ? '💪' : dayPct >= 50 ? '👍' : '🔥') : '⏳'
-              // Ligne HG/Sup distincte de l'objectif classique du jour
-              const hgPctJ = d.objHG > 0 ? Math.round((d.realHG / d.objHG) * 100) : 0
-              const supPctJ = d.objSup > 0 ? Math.round((d.realSup / d.objSup) * 100) : 0
-              const hgLineJ = d.objHG > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:4px;padding-top:4px;border-top:1px dashed #2a2a2a;">
-                  <span style="color:#FECC00;">🔶 HG: ${Math.round(d.realHG)}m / ${Math.round(d.objHG)}m</span>
-                  <span style="color:${hgPctJ>=100?'#1D9E75':hgPctJ>=80?'#FECC00':hgPctJ>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${hgPctJ}%</span>
-                </div>` : ''
-              const supLineJ = d.objSup > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;">
-                  <span style="color:#4A90E2;">🔷 Sup: ${Math.round(d.realSup)}m / ${Math.round(d.objSup)}m</span>
-                  <span style="color:${supPctJ>=100?'#1D9E75':supPctJ>=80?'#FECC00':supPctJ>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${supPctJ}%</span>
-                </div>` : ''
+              const objExtraJ = d.objHG + d.objSup
+              const realExtraJ = d.realHG + d.realSup
+              const extraLabelJ = d.objHG > 0 && d.objSup > 0 ? 'HG+Sup' : d.objSup > 0 ? 'Sup' : 'HG'
+              const dayPctGlobal = (d.objHI + objExtraJ) > 0 ? Math.round(((d.realHI + realExtraJ) / (d.objHI + objExtraJ)) * 100) : 0
+              const statusIcon = d.hasData ? (dayPctGlobal >= 100 ? '✅' : dayPctGlobal >= 80 ? '💪' : dayPctGlobal >= 50 ? '👍' : '🔥') : '⏳'
 
               const row = document.createElement('div')
-              row.style.cssText = 'margin-bottom:10px;'
+              row.style.cssText = 'margin-bottom:16px;'
               row.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                  <span style="font-size:12px;font-weight:600;color:#ccc;">${statusIcon} ${d.jour} <span style="color:#444;font-size:10px;">${d.dateStr}</span></span>
-                  <span style="font-size:11px;color:${dayColor};font-weight:600;">${d.hasData ? dayPct + '%' : '—'}</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <div style="flex:1;height:14px;background:#0f0f0f;border-radius:6px;overflow:hidden;border:1px solid #222;">
-                    <div style="height:100%;width:${d.hasData ? barW : 0}%;background:${dayColor};border-radius:6px;transition:width .4s;"></div>
-                  </div>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
-                  <span style="color:#E24B4A;">${d.hasData ? (d.objHI > 0 ? Math.round(d.realHI) + 'm' : Math.round(d.realHI) + 'm/0') : 'Pas de données'}</span>
-                  <span style="color:#555;">${d.objHI > 0 ? 'Obj: ' + Math.round(d.objHI) + 'm' : 'Obj: 0'}</span>
-                </div>
-                ${hgLineJ}${supLineJ}
+                <div style="font-size:12px;font-weight:600;color:#ccc;margin-bottom:6px;">${statusIcon} ${d.jour} <span style="color:#444;font-size:10px;">${d.dateStr}</span></div>
+                ${d.hasData ? renderGpsStyleBar(d.realHI, realExtraJ, d.objHI, objExtraJ, extraLabelJ) : '<div style="font-size:11px;color:#444;">Pas de données</div>'}
               `
               daySection.appendChild(row)
             })
