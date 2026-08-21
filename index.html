@@ -7644,11 +7644,13 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         }
 
         // Une ligne GPS correspond-elle à une séance Hors-Groupe (HG) ?
-        // Même logique d'exclusion que renderer/gps-planif.html (chargeSemaine)
+        // Même logique d'exclusion que renderer/gps-planif.html (chargeSemaine).
+        // Important : remplacer les underscores par des espaces avant le test, car \b ne
+        // détecte pas de frontière entre "_" et une lettre (ex: "entrainement_hg" ne matchait pas \bhg\b)
         function isHGRow(h) {
-          const seance = String(h.seance || '').toLowerCase()
-          const period = String(h.period || '').toLowerCase()
-          return /\bhg\b/.test(seance) || period === 'hg'
+          const seance = String(h.seance || '').toLowerCase().replace(/_/g, ' ')
+          const period = String(h.period || '').toLowerCase().replace(/_/g, ' ')
+          return /\bhg\b/.test(seance) || period === 'hg' || /\bhg\b/.test(period)
         }
 
         // Génère une barre de progression façon renderer/gps.html : une seule barre
