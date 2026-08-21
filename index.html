@@ -7721,9 +7721,18 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // Réel: filtrer l'historique sur cette semaine
             // En mode hebdomadaire, utiliser l'historique complet pour avoir tous les jours de la semaine
             const histSource = objMode === 'hebdomadaire' ? histComplete : hist
-            const histSemaine = histSource.filter(h => {
+            const histSemaineBrut = histSource.filter(h => {
               const d = parseDate(h.date)
               return d && d >= lundi && d <= dimanche
+            })
+            // Dédupliquer les entrées identiques (même date+séance+période) — évite de compter
+            // deux fois la même activité si elle apparaît plusieurs fois dans l'historique
+            const vusHistSemaine = new Set()
+            const histSemaine = histSemaineBrut.filter(h => {
+              const key = [h.date, h.seance, h.period, h.distHI, h.duree].join('|')
+              if (vusHistSemaine.has(key)) return false
+              vusHistSemaine.add(key)
+              return true
             })
             // Séparer le réel "classique" (hors HG) du réel HG
             const histSemaineClassique = histSemaine.filter(h => !isHGRow(h))
@@ -7749,6 +7758,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             const supJoursEff = planif.supJours || []
             const joursNormal = distHIParJour ? Object.keys(distHIParJour) : []
             const joursUnion = [...new Set([...joursNormal, ...hgJoursEff, ...supJoursEff])]
+              .sort((a, b) => (JOURS_OFF[a] ?? 99) - (JOURS_OFF[b] ?? 99))
 
             // Per-day breakdown
             if (joursUnion.length) {
@@ -7965,6 +7975,11 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           }
 
           // Détail par jour (affiché dans les deux modes)
+          // Sécurité supplémentaire : trier par semaine puis par ordre chronologique du jour
+          perDayData.sort((a, b) => {
+            if (a.semaine !== b.semaine) return (a.semaine || '').localeCompare(b.semaine || '')
+            return (JOURS_OFF[a.jour] ?? 99) - (JOURS_OFF[b.jour] ?? 99)
+          })
           if (perDayData.length > 0) {
             const daySection = document.createElement('div')
             daySection.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:14px;margin-bottom:14px;'
