@@ -5575,7 +5575,7 @@
     // Corriger les données si nécessaire
     function corrigerDonneesGPS(historique) {
       if (!historique) return []
-      return historique.map(h => {
+      const corrige = historique.map(h => {
         const hCorr = { ...h }
         // Fallback: dériver period depuis periodNames si manquant
         if (!hCorr.period && Array.isArray(hCorr.periodNames) && hCorr.periodNames.length > 0) {
@@ -5592,6 +5592,16 @@
           if (isFinite(dureeCalc) && dureeCalc > 0) hCorr.duree = dureeCalc
         }
         return hCorr
+      })
+      // Dédupliquer les activités identiques enregistrées sous 2 noms différents
+      // (ex: la même séance blessé taguée à la fois "..._HG" et "..._rehab") — on repère
+      // les doublons par empreinte de valeurs (même date + mêmes métriques), pas par nom
+      const vus = new Set()
+      return corrige.filter(h => {
+        const empreinte = [h.date, h.distHI, h.distTot, h.mMin, h.hiMin, h.volHI, h.vmax, h.duree].join('|')
+        if (vus.has(empreinte)) return false
+        vus.add(empreinte)
+        return true
       })
     }
     
