@@ -7806,11 +7806,16 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
           if (objMode === 'quotidien') {
             // Score quotidien = moyenne des % journaliers (jours avec données seulement)
-            // Inclure aussi les jours où objHI = 0 (objectif adaptatif à 0) mais qui ont des données réelles
-            const daysWithData = perDayData.filter(d => d.hasData && (d.objHI > 0 || d.objHI === 0))
-            const daysWithObjHI = daysWithData.filter(d => d.objHI > 0)
+            // Totaux = classique + HG + Suppléants combinés, pour ne pas afficher "0" un jour
+            // où le joueur n'a fait que du HG (le détail par jour distingue déjà les deux)
+            const daysWithData = perDayData.map(d => ({
+              ...d,
+              objTotal: d.objHI + (d.objHG || 0) + (d.objSup || 0),
+              realTotal: d.realHI + (d.realHG || 0) + (d.realSup || 0)
+            })).filter(d => d.hasData && (d.objTotal > 0 || d.objTotal === 0))
+            const daysWithObjHI = daysWithData.filter(d => d.objTotal > 0)
             if (daysWithObjHI.length) {
-              scoreHI = Math.round(daysWithObjHI.reduce((s, d) => s + Math.min((d.realHI / d.objHI) * 100, 150), 0) / daysWithObjHI.length)
+              scoreHI = Math.round(daysWithObjHI.reduce((s, d) => s + Math.min((d.realTotal / d.objTotal) * 100, 150), 0) / daysWithObjHI.length)
             } else if (daysWithData.length) {
               scoreHI = 150 // Objectif dépassé quand obj = 0 et on a des données
             } else { scoreHI = 0 }
@@ -7819,17 +7824,17 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               scoreAcc = Math.round(daysAcc.reduce((s, d) => s + Math.min((d.realAcc / d.objAcc) * 100, 150), 0) / daysAcc.length)
             } else { scoreAcc = 0 }
 
-            // Totaux pour KPIs = sommes journalières (jours avec données seulement)
-            totalRealHI = daysWithData.reduce((s, d) => s + d.realHI, 0)
-            totalObjHI = daysWithData.reduce((s, d) => s + d.objHI, 0)
+            // Totaux pour KPIs = sommes journalières (classique + HG + Sup, jours avec données seulement)
+            totalRealHI = daysWithData.reduce((s, d) => s + d.realTotal, 0)
+            totalObjHI = daysWithData.reduce((s, d) => s + d.objTotal, 0)
             totalRealAcc = daysWithData.reduce((s, d) => s + d.realAcc, 0)
             totalObjAcc = daysWithData.reduce((s, d) => s + d.objAcc, 0)
             totalRealVolHI = perWeekData.reduce((s, w) => s + w.realVolHI, 0)
             totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
           } else {
-            // Mode hebdomadaire = totaux par semaine
-            totalObjHI = perWeekData.reduce((s, w) => s + w.objHI, 0)
-            totalRealHI = perWeekData.reduce((s, w) => s + w.realHI, 0)
+            // Mode hebdomadaire = totaux par semaine (classique + HG + Suppléants combinés)
+            totalObjHI = perWeekData.reduce((s, w) => s + w.objHI + (w.objHG || 0) + (w.objSup || 0), 0)
+            totalRealHI = perWeekData.reduce((s, w) => s + w.realHI + (w.realHG || 0) + (w.realSup || 0), 0)
             totalObjAcc = perWeekData.reduce((s, w) => s + w.objAcc, 0)
             totalRealAcc = perWeekData.reduce((s, w) => s + w.realAcc, 0)
             totalRealVolHI = perWeekData.reduce((s, w) => s + w.realVolHI, 0)
