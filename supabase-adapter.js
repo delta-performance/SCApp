@@ -20745,32 +20745,49 @@ async function getMaxTestesDocs(supabase2, queryRef) {
 }
 async function getChargesReellesDocV2(supabase2, docRef) {
   const fullId = docRef.__id;
-  if (fullId.length > 21) {
+  let seanceId = null, joueurId = null;
+  const uuidMatch = fullId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_(.+)$/);
+  if (uuidMatch) {
+    seanceId = uuidMatch[1];
+    joueurId = uuidMatch[2];
+  }
+  if (!seanceId && fullId.length > 21 && !fullId.startsWith("nrg_")) {
     const possibleSeanceId = fullId.substring(0, 20);
-    const possibleJoueurId = fullId.substring(21);
-    const { data: rows, error: err } = await supabase2.from("charges_reelles").select("*").eq("seance_id", possibleSeanceId).eq("joueur_id", possibleJoueurId);
-    if (!err && rows && rows.length > 0) {
-      return reconstructChargesReellesDoc(rows, fullId);
+    if (!possibleSeanceId.includes("_")) {
+      seanceId = possibleSeanceId;
+      joueurId = fullId.substring(21);
     }
   }
-  if (fullId.startsWith("nrg_")) {
+  if (!seanceId && fullId.startsWith("nrg_")) {
     const match = fullId.match(/^(nrg_\d+_\w+)/);
     if (match) {
-      const seanceId = match[1];
-      const joueurId = fullId.substring(seanceId.length + 1);
-      const { data: rows, error: err } = await supabase2.from("charges_reelles").select("*").eq("seance_id", seanceId).eq("joueur_id", joueurId);
-      if (!err && rows && rows.length > 0) {
-        return reconstructChargesReellesDoc(rows, fullId);
-      }
+      seanceId = match[1];
+      joueurId = fullId.substring(seanceId.length + 1);
     }
+  }
+  if (!seanceId || !joueurId) {
+    console.error("[getChargesReellesDocV2] \u274C Cannot parse doc ID:", fullId);
+    return wrapEmpty(fullId);
+  }
+  const { data: rows, error: err } = await supabase2.from("charges_reelles").select("*").eq("seance_id", seanceId).eq("joueur_id", joueurId);
+  if (err) {
+    console.error("[getChargesReellesDocV2] \u274C Query error:", err.message, "code:", err.code);
+  }
+  console.log("[getChargesReellesDocV2] docId:", fullId, "\u2192 seanceId:", seanceId, "joueurId:", joueurId, "rows:", rows ? rows.length : 0);
+  if (!err && rows && rows.length > 0) {
+    return reconstructChargesReellesDoc(rows, fullId);
   }
   return wrapEmpty(fullId);
 }
 function reconstructChargesReellesDoc(rows, docId) {
   const result = { id: docId };
   for (const row of rows) {
-    const key = row.seance_id + "_bloc_" + row.bloc_id + "_grp_" + row.groupe_id + "_exo_" + row.exercice_id + "_" + row.joueur_id + "_s" + row.numero_serie;
+    const key = row.seance_id + "_" + row.bloc_id + "_" + row.groupe_id + "_" + row.exercice_id + "_" + row.joueur_id + "_s" + row.numero_serie;
     result[key] = row.valeur;
+    const normGroupeId = row.groupe_id && row.groupe_id.startsWith("grp_") ? row.groupe_id : "grp_" + row.groupe_id;
+    const normExoId = row.exercice_id && row.exercice_id.startsWith("exo_") ? row.exercice_id : "exo_" + row.exercice_id;
+    const normKey = row.seance_id + "_" + row.bloc_id + "_" + normGroupeId + "_" + normExoId + "_" + row.joueur_id + "_s" + row.numero_serie;
+    result[normKey] = row.valeur;
   }
   const updatedAt = rows[0]?.updated_at;
   if (updatedAt) result.updatedAt = updatedAt;
@@ -20783,11 +20800,19 @@ function reconstructChargesReellesDoc(rows, docId) {
 async function setChargesReellesDoc(supabase2, docRef, dataObj, options) {
   const fullId = docRef.__id;
   let seanceId = null, joueurId = null;
-  if (fullId.length > 21) {
-    seanceId = fullId.substring(0, 20);
-    joueurId = fullId.substring(21);
+  const uuidMatch = fullId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_(.+)$/);
+  if (uuidMatch) {
+    seanceId = uuidMatch[1];
+    joueurId = uuidMatch[2];
   }
-  if (fullId.startsWith("nrg_")) {
+  if (!seanceId && fullId.length > 21 && !fullId.startsWith("nrg_")) {
+    const possibleSeanceId = fullId.substring(0, 20);
+    if (!possibleSeanceId.includes("_")) {
+      seanceId = possibleSeanceId;
+      joueurId = fullId.substring(21);
+    }
+  }
+  if (!seanceId && fullId.startsWith("nrg_")) {
     const match = fullId.match(/^(nrg_\d+_\w+)/);
     if (match) {
       seanceId = match[1];
@@ -20795,35 +20820,96 @@ async function setChargesReellesDoc(supabase2, docRef, dataObj, options) {
     }
   }
   if (!seanceId || !joueurId) {
-    console.error("Cannot parse chargesReelles doc ID:", fullId);
+    console.error("[setChargesReellesDoc] \u274C Cannot parse doc ID:", fullId);
     return;
   }
+  console.log("[setChargesReellesDoc] docId:", fullId, "\u2192 seanceId:", seanceId, "joueurId:", joueurId);
+  console.log("[setChargesReellesDoc] dataObj keys:", Object.keys(dataObj));
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const upsertRows = [];
   const deleteOps = [];
+  let skippedKeys = [];
   for (const [key, value] of Object.entries(dataObj)) {
     if (key === "id" || key === "updatedAt") continue;
     if (key.endsWith("_mode") || key.endsWith("_leste") || key.endsWith("_reps")) {
       continue;
     }
-    const blocIdx = key.indexOf("_bloc_");
-    if (blocIdx < 0) continue;
-    const afterBloc = key.substring(blocIdx + 6);
-    const grpIdx = afterBloc.indexOf("_grp_");
-    if (grpIdx < 0) continue;
-    const blocId = afterBloc.substring(0, grpIdx);
-    const afterGrp = afterBloc.substring(grpIdx + 5);
-    const exoIdx = afterGrp.indexOf("_exo_");
-    if (exoIdx < 0) continue;
-    const groupeId = afterGrp.substring(0, exoIdx);
-    const afterExo = afterGrp.substring(exoIdx + 5);
-    const sMatch = afterExo.match(/_s(\d+)$/);
-    if (!sMatch) continue;
+    const sMatch = key.match(/_s(\d+)$/);
+    if (!sMatch) {
+      skippedKeys.push(key);
+      continue;
+    }
     const serieNum = parseInt(sMatch[1]);
-    const beforeSerie = afterExo.substring(0, afterExo.length - sMatch[0].length);
+    const withoutSuffix = key.substring(0, key.length - sMatch[0].length);
     const joueurSuffix = "_" + joueurId;
-    if (!beforeSerie.endsWith(joueurSuffix)) continue;
-    const exoId = beforeSerie.substring(0, beforeSerie.length - joueurSuffix.length);
+    if (!withoutSuffix.endsWith(joueurSuffix)) {
+      skippedKeys.push(key);
+      continue;
+    }
+    const withoutJoueur = withoutSuffix.substring(0, withoutSuffix.length - joueurSuffix.length);
+    const seancePrefix = seanceId + "_";
+    if (!withoutJoueur.startsWith(seancePrefix)) {
+      skippedKeys.push(key);
+      continue;
+    }
+    const middle = withoutJoueur.substring(seancePrefix.length);
+    let blocId, groupeId, exoId;
+    const grpIdx = middle.indexOf("_grp_");
+    if (grpIdx >= 0) {
+      blocId = middle.substring(0, grpIdx);
+      const afterGrp = middle.substring(grpIdx + 5);
+      const exoIdx = afterGrp.indexOf("_exo_");
+      if (exoIdx >= 0) {
+        groupeId = "grp_" + afterGrp.substring(0, exoIdx);
+        exoId = "exo_" + afterGrp.substring(exoIdx + 5);
+      } else {
+        skippedKeys.push(key);
+        continue;
+      }
+    } else {
+      const blocMatch = middle.match(/^bloc_[^_]+/);
+      if (blocMatch) {
+        blocId = blocMatch[0];
+        const rest = middle.substring(blocId.length);
+        const grpMatch = rest.match(/^_grp_[^_]+/);
+        if (grpMatch) {
+          groupeId = grpMatch[0].substring(1);
+          const rest2 = rest.substring(grpMatch[0].length);
+          const exoMatch = rest2.match(/^_exo_[^_]+/);
+          if (exoMatch) {
+            exoId = exoMatch[0].substring(1);
+          } else {
+            const parts = rest2.substring(1).split("_");
+            if (parts.length >= 2) {
+              groupeId = parts[0];
+              exoId = parts.slice(1).join("_");
+            } else {
+              skippedKeys.push(key);
+              continue;
+            }
+          }
+        } else {
+          const parts = rest.substring(1).split("_");
+          if (parts.length >= 3) {
+            groupeId = parts[1];
+            exoId = parts.slice(2).join("_");
+          } else {
+            skippedKeys.push(key);
+            continue;
+          }
+        }
+      } else {
+        const parts = middle.split("_");
+        if (parts.length >= 3) {
+          blocId = parts[0];
+          groupeId = parts[1];
+          exoId = parts.slice(2).join("_");
+        } else {
+          skippedKeys.push(key);
+          continue;
+        }
+      }
+    }
     if (value === "" || value && value.__deleteField) {
       deleteOps.push(
         supabase2.from("charges_reelles").delete().eq("seance_id", seanceId).eq("joueur_id", joueurId).eq("bloc_id", blocId).eq("groupe_id", groupeId).eq("exercice_id", exoId).eq("numero_serie", serieNum)
@@ -20842,6 +20928,13 @@ async function setChargesReellesDoc(supabase2, docRef, dataObj, options) {
       });
     }
   }
+  if (skippedKeys.length > 0) {
+    console.warn("[setChargesReellesDoc] \u26A0\uFE0F Cl\xE9s ignor\xE9es (pas _bloc_):", skippedKeys);
+  }
+  console.log("[setChargesReellesDoc] upsertRows:", upsertRows.length, "deleteOps:", deleteOps.length);
+  if (upsertRows.length > 0) {
+    console.log("[setChargesReellesDoc] sample upsert row:", JSON.stringify(upsertRows[0]));
+  }
   const ops = [];
   if (upsertRows.length > 0) {
     ops.push(supabase2.from("charges_reelles").upsert(upsertRows, { onConflict: "joueur_id,seance_id,bloc_id,groupe_id,exercice_id,numero_serie" }));
@@ -20849,10 +20942,24 @@ async function setChargesReellesDoc(supabase2, docRef, dataObj, options) {
   ops.push(...deleteOps);
   const results = await Promise.all(ops);
   let batchFailed = false;
-  for (const { error } of results) {
+  for (let i = 0; i < results.length; i++) {
+    const { data, error } = results[i];
     if (error) {
       batchFailed = true;
-      console.warn("[setChargesReellesDoc] Batch error:", error.message);
+      console.error("[setChargesReellesDoc] \u274C Batch error:", error.message, "code:", error.code, "details:", error.details, "hint:", error.hint);
+    } else {
+      console.log("[setChargesReellesDoc] \u2705 Op", i, "OK, data:", data ? Array.isArray(data) ? data.length + " rows" : "1 row" : "null");
+    }
+  }
+  if (upsertRows.length > 0) {
+    const { data: verifyRows, error: verifyErr } = await supabase2.from("charges_reelles").select("*").eq("seance_id", seanceId).eq("joueur_id", joueurId);
+    if (verifyErr) {
+      console.error("[setChargesReellesDoc] \u274C Verification query error:", verifyErr.message);
+    } else {
+      console.log("[setChargesReellesDoc] \u{1F50D} VERIFICATION: found", verifyRows ? verifyRows.length : 0, "rows for seanceId=" + seanceId + " joueurId=" + joueurId);
+      if (verifyRows && verifyRows.length > 0) {
+        console.log("[setChargesReellesDoc] \u{1F50D} Latest row:", JSON.stringify(verifyRows[verifyRows.length - 1]));
+      }
     }
   }
   if (batchFailed && upsertRows.length > 0) {
@@ -20870,11 +20977,19 @@ async function setChargesReellesDoc(supabase2, docRef, dataObj, options) {
 async function deleteChargesReellesDoc(supabase2, docRef) {
   const fullId = docRef.__id;
   let seanceId = null, joueurId = null;
-  if (fullId.length > 21) {
-    seanceId = fullId.substring(0, 20);
-    joueurId = fullId.substring(21);
+  const uuidMatch = fullId.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_(.+)$/);
+  if (uuidMatch) {
+    seanceId = uuidMatch[1];
+    joueurId = uuidMatch[2];
   }
-  if (fullId.startsWith("nrg_")) {
+  if (!seanceId && fullId.length > 21 && !fullId.startsWith("nrg_")) {
+    const possibleSeanceId = fullId.substring(0, 20);
+    if (!possibleSeanceId.includes("_")) {
+      seanceId = possibleSeanceId;
+      joueurId = fullId.substring(21);
+    }
+  }
+  if (!seanceId && fullId.startsWith("nrg_")) {
     const match = fullId.match(/^(nrg_\d+_\w+)/);
     if (match) {
       seanceId = match[1];
@@ -21008,12 +21123,17 @@ async function getDocsRaw(queryRef) {
       const seanceId = seanceConstraint.__value;
       const { data: rows, error: error2 } = await supabase2.from("charges_reelles").select("*").eq("seance_id", seanceId);
       if (error2) throw error2;
+      console.log("[getDocsRaw charges_reelles] seanceId:", seanceId, "rows:", rows ? rows.length : 0);
       const byJoueur = {};
       for (const row of rows || []) {
         const jid = row.joueur_id;
         if (!byJoueur[jid]) byJoueur[jid] = { id: seanceId + "_" + jid, updatedAt: row.updated_at };
-        const key = row.seance_id + "_bloc_" + row.bloc_id + "_grp_" + row.groupe_id + "_exo_" + row.exercice_id + "_" + row.joueur_id + "_s" + row.numero_serie;
+        const key = row.seance_id + "_" + row.bloc_id + "_" + row.groupe_id + "_" + row.exercice_id + "_" + row.joueur_id + "_s" + row.numero_serie;
         byJoueur[jid][key] = row.valeur;
+        const normGroupeId = row.groupe_id && row.groupe_id.startsWith("grp_") ? row.groupe_id : "grp_" + row.groupe_id;
+        const normExoId = row.exercice_id && row.exercice_id.startsWith("exo_") ? row.exercice_id : "exo_" + row.exercice_id;
+        const normKey = row.seance_id + "_" + row.bloc_id + "_" + normGroupeId + "_" + normExoId + "_" + row.joueur_id + "_s" + row.numero_serie;
+        byJoueur[jid][normKey] = row.valeur;
       }
       const docs = Object.values(byJoueur).map((data2) => ({
         id: data2.id,
@@ -21023,6 +21143,10 @@ async function getDocsRaw(queryRef) {
           return rest;
         }
       }));
+      if (docs.length > 0) {
+        const sampleKeys = Object.keys(docs[0].data());
+        console.log("[getDocsRaw charges_reelles] sample doc keys:", sampleKeys.slice(0, 5));
+      }
       return { docs, empty: docs.length === 0, size: docs.length, forEach: (cb) => docs.forEach(cb), metadata: { hasPendingWrites: false, fromCache: false } };
     }
   }
