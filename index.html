@@ -1655,8 +1655,27 @@
       wellnessHistory=[]
       const av=document.getElementById('menu-avatar')
       if (av) {
-        av.textContent=(j.prenom||'?')[0]+(j.nom||'?')[0]
-        av.style.background=col+'22';av.style.borderColor=col;av.style.color=col
+        av.innerHTML=''
+        av.style.background=''
+        av.style.borderColor=''
+        av.style.color=''
+        if(j.photo){
+          const clip=document.createElement('div')
+          clip.style.cssText='width:100%;height:100%;border-radius:50%;overflow:hidden;'
+          const img=document.createElement('img')
+          img.src=j.photo
+          img.style.cssText='width:100%;height:100%;object-fit:cover;'+photoStyleStr(j)
+          img.onerror=function(){
+            av.innerHTML=''
+            av.textContent=(j.prenom||'?')[0]+(j.nom||'?')[0]
+            av.style.background=col+'22';av.style.borderColor=col;av.style.color=col
+          }
+          clip.appendChild(img)
+          av.appendChild(clip)
+        }else{
+          av.textContent=(j.prenom||'?')[0]+(j.nom||'?')[0]
+          av.style.background=col+'22';av.style.borderColor=col;av.style.color=col
+        }
       }
       const menuNom = document.getElementById('menu-nom')
       if (menuNom) menuNom.textContent=(j.prenom||'')+' '+(j.nom||'')
