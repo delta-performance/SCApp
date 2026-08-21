@@ -7643,6 +7643,14 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           return totalDurMin > 0 ? +(totalDist / totalDurMin).toFixed(1) : 0
         }
 
+        // Une ligne GPS correspond-elle à une séance Hors-Groupe (HG) ?
+        // Même logique d'exclusion que renderer/gps-planif.html (chargeSemaine)
+        function isHGRow(h) {
+          const seance = String(h.seance || '').toLowerCase()
+          const period = String(h.period || '').toLowerCase()
+          return /\bhg\b/.test(seance) || period === 'hg'
+        }
+
         function renderObjContent() {
           objContent.innerHTML = ''
 
@@ -7651,9 +7659,17 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           let perWeekData = []
 
           planifsMatched.forEach(({ planif, resultat, lundi, dimanche }) => {
-            const objHI = resultat.chargeCibleAjustee || resultat.distHI || 0
+            const objHITotal = resultat.chargeCibleAjustee || resultat.distHI || 0
+            const objHG = resultat.objectifHG || 0
+            const objSup = resultat.objectifSup || 0
+            // Objectif "classique" hors HG/Suppléants (ces derniers sont gérés séparément)
+            const objHI = Math.max(0, objHITotal - objHG - objSup)
             const objAcc = resultat.accB23 || 0
             const distHIParJour = resultat.distHIParJourAdaptatif || resultat.distHIParJour || null
+            const hgObjParJour = resultat.hgObjParJour || {}
+            const hgRealParJour = resultat.hgRealParJour || {}
+            const supObjParJour = resultat.supObjParJour || {}
+            const supRealParJour = resultat.supRealParJour || {}
             const gpsPbJours = resultat.gpsProblemeJours || {}
 
             // Réel: filtrer l'historique sur cette semaine
@@ -7663,23 +7679,34 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               const d = parseDate(h.date)
               return d && d >= lundi && d <= dimanche
             })
-            // Debug: voir exactement quelles entrées GPS sont dans la semaine
-            console.log('Objectifs hebdo debug:', { semaine: planif.semaine, lundi: lundi.toISOString(), dimanche: dimanche.toISOString(), nbEntrees: histSemaine.length, entrees: histSemaine.map(h => ({ date: h.date, distHI: h.distHI, seance: h.seance })) })
-            const realHI = histSemaine.reduce((sum, h) => sum + (h.distHI || 0), 0)
-            const realAcc = histSemaine.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
+            // Séparer le réel "classique" (hors HG) du réel HG
+            const histSemaineClassique = histSemaine.filter(h => !isHGRow(h))
+            const realHI = histSemaineClassique.reduce((sum, h) => sum + (h.distHI || 0), 0)
+            const realAcc = histSemaineClassique.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
             const realVolHI = histSemaine.reduce((sum, h) => sum + (h.volHI || 0), 0)
             const realVmax = Math.max(...histSemaine.map(h => h.vmax || 0), 0)
+            // Réel HG/Sup : priorité aux valeurs déjà calculées et sauvegardées par gps-planif
+            const realHG = resultat.hgReelle || 0
+            const realSup = resultat.supReelle || 0
 
             // Données par semaine
             perWeekData.push({
               semaine: planif.semaine,
               objHI, realHI, objAcc, realAcc, realVolHI, realVmax,
+              objHG, realHG, objSup, realSup,
               hasData: histSemaine.length > 0
             })
 
+            // Jours concernés : jours d'entraînement classique + jours HG + jours Suppléants
+            // (un jour HG-seul comme un Vendredi sans entraînement normal doit quand même apparaître)
+            const hgJoursEff = (planif.hgJours && planif.hgJours.length > 0) ? planif.hgJours : (planif.hgJour ? [planif.hgJour] : [])
+            const supJoursEff = planif.supJours || []
+            const joursNormal = distHIParJour ? Object.keys(distHIParJour) : []
+            const joursUnion = [...new Set([...joursNormal, ...hgJoursEff, ...supJoursEff])]
+
             // Per-day breakdown
-            if (distHIParJour && Object.keys(distHIParJour).length) {
-              Object.entries(distHIParJour).forEach(([jour, valHI]) => {
+            if (joursUnion.length) {
+              joursUnion.forEach(jour => {
                 const off = JOURS_OFF[jour]
                 if (off === undefined) return
                 const dateJour = new Date(lundi)
@@ -7692,16 +7719,25 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 const hasData = realDay.length > 0
                 const isGPSPb = gpsPbJours[jour]
                 if (isGPSPb) return
-                const realDayHI = realDay.reduce((sum, h) => sum + (h.distHI || 0), 0)
-                const realDayAcc = realDay.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
+                const realDayClassique = realDay.filter(h => !isHGRow(h))
+                const realDayHI = realDayClassique.reduce((sum, h) => sum + (h.distHI || 0), 0)
+                const realDayAcc = realDayClassique.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
 
+                const valHI = distHIParJour ? (distHIParJour[jour] || 0) : 0
                 // Objectif acc proportionnel pour ce jour
                 const objAccJour = objHI > 0 && objAcc > 0 ? (valHI / objHI) * objAcc : 0
+
+                const objHGJour = hgObjParJour[jour] || 0
+                const realHGJour = hgRealParJour[jour] || 0
+                const objSupJour = supObjParJour[jour] || 0
+                const realSupJour = supRealParJour[jour] || 0
 
                 perDayData.push({
                   jour, dateStr: dateJourStr,
                   objHI: valHI || 0, realHI: realDayHI,
                   objAcc: objAccJour, realAcc: realDayAcc,
+                  objHG: objHGJour, realHG: realHGJour,
+                  objSup: objSupJour, realSup: realSupJour,
                   hasData, semaine: planif.semaine
                 })
               })
@@ -7709,6 +7745,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               perDayData.push({
                 jour: 'Semaine', dateStr: planif.semaine,
                 objHI, realHI, objAcc, realAcc,
+                objHG, realHG, objSup, realSup,
                 hasData: histSemaine.length > 0, semaine: planif.semaine
               })
             }
@@ -7863,6 +7900,17 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               const wColor = wPct >= 100 ? '#1D9E75' : wPct >= 80 ? '#FECC00' : wPct >= 50 ? '#EF9F27' : '#E24B4A'
               const barW = Math.min(wPct, 100)
               const statusIcon = w.hasData ? (wPct >= 100 ? '✅' : wPct >= 80 ? '💪' : wPct >= 50 ? '👍' : '🔥') : '⏳'
+              // Ligne HG/Sup distincte (jaune = HG, bleu = Suppléants), séparée de l'objectif classique
+              const hgPct = w.objHG > 0 ? Math.round((w.realHG / w.objHG) * 100) : 0
+              const supPct = w.objSup > 0 ? Math.round((w.realSup / w.objSup) * 100) : 0
+              const hgLine = w.objHG > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:4px;padding-top:4px;border-top:1px dashed #2a2a2a;">
+                  <span style="color:#FECC00;">🔶 HG: ${Math.round(w.realHG)}m / ${Math.round(w.objHG)}m</span>
+                  <span style="color:${hgPct>=100?'#1D9E75':hgPct>=80?'#FECC00':hgPct>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${hgPct}%</span>
+                </div>` : ''
+              const supLine = w.objSup > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;">
+                  <span style="color:#4A90E2;">🔷 Sup: ${Math.round(w.realSup)}m / ${Math.round(w.objSup)}m</span>
+                  <span style="color:${supPct>=100?'#1D9E75':supPct>=80?'#FECC00':supPct>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${supPct}%</span>
+                </div>` : ''
 
               const row = document.createElement('div')
               row.style.cssText = 'margin-bottom:10px;'
@@ -7880,6 +7928,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                   <span style="color:#E24B4A;">${w.hasData ? (w.objHI > 0 ? Math.round(w.realHI) + 'm' : Math.round(w.realHI) + 'm/0') : 'Pas de données'}</span>
                   <span style="color:#555;">${w.objHI > 0 ? 'Obj: ' + Math.round(w.objHI) + 'm' : 'Obj: 0'}</span>
                 </div>
+                ${hgLine}${supLine}
               `
               weekSection.appendChild(row)
             })
@@ -7897,6 +7946,17 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               const dayColor = dayPct >= 100 ? '#1D9E75' : dayPct >= 80 ? '#FECC00' : dayPct >= 50 ? '#EF9F27' : '#E24B4A'
               const barW = Math.min(dayPct, 100)
               const statusIcon = d.hasData ? (dayPct >= 100 ? '✅' : dayPct >= 80 ? '💪' : dayPct >= 50 ? '👍' : '🔥') : '⏳'
+              // Ligne HG/Sup distincte de l'objectif classique du jour
+              const hgPctJ = d.objHG > 0 ? Math.round((d.realHG / d.objHG) * 100) : 0
+              const supPctJ = d.objSup > 0 ? Math.round((d.realSup / d.objSup) * 100) : 0
+              const hgLineJ = d.objHG > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:4px;padding-top:4px;border-top:1px dashed #2a2a2a;">
+                  <span style="color:#FECC00;">🔶 HG: ${Math.round(d.realHG)}m / ${Math.round(d.objHG)}m</span>
+                  <span style="color:${hgPctJ>=100?'#1D9E75':hgPctJ>=80?'#FECC00':hgPctJ>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${hgPctJ}%</span>
+                </div>` : ''
+              const supLineJ = d.objSup > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;">
+                  <span style="color:#4A90E2;">🔷 Sup: ${Math.round(d.realSup)}m / ${Math.round(d.objSup)}m</span>
+                  <span style="color:${supPctJ>=100?'#1D9E75':supPctJ>=80?'#FECC00':supPctJ>=50?'#EF9F27':'#E24B4A'};font-weight:600;">${supPctJ}%</span>
+                </div>` : ''
 
               const row = document.createElement('div')
               row.style.cssText = 'margin-bottom:10px;'
@@ -7914,6 +7974,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                   <span style="color:#E24B4A;">${d.hasData ? (d.objHI > 0 ? Math.round(d.realHI) + 'm' : Math.round(d.realHI) + 'm/0') : 'Pas de données'}</span>
                   <span style="color:#555;">${d.objHI > 0 ? 'Obj: ' + Math.round(d.objHI) + 'm' : 'Obj: 0'}</span>
                 </div>
+                ${hgLineJ}${supLineJ}
               `
               daySection.appendChild(row)
             })
