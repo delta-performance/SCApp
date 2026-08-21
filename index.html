@@ -5572,37 +5572,45 @@
     const allJoueursData = collectifSnap.exists() ? collectifSnap.data().joueurs || [] : []
     const sData = snap.data()
     
+    // Une entrée d'historique correspond-elle à une période "résumé" (Session/Complet) ?
+    // Ces lignes dupliquent les métriques de la/les période(s) spécifique(s) de la même
+    // activité (ex: HG, rehab, vitesse...) et ne doivent jamais être comptées en plus d'elles.
+    function isSessionPeriod(h) {
+      const period = String(h.period || '').toLowerCase()
+      if (period.includes('session') || period.includes('complet')) return true
+      // Fallback si period est vide mais periodNames est renseigné
+      if (!h.period && Array.isArray(h.periodNames) && h.periodNames.length > 0) {
+        const p0 = String(h.periodNames[0] || '').toLowerCase()
+        return p0.includes('session') || p0.includes('complet')
+      }
+      return false
+    }
+
     // Corriger les données si nécessaire
     function corrigerDonneesGPS(historique) {
       if (!historique) return []
-      const corrige = historique.map(h => {
-        const hCorr = { ...h }
-        // Fallback: dériver period depuis periodNames si manquant
-        if (!hCorr.period && Array.isArray(hCorr.periodNames) && hCorr.periodNames.length > 0) {
-          hCorr.period = hCorr.periodNames[0]
-        }
-        if (hCorr.mMin > 1000 && isFinite(hCorr.mMin)) {
-          hCorr.mMin = +(hCorr.mMin / 1440).toFixed(1)
-          if (hCorr.hiMin > 1000 && isFinite(hCorr.hiMin)) {
-            hCorr.hiMin = +(hCorr.hiMin / 1440).toFixed(2)
+      // Retirer toutes les lignes "Session/Complet" (résumés d'activité) : elles dupliquent
+      // les métriques des lignes de période spécifique (HG, rehab, vitesse...) de la même séance.
+      return historique
+        .filter(h => !isSessionPeriod(h))
+        .map(h => {
+          const hCorr = { ...h }
+          // Fallback: dériver period depuis periodNames si manquant
+          if (!hCorr.period && Array.isArray(hCorr.periodNames) && hCorr.periodNames.length > 0) {
+            hCorr.period = hCorr.periodNames[0]
           }
-        }
-        if ((hCorr.duree == null || hCorr.duree <= 5 || hCorr.duree > 600) && hCorr.mMin > 0 && isFinite(hCorr.mMin)) {
-          const dureeCalc = Math.round((hCorr.distTot || 0) / hCorr.mMin)
-          if (isFinite(dureeCalc) && dureeCalc > 0) hCorr.duree = dureeCalc
-        }
-        return hCorr
-      })
-      // Dédupliquer les activités identiques enregistrées sous 2 noms différents
-      // (ex: la même séance blessé taguée à la fois "..._HG" et "..._rehab") — on repère
-      // les doublons par empreinte de valeurs (même date + mêmes métriques), pas par nom
-      const vus = new Set()
-      return corrige.filter(h => {
-        const empreinte = [h.date, h.distHI, h.distTot, h.mMin, h.hiMin, h.volHI, h.vmax, h.duree].join('|')
-        if (vus.has(empreinte)) return false
-        vus.add(empreinte)
-        return true
-      })
+          if (hCorr.mMin > 1000 && isFinite(hCorr.mMin)) {
+            hCorr.mMin = +(hCorr.mMin / 1440).toFixed(1)
+            if (hCorr.hiMin > 1000 && isFinite(hCorr.hiMin)) {
+              hCorr.hiMin = +(hCorr.hiMin / 1440).toFixed(2)
+            }
+          }
+          if ((hCorr.duree == null || hCorr.duree <= 5 || hCorr.duree > 600) && hCorr.mMin > 0 && isFinite(hCorr.mMin)) {
+            const dureeCalc = Math.round((hCorr.distTot || 0) / hCorr.mMin)
+            if (isFinite(dureeCalc) && dureeCalc > 0) hCorr.duree = dureeCalc
+          }
+          return hCorr
+        })
     }
     
     if (sData) {
