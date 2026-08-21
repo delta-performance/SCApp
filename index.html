@@ -1083,14 +1083,14 @@
       if (mode === 'impose') {
         for (const o of exo.options) {
           if (Array.isArray(o.joueurs) && o.joueurs.includes(jid)) {
-            return { exo: { ...exo, ...o, id: exo.id + '_opt_' + o.id, _optionId: o.id, _isOption: true }, optionId: o.id, isOption: true, choixEnAttente: false }
+            return { exo: { ...exo, ...o, id: exo.id + '_opt_' + o.id, _optionId: o.id, _isOption: true, exercice: o.nom || o.exercice || exo.exercice }, optionId: o.id, isOption: true, choixEnAttente: false }
           }
         }
         return { exo, optionId: 'principal', isOption: false, choixEnAttente: false }
       }
       if (choixStocke && choixStocke !== 'principal') {
         const o = exo.options.find(x => x.id === choixStocke)
-        if (o) return { exo: { ...exo, ...o, id: exo.id + '_opt_' + o.id, _optionId: o.id, _isOption: true }, optionId: o.id, isOption: true, choixEnAttente: false }
+        if (o) return { exo: { ...exo, ...o, id: exo.id + '_opt_' + o.id, _optionId: o.id, _isOption: true, exercice: o.nom || o.exercice || exo.exercice }, optionId: o.id, isOption: true, choixEnAttente: false }
       }
       if (choixStocke === 'principal') {
         return { exo, optionId: 'principal', isOption: false, choixEnAttente: false }
