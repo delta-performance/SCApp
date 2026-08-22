@@ -7767,14 +7767,19 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               vusHistSemaine.add(key)
               return true
             })
-            // Séparer le réel "classique" (hors HG) du réel HG
+            // Séparer le réel "classique" (hors HG) du réel HG — calculé directement depuis
+            // l'historique brut (pas depuis resultat.hgReelle/distHIReelleParJour sauvegardés par
+            // gps-planif, qui peuvent mal classer une séance dont le nom de période est composé,
+            // ex: "vitesse + HG", à cause d'une détection différente côté gps-planif)
             const histSemaineClassique = histSemaine.filter(h => !isHGRow(h))
+            const histSemaineHG = histSemaine.filter(h => isHGRow(h))
             const realHI = histSemaineClassique.reduce((sum, h) => sum + (h.distHI || 0), 0)
             const realAcc = histSemaineClassique.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
             const realVolHI = histSemaine.reduce((sum, h) => sum + (h.volHI || 0), 0)
             const realVmax = Math.max(...histSemaine.map(h => h.vmax || 0), 0)
-            // Réel HG/Sup : priorité aux valeurs déjà calculées et sauvegardées par gps-planif
-            const realHG = resultat.hgReelle || 0
+            // Réel HG calculé localement (fiable) ; réel Sup pas détectable par mot-clé,
+            // donc on garde la valeur sauvegardée par gps-planif pour celui-ci
+            const realHG = histSemaineHG.reduce((sum, h) => sum + (h.distHI || 0), 0)
             const realSup = resultat.supReelle || 0
 
             // Données par semaine
@@ -7809,6 +7814,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 const isGPSPb = gpsPbJours[jour]
                 if (isGPSPb) return
                 const realDayClassique = realDay.filter(h => !isHGRow(h))
+                const realDayHG = realDay.filter(h => isHGRow(h))
                 const realDayHI = realDayClassique.reduce((sum, h) => sum + (h.distHI || 0), 0)
                 const realDayAcc = realDayClassique.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
 
@@ -7817,7 +7823,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 const objAccJour = objHI > 0 && objAcc > 0 ? (valHI / objHI) * objAcc : 0
 
                 const objHGJour = hgObjParJour[jour] || 0
-                const realHGJour = hgRealParJour[jour] || 0
+                // Réel HG du jour calculé localement (fiable), fallback sur la valeur sauvegardée si aucune donnée locale
+                const realHGJour = realDayHG.length > 0
+                  ? realDayHG.reduce((sum, h) => sum + (h.distHI || 0), 0)
+                  : (hgRealParJour[jour] || 0)
                 const objSupJour = supObjParJour[jour] || 0
                 const realSupJour = supRealParJour[jour] || 0
 
