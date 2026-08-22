@@ -321,6 +321,21 @@ export function chargePreviewAdvanced(exercice, pct, maxTestes = {}, dataPerf = 
   const seancesDuCycle = cycleId
     ? allSeances.filter(s => s.id !== currentSeanceId && s.cycleId === cycleId && (!seanceDate || !s.date || s.date < seanceDate))
     : []
+
+  // Déterminer si la séance courante est dans un groupe de séances liées
+  let linkedSeanceIds = null
+  if (cycleId && currentSeanceId) {
+    const currentCycle = cycles.find(c => c.id === cycleId)
+    if (currentCycle && currentCycle.seanceLinks) {
+      for (const ids of Object.values(currentCycle.seanceLinks)) {
+        if (ids.includes(currentSeanceId)) {
+          linkedSeanceIds = new Set(ids.filter(id => id !== currentSeanceId))
+          break
+        }
+      }
+    }
+  }
+
   const seanceIdsDuCycle = new Set(seancesDuCycle.map(s => s.id))
   const perfsDansCycle = perfsForExo.filter(p =>
     p.charge > 0 &&
@@ -337,9 +352,14 @@ export function chargePreviewAdvanced(exercice, pct, maxTestes = {}, dataPerf = 
     // L'exercice a été fait dans ce cycle : chercher le bestMatch dans le même bloc
     if (blocNom) {
       const blocNomLower = normalizeStr(blocNom)
-      const previousSeancesWithBloc = seancesDuCycle.filter(s =>
+      let previousSeancesWithBloc = seancesDuCycle.filter(s =>
         s.blocs?.some(b => normalizeStr(b.nom) === blocNomLower)
       )
+      // Si la séance courante est liée, ne garder que les séances du groupe lié
+      if (linkedSeanceIds) {
+        const linkedFiltered = previousSeancesWithBloc.filter(s => linkedSeanceIds.has(s.id))
+        if (linkedFiltered.length > 0) previousSeancesWithBloc = linkedFiltered
+      }
       let bestMatch = null
 
       for (const s of previousSeancesWithBloc) {
