@@ -6590,21 +6590,21 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         const dates = s.historique.map(h => parseDate(h.date)).filter(d => d).sort((a,b) => a-b)
         const minDate = dates[0]
         const maxDate = dates[dates.length-1]
-        // Dernière date avec données
-        const lastDate = dates[dates.length-1]
 
         const minDateStr = dateStrLocal(minDate)
         const maxDateStr = dateStrLocal(maxDate)
-        const lastDateStr = lastDate.toLocaleDateString('fr-FR')
-        // Trouver toutes les activités du dernier jour
-        const lastDateStrNorm = lastDate ? `${lastDate.getFullYear()}-${String(lastDate.getMonth()+1).padStart(2,'0')}-${String(lastDate.getDate()).padStart(2,'0')}` : ''
-        const lastDayActivities = s.historique.filter(h => {
+        // Regrouper l'historique par jour (clé = date normalisée) pour la navigation
+        const joursMap = {}
+        s.historique.forEach(h => {
           const d = parseDate(h.date)
-          return d && d.toDateString() === lastDate.toDateString()
+          if (!d) return
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+          if (!joursMap[key]) joursMap[key] = { date: d, activities: [] }
+          joursMap[key].activities.push(h)
         })
-        const lastSeanceStr = lastDayActivities.length > 0
-          ? `${lastDateStr} — ${lastDayActivities.length} activité${lastDayActivities.length > 1 ? 's' : ''}`
-          : 'Aucune séance'
+        const joursListe = Object.keys(joursMap).sort().map(k => joursMap[k]) // ordre chronologique croissant
+        let currentDayIndex = joursListe.length - 1 // par défaut : dernier jour
+
         const filtresDiv = document.createElement('div')
         filtresDiv.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:14px;'
         filtresDiv.innerHTML = `
@@ -6626,20 +6626,60 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
               <button onclick="appliquerGPSDates()" style="flex:1;padding:6px 10px;border-radius:6px;border:none;background:#FECC00;color:#0f0f0f;font-size:11px;font-weight:600;cursor:pointer;">Appliquer</button>
             </div>
           </div>
-          <div id="derniere-info" style="font-size:11px;color:#555;text-align:center;padding:8px;background:#0f0f0f;border-radius:6px;">
-            ${lastSeanceStr}
+          <div id="derniere-info" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:6px;background:#0f0f0f;border-radius:6px;">
+            <button id="gps-day-prev" style="width:28px;height:28px;border-radius:6px;border:1px solid #2a2a2a;background:#1a1a1a;color:#FECC00;font-size:12px;cursor:pointer;">◀</button>
+            <select id="gps-day-select" style="flex:1;padding:6px 4px;border-radius:6px;border:1px solid #2a2a2a;background:#0f0f0f;color:#ccc;font-size:11px;text-align:center;text-align-last:center;">
+              ${joursListe.map((j, i) => `<option value="${i}">${j.date.toLocaleDateString('fr-FR')} — ${j.activities.length} activité${j.activities.length > 1 ? 's' : ''}</option>`).join('')}
+            </select>
+            <button id="gps-day-next" style="width:28px;height:28px;border-radius:6px;border:1px solid #2a2a2a;background:#1a1a1a;color:#FECC00;font-size:12px;cursor:pointer;">▶</button>
           </div>
         `
         c.appendChild(filtresDiv)
 
         // Par défaut : afficher toutes les activités du dernier jour
-        historiqueFiltre = lastDayActivities
+        historiqueFiltre = joursListe[currentDayIndex] ? joursListe[currentDayIndex].activities : []
 
         // Gestion des modes de vue
         const btnDerniere = document.getElementById('btn-vue-derniere')
         const btnPeriode = document.getElementById('btn-vue-periode')
         const periodeFiltres = document.getElementById('periode-filtres')
         const derniereInfo = document.getElementById('derniere-info')
+        const dayPrevBtn = document.getElementById('gps-day-prev')
+        const dayNextBtn = document.getElementById('gps-day-next')
+        const daySelect = document.getElementById('gps-day-select')
+
+        function majNavigationJour() {
+          const jour = joursListe[currentDayIndex]
+          historiqueFiltre = jour ? jour.activities : []
+          if (daySelect) daySelect.value = String(currentDayIndex)
+          if (dayPrevBtn) dayPrevBtn.disabled = currentDayIndex <= 0
+          if (dayNextBtn) dayNextBtn.disabled = currentDayIndex >= joursListe.length - 1
+          if (dayPrevBtn) dayPrevBtn.style.opacity = dayPrevBtn.disabled ? '0.35' : '1'
+          if (dayNextBtn) dayNextBtn.style.opacity = dayNextBtn.disabled ? '0.35' : '1'
+        }
+        majNavigationJour()
+
+        dayPrevBtn.addEventListener('click', () => {
+          if (currentDayIndex > 0) {
+            currentDayIndex--
+            majNavigationJour()
+            renderAll()
+          }
+        })
+
+        dayNextBtn.addEventListener('click', () => {
+          if (currentDayIndex < joursListe.length - 1) {
+            currentDayIndex++
+            majNavigationJour()
+            renderAll()
+          }
+        })
+
+        daySelect.addEventListener('change', (e) => {
+          currentDayIndex = parseInt(e.target.value, 10)
+          majNavigationJour()
+          renderAll()
+        })
 
         btnDerniere.addEventListener('click', () => {
           vueMode = 'derniere'
@@ -6652,9 +6692,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           btnPeriode.style.color = '#888'
           btnPeriode.style.borderColor = '#2a2a2a'
           periodeFiltres.style.display = 'none'
-          derniereInfo.style.display = 'block'
-          // Afficher toutes les activités du dernier jour
-          historiqueFiltre = lastDayActivities
+          derniereInfo.style.display = 'flex'
+          // Réafficher le jour actuellement sélectionné
+          majNavigationJour()
           seancePeriodFilter = 'all'
           renderAll()
         })
