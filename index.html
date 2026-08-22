@@ -5589,10 +5589,23 @@
     // Corriger les données si nécessaire
     function corrigerDonneesGPS(historique) {
       if (!historique) return []
-      // Retirer toutes les lignes "Session/Complet" (résumés d'activité) : elles dupliquent
-      // les métriques des lignes de période spécifique (HG, rehab, vitesse...) de la même séance.
-      return historique
-        .filter(h => !isSessionPeriod(h))
+      // Retirer une ligne "Session/Complet" UNIQUEMENT si elle duplique une autre ligne
+      // (même date + mêmes métriques) qui porte, elle, une période spécifique (HG, rehab...).
+      // Si "Session" est la SEULE ligne existante pour cette activité (pas de doublon), on la garde.
+      const empreinte = h => [h.date, h.distHI, h.distTot, h.duree].join('|')
+      const groupes = {}
+      historique.forEach(h => {
+        const cle = empreinte(h)
+        if (!groupes[cle]) groupes[cle] = []
+        groupes[cle].push(h)
+      })
+      const historiqueFiltre = historique.filter(h => {
+        if (!isSessionPeriod(h)) return true
+        const cle = empreinte(h)
+        const aDoublonSpecifique = groupes[cle].some(other => other !== h && !isSessionPeriod(other))
+        return !aDoublonSpecifique
+      })
+      return historiqueFiltre
         .map(h => {
           const hCorr = { ...h }
           // Fallback: dériver period depuis periodNames si manquant
