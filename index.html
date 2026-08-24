@@ -5711,6 +5711,13 @@
 function getMatchKey(h) {
   return (h.date || '') + '_' + (h.seance || h.period || 'inconnu')
 }
+// Extrait la journée (J1, J2, Amical…) depuis la clé Activity Name.
+// Format attendu: "20260425_Match_Périgueux_J26" → "J26"
+function getJourneeLabel(matchKey) {
+  if (!matchKey) return ''
+  const m = String(matchKey).match(/[_]?(J\d+|Amical)$/i)
+  return m ? m[1] : ''
+}
 function fmtNum(n, d = 0) {
   return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d).replace(/\.0+$/, '')
 }
@@ -5882,7 +5889,9 @@ async function loadFFRScoreReadOnly(matchKey) {
         type,
         picto: pictos[type] || '•',
         points: type === 'essai_penalite' ? 7 : type === 'essai' ? 5 : type === 'penalite' ? 3 : type === 'drop' ? 3 : type === 'transformation' ? 2 : 0,
-        joueur: type === 'essai_penalite' ? 'Essai de pénalité' : (evt.joueur || (evt.joueur_entrant ? `${evt.joueur_entrant} → ${evt.joueur_sortant}` : 'Inconnu'))
+        joueur: type === 'essai_penalite' ? 'Essai de pénalité' : (evt.joueur || (evt.joueur_entrant ? `${evt.joueur_entrant} → ${evt.joueur_sortant}` : 'Inconnu')),
+        joueur_entrant: evt.joueur_entrant || null,
+        joueur_sortant: evt.joueur_sortant || null
       }
     }).sort((a, b) => a.minute - b.minute)
 
@@ -5895,7 +5904,7 @@ async function loadFFRScoreReadOnly(matchKey) {
     const qtScores = raw.qt_scores || {}
     const isAmical = raw.is_amical || (matchKey || '').toLowerCase().includes('amical')
 
-    const result = { events, scoreClub, scoreAdv, logoClub, logoAdv, nomAdv, qtScores, isAmical }
+    const result = { events, scoreClub, scoreAdv, logoClub, logoAdv, nomAdv, qtScores, isAmical, clubIsDomicile }
     window.__ffrCache[matchKey] = result
     return result
   } catch (e) {
@@ -5920,7 +5929,10 @@ function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
     <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Match sélectionné</div>
       <select onchange="selectRapportMatch(this.value)" style="width:100%;background:#0f0f0f;border:1px solid #333;border-radius:6px;color:#FECC00;padding:8px 10px;font-size:13px;outline:none;font-weight:600;">
-        ${allMatches.map(m => `<option value="${m.key}" ${m.key === selectedMatch.key ? 'selected' : ''}>${fmtDate(m.date)} — ${m.nom}</option>`).join('')}
+        ${allMatches.map(m => {
+          const jn = m.journeeLabel || getJourneeLabel(m.key)
+          return `<option value="${m.key}" ${m.key === selectedMatch.key ? 'selected' : ''}>${fmtDate(m.date)} — ${m.nom}${jn ? ' (' + jn + ')' : ''}</option>`
+        }).join('')}
       </select>
     </div>
     <div class="tabs" style="display:flex;gap:4px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:3px;">
@@ -6026,20 +6038,195 @@ function renderScoreSectionMobile(c, ffr, match) {
     html += `</div>`
   }
   if (ffr.events && ffr.events.length) {
-    html += `<div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Fil du match</div>
-      <div style="display:flex;flex-direction:column;gap:5px;max-height:260px;overflow-y:auto;">
-        ${ffr.events.map(e => `
-          <div style="display:flex;align-items:center;gap:8px;background:#0f0f0f;border-radius:8px;padding:6px 10px;border-left:3px solid ${e.equipe === 'club' ? '#FECC00' : '#378ADD'};">
-            <div style="font-size:11px;color:#666;width:32px;">${e.minute}'</div>
-            <div style="font-size:14px;">${e.picto}</div>
-            <div style="flex:1;font-size:11px;color:#ccc;">${e.joueur}</div>
-            ${e.points ? `<div style="font-size:11px;font-weight:700;color:${e.equipe === 'club' ? '#FECC00' : '#378ADD'};">+${e.points}</div>` : ''}
-          </div>
-        `).join('')}
-      </div>`
+    html += `<div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Fil du match</div>`
   }
   sec.innerHTML = html
   c.appendChild(sec)
+
+  // ===== TIMELINE 3 COLONNES (home | temps | away) — comme gps-match.html =====
+  if (ffr.events && ffr.events.length) {
+    const isDomicileAlbi = ffr.clubIsDomicile !== false
+    const typeLabels = { essai:'Essai', essai_penalite:'Essai de pénalité', transformation:'Transformation', penalite:'Pénalité', drop:'Drop', carton_jaune:'Carton jaune', carton_rouge:'Carton rouge', changement:'Changement' }
+    const scoringTypes = new Set(['essai','essai_penalite','transformation','penalite','drop'])
+    const ptsBadge = { essai:'+5', essai_penalite:'+7', transformation:'+2', penalite:'+3', drop:'+3' }
+
+    // Picto HTML inline (26px)
+    const pictoHTML = (type, col, size = 26) => {
+      const s = size, hs = s / 2
+      if (type === 'essai' || type === 'essai_penalite') {
+        return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${s}px;height:${s}px;border-radius:50%;background:${col};font-size:${Math.round(s * 0.58)}px;line-height:1;flex-shrink:0;">🏉</span>`
+      } else if (type === 'transformation' || type === 'penalite' || type === 'drop') {
+        return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" style="display:inline-block;flex-shrink:0;border-radius:50%;"><circle cx="${hs}" cy="${hs}" r="${hs - 0.5}" fill="${col}"/>
+          <rect x="${hs - s * .2}" y="${hs - s * .38}" width="${s * .055}" height="${s * .7}" fill="#fff" rx="1"/>
+          <rect x="${hs + s * .145}" y="${hs - s * .38}" width="${s * .055}" height="${s * .7}" fill="#fff" rx="1"/>
+          <rect x="${hs - s * .2}" y="${hs - s * .03}" width="${s * .4}" height="${s * .05}" fill="#fff" rx="1"/>
+          <rect x="${hs - s * .24}" y="${hs + s * .28}" width="${s * .16}" height="${s * .12}" fill="#fff" rx="${s * .03}"/>
+          <rect x="${hs + s * .12}" y="${hs + s * .28}" width="${s * .16}" height="${s * .12}" fill="#fff" rx="${s * .03}"/>
+        </svg>`
+      } else if (type === 'carton_jaune') {
+        return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" style="display:inline-block;flex-shrink:0;border-radius:50%;"><circle cx="${hs}" cy="${hs}" r="${hs - 0.5}" fill="#12264a" stroke="#FECC0066" stroke-width="1.5"/><rect x="${hs - s * .2}" y="${hs - s * .28}" width="${s * .4}" height="${s * .56}" fill="#FECC00" rx="2"/></svg>`
+      } else if (type === 'carton_rouge') {
+        return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" style="display:inline-block;flex-shrink:0;border-radius:50%;"><circle cx="${hs}" cy="${hs}" r="${hs - 0.5}" fill="#12264a" stroke="#E24B4A66" stroke-width="1.5"/><rect x="${hs - s * .2}" y="${hs - s * .28}" width="${s * .4}" height="${s * .56}" fill="#E24B4A" rx="2"/></svg>`
+      } else if (type === 'changement') {
+        const aw = s * .3, ah = s * .14, tip = s * .18, y1c = hs - s * .14, y2c = hs + s * .14
+        return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" style="display:inline-block;flex-shrink:0;border-radius:50%;"><circle cx="${hs}" cy="${hs}" r="${hs - 0.5}" fill="#12264a" stroke="#44444466" stroke-width="1.5"/>
+          <line x1="${hs + aw}" y1="${y1c}" x2="${hs - aw}" y2="${y1c}" stroke="#1D9E75" stroke-width="2" stroke-linecap="round"/>
+          <path d="M ${hs - aw} ${y1c} L ${hs - aw + tip} ${y1c - ah} M ${hs - aw} ${y1c} L ${hs - aw + tip} ${y1c + ah}" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linecap="round"/>
+          <line x1="${hs - aw}" y1="${y2c}" x2="${hs + aw}" y2="${y2c}" stroke="#E24B4A" stroke-width="2" stroke-linecap="round"/>
+          <path d="M ${hs + aw} ${y2c} L ${hs + aw - tip} ${y2c - ah} M ${hs + aw} ${y2c} L ${hs + aw - tip} ${y2c + ah}" fill="none" stroke="#E24B4A" stroke-width="2" stroke-linecap="round"/>
+        </svg>`
+      }
+      return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${s}px;height:${s}px;border-radius:50%;background:${col};font-size:${Math.round(s * 0.5)}px;flex-shrink:0;">•</span>`
+    }
+
+    // Grouper par minute : home = gauche, away = droite
+    const eventsByMinute = {}
+    ffr.events.forEach(e => {
+      if (!eventsByMinute[e.minute]) eventsByMinute[e.minute] = { home: [], away: [] }
+      const isClub = e.equipe === 'club'
+      const isHome = isDomicileAlbi ? isClub : !isClub
+      if (isHome) eventsByMinute[e.minute].home.push(e)
+      else eventsByMinute[e.minute].away.push(e)
+    })
+
+    const evtTimeline = document.createElement('div')
+    evtTimeline.style.cssText = 'display:flex;flex-direction:column;gap:0;padding:10px 0;'
+
+    // Cumul scores progressif
+    let cumClub = 0, cumAdv = 0
+
+    Object.keys(eventsByMinute).sort((a, b) => parseInt(a) - parseInt(b)).forEach(minute => {
+      const minuteData = eventsByMinute[minute]
+      const minuteWrap = document.createElement('div')
+      minuteWrap.style.cssText = 'display:grid;grid-template-columns:1fr 80px 1fr;align-items:center;position:relative;margin:2px 0;'
+
+      // ---- Colonne gauche (home) ----
+      const homeCol = document.createElement('div')
+      homeCol.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-end;padding-right:0;'
+
+      minuteData.home.forEach(e => {
+        const isScore = scoringTypes.has(e.type)
+        const pts = ptsBadge[e.type] || ''
+        if (e.equipe === 'club') cumClub += e.points; else cumAdv += e.points
+        const evtColor = e.equipe === 'club' ? '#1D9E75' : '#E24B4A'
+
+        const row = document.createElement('div')
+        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-end;'
+
+        if (isScore) {
+          const dH = isDomicileAlbi ? cumClub : cumAdv
+          const dA = isDomicileAlbi ? cumAdv : cumClub
+          const sc = cumClub > cumAdv ? '#1D9E75' : cumClub < cumAdv ? '#E24B4A' : '#FECC00'
+          const sb = document.createElement('div')
+          sb.style.cssText = `font-size:11px;font-weight:800;color:${sc};background:${sc}22;padding:3px 7px;border-radius:5px;white-space:nowrap;flex-shrink:0;`
+          sb.textContent = `${dH}-${dA}`
+          row.appendChild(sb)
+        }
+
+        const evtBlock = document.createElement('div')
+        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:nowrap;`
+        let joueurDisplay = e.joueur || typeLabels[e.type]
+        if (e.type === 'changement' && e.joueur_entrant && e.joueur_sortant) {
+          joueurDisplay = `<span style="font-weight:700;">${e.joueur_entrant}</span> → <span style="font-style:italic;font-weight:400;color:#aaa;">${e.joueur_sortant}</span>`
+        }
+        evtBlock.innerHTML = `<span style="font-size:9px;color:#888;">${typeLabels[e.type]}${pts ? ' <b style="color:' + evtColor + '">' + pts + '</b>' : ''}</span><span style="font-weight:700;color:#fff;font-size:12px;">${joueurDisplay}</span>${pictoHTML(e.type, evtColor)}`
+        row.appendChild(evtBlock)
+        homeCol.appendChild(row)
+      })
+
+      // ---- Colonne centre (bulle temps) ----
+      const centerCol = document.createElement('div')
+      centerCol.style.cssText = 'display:flex;flex-direction:column;align-items:center;position:relative;z-index:2;'
+      const vLine = document.createElement('div')
+      vLine.style.cssText = 'position:absolute;top:0;bottom:0;left:50%;width:2px;background:#FECC0022;transform:translateX(-50%);z-index:0;'
+      centerCol.appendChild(vLine)
+      const timeBubble = document.createElement('div')
+      timeBubble.style.cssText = 'width:44px;height:44px;border-radius:50%;background:#8B7B2A;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;z-index:2;position:relative;flex-shrink:0;'
+      timeBubble.textContent = `${minute}'`
+      centerCol.appendChild(timeBubble)
+
+      // ---- Colonne droite (away) ----
+      const awayCol = document.createElement('div')
+      awayCol.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding-left:0;'
+
+      minuteData.away.forEach(e => {
+        const isScore = scoringTypes.has(e.type)
+        const pts = ptsBadge[e.type] || ''
+        if (e.equipe === 'club') cumClub += e.points; else cumAdv += e.points
+        const evtColor = e.equipe === 'club' ? '#1D9E75' : '#E24B4A'
+
+        const row = document.createElement('div')
+        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-start;'
+
+        const evtBlock = document.createElement('div')
+        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:nowrap;`
+        let joueurDisplay = e.joueur || typeLabels[e.type]
+        if (e.type === 'changement' && e.joueur_entrant && e.joueur_sortant) {
+          joueurDisplay = `<span style="font-weight:700;">${e.joueur_entrant}</span> → <span style="font-style:italic;font-weight:400;color:#aaa;">${e.joueur_sortant}</span>`
+        }
+        evtBlock.innerHTML = `${pictoHTML(e.type, evtColor)}<span style="font-weight:700;color:#fff;font-size:12px;">${joueurDisplay}</span><span style="font-size:9px;color:#888;">${typeLabels[e.type]}${pts ? ' <b style="color:' + evtColor + '">' + pts + '</b>' : ''}</span>`
+        row.appendChild(evtBlock)
+
+        if (isScore) {
+          const dH = isDomicileAlbi ? cumClub : cumAdv
+          const dA = isDomicileAlbi ? cumAdv : cumClub
+          const sc = cumClub > cumAdv ? '#1D9E75' : cumClub < cumAdv ? '#E24B4A' : '#FECC00'
+          const sb = document.createElement('div')
+          sb.style.cssText = `font-size:11px;font-weight:800;color:${sc};background:${sc}22;padding:3px 7px;border-radius:5px;white-space:nowrap;flex-shrink:0;`
+          sb.textContent = `${dH}-${dA}`
+          row.appendChild(sb)
+        }
+        awayCol.appendChild(row)
+      })
+
+      minuteWrap.appendChild(homeCol)
+      minuteWrap.appendChild(centerCol)
+      minuteWrap.appendChild(awayCol)
+      evtTimeline.appendChild(minuteWrap)
+    })
+
+    sec.appendChild(evtTimeline)
+
+    // Branches SVG (connecteurs entre events et bulle temps)
+    requestAnimationFrame(() => {
+      const rows = evtTimeline.querySelectorAll(':scope > div')
+      rows.forEach(row => {
+        const cols = row.children
+        if (cols.length < 3) return
+        const homeCol = cols[0], centerCol = cols[1], awayCol = cols[2]
+        const bubble = centerCol.querySelector('div:not([style*="absolute"])')
+        if (!bubble) return
+        const rowRect = row.getBoundingClientRect()
+        const bubbleRect = bubble.getBoundingClientRect()
+        const bubbleCY = bubbleRect.top + bubbleRect.height / 2 - rowRect.top
+        const bubbleCX = bubbleRect.left + bubbleRect.width / 2 - rowRect.left
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+        svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;'
+        svg.setAttribute('viewBox', `0 0 ${rowRect.width} ${rowRect.height}`)
+        row.style.position = 'relative'
+        row.appendChild(svg)
+
+        const drawBranches = (evtCol, isLeft) => {
+          Array.from(evtCol.children).forEach(evtRow => {
+            const evtRect = evtRow.getBoundingClientRect()
+            const evtCY = evtRect.top + evtRect.height / 2 - rowRect.top
+            const evtX = isLeft ? (evtRect.right - rowRect.left) : (evtRect.left - rowRect.left)
+            if (Math.abs(evtCY - bubbleCY) < 2) return
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline')
+            line.setAttribute('points', `${evtX},${evtCY} ${bubbleCX},${evtCY} ${bubbleCX},${bubbleCY}`)
+            line.setAttribute('fill', 'none')
+            line.setAttribute('stroke', '#FECC00')
+            line.setAttribute('stroke-width', '1.5')
+            line.setAttribute('opacity', '0.4')
+            svg.appendChild(line)
+          })
+        }
+        drawBranches(homeCol, true)
+        drawBranches(awayCol, false)
+      })
+    })
+  }
 }
 
 function renderMatchTab(c, match, persoHist) {
@@ -6049,7 +6236,7 @@ function renderMatchTab(c, match, persoHist) {
   // Header jaune comme gps-match.html
   const head = document.createElement('div')
   head.style.cssText = 'background:#FECC00;border-radius:14px;padding:16px 24px;text-align:center;margin-bottom:14px;'
-  head.innerHTML = `<div style="font-size:18px;font-weight:900;color:#0f0f0f;">Match ${match.adversaire || match.nom} — ${match.dateLabel || fmtDate(match.date)}</div>`
+  head.innerHTML = `<div style="font-size:18px;font-weight:900;color:#0f0f0f;">Match ${match.adversaire || match.nom}${(match.journeeLabel || getJourneeLabel(match.key)) ? ' · ' + (match.journeeLabel || getJourneeLabel(match.key)) : ''} — ${match.dateLabel || fmtDate(match.date)}</div>`
   c.appendChild(head)
 
   // Score & événements (lecture seule, données FFR déjà scrapées côté staff)
