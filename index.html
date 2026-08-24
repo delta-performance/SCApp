@@ -5852,13 +5852,14 @@ window.selectRapportMatch = function(key) {
 }
 
 // Lecture seule du score/événements FFR déjà scrapés et sauvegardés depuis gps-match.html
+// Accès direct à Supabase (bypass de l'adapter Firebase) pour préserver le snake_case
+// de la colonne JSONB data (l'adapter wrapDoc fusionne/supprime data.data).
 async function loadFFRScoreReadOnly(matchKey) {
   if (window.__ffrCache[matchKey] !== undefined) return window.__ffrCache[matchKey]
   try {
-    const snap = await getDoc(doc(db, 'ffr_match_data', matchKey))
-    if (!snap.exists()) { window.__ffrCache[matchKey] = null; return null }
-    const docData = snap.data()
-    const raw = docData.raw || docData.data || null
+    const { data: row, error } = await db.from('ffr_match_data').select('data').eq('id', matchKey).maybeSingle()
+    if (error || !row) { window.__ffrCache[matchKey] = null; return null }
+    const raw = row.data
     if (!raw || !raw.evenements || !raw.equipe_domicile) { window.__ffrCache[matchKey] = null; return null }
 
     const domicileTeam = (raw.equipe_domicile || '').toLowerCase()
