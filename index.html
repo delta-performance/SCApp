@@ -5802,7 +5802,7 @@ async function chargerRapportMatch() {
       .sort((a, b) => {
         const da = parseDate(a.date), db = parseDate(b.date)
         if (!da || !db) return 0
-        return db - da
+        return da - db  // chronologique (ancien → récent)
       })
 
     // Fallback legacy si matchs vides (ancienne structure)
@@ -5818,6 +5818,12 @@ async function chargerRapportMatch() {
         })
       })
       allMatches = [...matches.values()]
+      // Trier aussi le fallback legacy chronologiquement
+      allMatches.sort((a, b) => {
+        const da = parseDate(a.date), db = parseDate(b.date)
+        if (!da || !db) return 0
+        return da - db
+      })
     }
 
     // matchKey = Activity Name brut (h.seance), même format que les clés de
@@ -5828,7 +5834,9 @@ async function chargerRapportMatch() {
 
     let selectedKey = window.__selectedMatchKey
     if (!selectedKey || !rawMatchs[selectedKey]) {
-      selectedKey = persoHist.length ? persoHist[0].matchKey : (allMatches[0]?.key || null)
+      // Par défaut : le dernier match (le plus récent = dernier en ordre chronologique)
+      const lastMatch = allMatches.length ? allMatches[allMatches.length - 1] : null
+      selectedKey = lastMatch?.key || (persoHist.length ? persoHist[0].matchKey : null)
     }
     // Stats individuelles par match (calculées depuis les données brutes côté gps-match.html)
     const persoMatchs = sPerso.matchs || {}
