@@ -1062,7 +1062,7 @@
     const COL={joueur:'Player Name',date:'Date',seance:'Activity Name',period:'Period Name',distHI:'Distance Haute Intensité',distTot:'Total Distance',vmax:'Maximum Velocity',vmaxPct:'Max Vel (% Max)',load:'Total Player Load',accB2:'Acceleration B2 Efforts (Gen 2)',accB3:'Acceleration B3 Efforts (Gen 2)',rhie:'RHIE Total Bouts',duree:'Total Duration'}
     const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 
-    let joueurs=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
+    let joueurs=[],blessures=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
     let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
     let currentPerfTab='muscu',performancesData=null
     let recapVisible = localStorage.getItem('player_recap_visible') === 'true'
@@ -1230,7 +1230,7 @@
         if (isGloballyActive && joueurActif) {
           const target = data[m.id + '_target'] || 'all'
           if (target === 'blesse') {
-            isActiveForPlayer = joueurActif.statut === 'blesse'
+            isActiveForPlayer = estJoueurActifBlesse()
           } else if (target === 'absent') {
             isActiveForPlayer = joueurActif.statut === 'absent'
           } else if (target === 'custom') {
@@ -1443,8 +1443,12 @@
             // Chargement minimal à l'ouverture : uniquement la liste des joueurs
             // pour la sélection/association. Les configs (ratios, exercices, types
             // d'événements) sont chargées à la demande dans chaque module.
-            const jSnap = await getDocs(collection(db, 'joueurs'));
+            const [jSnap, bSnap] = await Promise.all([
+              getDocs(collection(db, 'joueurs')),
+              getDocs(collection(db, 'blessures'))
+            ]);
             joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived);
+            blessures = bSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
             // Attendre que les rôles/permissions du staff soient chargés avant de
             // déterminer l'accès "voir tous les joueurs" (évite un faux négatif
@@ -2532,7 +2536,7 @@
           header.style.display='flex'
           header.style.alignItems='center'
           header.style.justifyContent='space-between'
-          const estJoueurBlesse = joueurActif?.statut === 'blesse'
+          const estJoueurBlesse = estJoueurActifBlesse()
           header.innerHTML=`<span>${sa.date?new Date(sa.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):''}${sa.theme&&!estJoueurBlesse?' · '+sa.theme:''}</span><span style="font-size:18px;color:#FECC00;">▼</span>`
           
           const body=document.createElement('div')
@@ -4571,12 +4575,20 @@
       return 'Groupe'
     }
 
+    // ─── Source de vérité médicale ───
+    function estJoueurActifBlesse(){
+      const jid = joueurActif?.id
+      return !!jid && blessures.some(b =>
+        b.joueurId === jid && (b.statut === 'blesse' || b.statut === 'reprise')
+      )
+    }
+
     // ─── Scope toggle ───
     window.setPlanningScope = function(scope){
       planningScope = scope
       document.getElementById('vsb-moi').classList.toggle('active', scope==='moi')
       document.getElementById('vsb-equipe').classList.toggle('active', scope==='equipe')
-      const estBlesse = joueurActif?.statut === 'blesse'
+      const estBlesse = estJoueurActifBlesse()
       if(scope==='moi'){
         document.getElementById('planning-screen-title').textContent = estBlesse ? 'Mon programme rééducation' : 'Mon planning'
       } else {
@@ -4594,7 +4606,7 @@
 
     // ─── Filtre les données selon le scope et le statut du joueur ───
     function filterByScope(planningAll, creneauxAll){
-      const estBlesse = joueurActif?.statut === 'blesse'
+      const estBlesse = estJoueurActifBlesse()
       const jid = joueurActif?.id
 
       // Check if player is in a given group
@@ -4878,7 +4890,7 @@
       selectedDayIdx = defaultIdx
       buildDaysStrip(lundi, nowStr)
       
-      const _estBlesse = joueurActif?.statut === 'blesse'
+      const _estBlesse = estJoueurActifBlesse()
       if(planningScope==='moi'){
         document.getElementById('planning-screen-title').textContent = _estBlesse ? 'Mon programme rééducation' : 'Mon planning'
       } else {
@@ -5296,7 +5308,7 @@
       
       // Empty
       if(!events.length){
-        const estBlesse = joueurActif?.statut === 'blesse'
+        const estBlesse = estJoueurActifBlesse()
         const icon = planningScope==='equipe' ? '📋' : (estBlesse ? '🏥' : '—')
         const label = planningScope==='equipe' ? 'Pas d\'entraînement collectif' : (estBlesse ? 'Pas de créneau prévu' : 'Repos')
         const emp=document.createElement('div')
