@@ -2658,7 +2658,8 @@
             const groupBadges = playerGroupes.map(g => g.nom).join(' / ')
             bEl.innerHTML=`<div class="seance-bloc-header">${leader.nom}<span class="seance-groupe-badge">${groupBadges}</span></div>${leader.comment?`<div class="seance-bloc-comment">📝 ${leader.comment}</div>`:''}${playerGroupes.map(gJ => gJ.comment ? `<div class="seance-bloc-comment" style="color:#666;">💬 ${gJ.comment}</div>` : '').join('')}`
             playerExos.forEach((item, i) => { const exoOrig=item.exo; const gJ=item.g; const bloc=item.b; const megaLabel=String.fromCharCode(65 + i);
-              if(!exoOrig.exercice)return
+              // Les exercices énergétiques utilisent nrgNom plutôt que exercice.
+              if(!exoOrig.exercice && !exoOrig.isEnergetique)return
 
               // Résoudre l'option : exo principal OU option choisie/imposée
               const optRes = resoudreExoOption(exoOrig, joueurActif.id, sa.id, bloc.id, gJ.id)
