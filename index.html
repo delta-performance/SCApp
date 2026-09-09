@@ -8099,6 +8099,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // Objectif "classique" hors HG/Suppléants (ces derniers sont gérés séparément)
             const objHI = Math.max(0, objHITotal - objHG - objSup)
             const objAcc = resultat.accB23 || 0
+            const objHidc = resultat.hidc || 0
             const distHIParJour = resultat.distHIParJourAdaptatif || resultat.distHIParJour || null
             const hgObjParJour = resultat.hgObjParJour || {}
             const hgRealParJour = resultat.hgRealParJour || {}
@@ -8141,7 +8142,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // Données par semaine
             perWeekData.push({
               semaine: planif.semaine,
-              objHI, realHI, objAcc, realAcc, realVolHI, realHidc, realVmax,
+              objHI, realHI, objAcc, realAcc, objHidc, realVolHI, realHidc, realVmax,
               objHG, realHG, objSup, realSup,
               hasData: histSemaine.length > 0
             })
@@ -8207,7 +8208,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
           // ===== CALCUL TOTAUX POUR KPIs ET SCORES BRUTS =====
           let scoreGlobal, scoreHI, scoreAcc
-          let totalRealHI, totalObjHI, totalRealAcc, totalObjAcc, totalRealHidc, totalRealVmax
+          let totalRealHI, totalObjHI, totalRealAcc, totalObjAcc, totalObjHidc, totalRealHidc, totalRealVmax
 
           // Source d'historique selon le mode
           const histSource = objMode === 'hebdomadaire' ? histComplete : hist
@@ -8237,6 +8238,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             totalObjHI = daysWithData.reduce((s, d) => s + d.objTotal, 0)
             totalRealAcc = daysWithData.reduce((s, d) => s + d.realAcc, 0)
             totalObjAcc = daysWithData.reduce((s, d) => s + d.objAcc, 0)
+            totalObjHidc = perWeekData.reduce((s, w) => s + w.objHidc, 0)
             totalRealHidc = perWeekData.reduce((s, w) => s + w.realHidc, 0)
             totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
           } else {
@@ -8245,6 +8247,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             totalRealHI = perWeekData.reduce((s, w) => s + w.realHI + (w.realHG || 0) + (w.realSup || 0), 0)
             totalObjAcc = perWeekData.reduce((s, w) => s + w.objAcc, 0)
             totalRealAcc = perWeekData.reduce((s, w) => s + w.realAcc, 0)
+            totalObjHidc = perWeekData.reduce((s, w) => s + w.objHidc, 0)
             totalRealHidc = perWeekData.reduce((s, w) => s + w.realHidc, 0)
             totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
 
@@ -8300,7 +8303,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const kpiData = [
             { label: 'Dist HSR >18 km/h', real: totalRealHI, obj: totalObjHI, unit: 'm', color: '#E24B4A', decimals: 0 },
             { label: 'Acc B2+B3', real: totalRealAcc, obj: totalObjAcc, unit: '', color: '#EF9F27', decimals: 0 },
-            { label: 'Zone intensité', real: totalRealHidc, obj: null, unit: 'm', color: '#B85CDE', decimals: 0 },
+            { label: 'Zone intensité', real: totalRealHidc, obj: totalObjHidc, unit: 'm', color: '#B85CDE', decimals: 0 },
             { label: 'Vmax max', real: totalRealVmax, obj: null, unit: 'km/h', color: '#1D9E75', decimals: 1 },
           ]
 
