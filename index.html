@@ -7205,7 +7205,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             if (hist.length > 1) {
               if (idx > 0) {
                 const sep = document.createElement('div')
-                sep.style.cssText = 'display:flex;align-items:center;gap:10px;margin:16px 0 12px 0;width:100%;'
+                sep.style.cssText = 'display:flex;align-items:center;gap:10px;margin:16px 0 12px 0;width:100%;grid-column:1 / -1;'
                 sep.innerHTML = `
                   <div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#2a2a2a,#2a2a2a,transparent);"></div>
                   <div style="font-size:10px;font-weight:700;color:#FECC00;background:#1a1a1a;border:1px solid #FECC0033;border-radius:20px;padding:4px 12px;white-space:nowrap;">Activité ${idx + 1} — ${seance.seance || 'Séance'}</div>
@@ -7214,7 +7214,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 kpiDiv.appendChild(sep)
               } else {
                 const sep = document.createElement('div')
-                sep.style.cssText = 'display:flex;align-items:center;gap:10px;margin:0 0 12px 0;width:100%;'
+                sep.style.cssText = 'display:flex;align-items:center;gap:10px;margin:0 0 12px 0;width:100%;grid-column:1 / -1;'
                 sep.innerHTML = `
                   <div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#2a2a2a,#2a2a2a,transparent);"></div>
                   <div style="font-size:10px;font-weight:700;color:#FECC00;background:#1a1a1a;border:1px solid #FECC0033;border-radius:20px;padding:4px 12px;white-space:nowrap;">Activité ${idx + 1} — ${seance.seance || 'Séance'}</div>
