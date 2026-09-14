@@ -5725,6 +5725,7 @@
             const dureeCalc = Math.round((hCorr.distTot || 0) / hCorr.mMin)
             if (isFinite(dureeCalc) && dureeCalc > 0) hCorr.duree = dureeCalc
           }
+          if (hCorr.hidc == null) hCorr.hidc = getPlayerHidc(hCorr)
           return hCorr
         })
     }
@@ -5839,10 +5840,23 @@ function fmtDate(str) {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
 }
 
+function getPlayerHidc(row) {
+  if (!row || typeof row !== 'object') return 0
+  const direct = row.hidc ?? row.HIDc ?? row.HIDC ?? row.hidcTotal
+  if (direct != null && direct !== '') {
+    const value = Number(String(direct).replace(/,/g, '.'))
+    if (Number.isFinite(value)) return value
+  }
+  const key = Object.keys(row).find(k => String(k).toLowerCase().replace(/\s+/g, '').includes('hidc'))
+  if (!key) return 0
+  const value = Number(String(row[key]).replace(/,/g, '.'))
+  return Number.isFinite(value) ? value : 0
+}
+
 function calcStats(j) {
   const distTot = j.distTot || 0
   const distHI = j.distHI || 0
-  const hidc = j.hidc || 0
+  const hidc = getPlayerHidc(j)
   const duree = j.duree || 0
   const mMin = duree > 0 ? +(distTot / duree).toFixed(1) : 0
   const accB2 = j.accB2 || 0
@@ -6644,7 +6658,7 @@ function renderIndividuelTab(c, persoHist, persoMatchs) {
 
   // Utiliser les stats brutes si disponibles (HI correct), sinon fallback sur l'historique
   const lastHI = lastMatchStats ? lastMatchStats.distHI : (last.distHI || 0)
-  const lastHidc = lastMatchStats ? lastMatchStats.hidc : (last.hidc || 0)
+  const lastHidc = lastMatchStats ? getPlayerHidc(lastMatchStats) : getPlayerHidc(last)
   const lastDist = lastMatchStats ? lastMatchStats.distTot : (last.distTot || 0)
   const lastVmax = lastMatchStats ? lastMatchStats.vmax : (last.vmax || 0)
   const lastLoad = lastMatchStats ? lastMatchStats.load : (last.load || 0)
