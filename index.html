@@ -5674,9 +5674,15 @@
     
     const allJoueursData = collectifSnap.exists() ? collectifSnap.data().joueurs || [] : []
     const sData = snap.data()
+    const normaliserNomGPS = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
+    const nomsGPS = [
+      sData.nomGPS,
+      joueurActif?.nomGPS,
+      `${joueurActif?.prenom || ''} ${joueurActif?.nom || ''}`,
+      `${joueurActif?.nom || ''} ${joueurActif?.prenom || ''}`
+    ].map(normaliserNomGPS).filter(Boolean)
     const collectifJoueur = allJoueursData.find(j =>
-      (sData.nomGPS && j.nomGPS === sData.nomGPS) ||
-      (sData.joueurId && j.joueurId === sData.joueurId)
+      (sData.joueurId && j.joueurId === sData.joueurId) || nomsGPS.includes(normaliserNomGPS(j.nomGPS))
     )
     if (collectifJoueur?.historique && sData.historique) {
       const collectifByKey = new Map(collectifJoueur.historique.map(h => [`${h.date || ''}_${h.seance || h.period || ''}`, h]))
