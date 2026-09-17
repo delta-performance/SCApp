@@ -5674,6 +5674,18 @@
     
     const allJoueursData = collectifSnap.exists() ? collectifSnap.data().joueurs || [] : []
     const sData = snap.data()
+    const collectifJoueur = allJoueursData.find(j =>
+      (sData.nomGPS && j.nomGPS === sData.nomGPS) ||
+      (sData.joueurId && j.joueurId === sData.joueurId)
+    )
+    if (collectifJoueur?.historique && sData.historique) {
+      const collectifByKey = new Map(collectifJoueur.historique.map(h => [`${h.date || ''}_${h.seance || h.period || ''}`, h]))
+      sData.historique = sData.historique.map(h => {
+        if (getPlayerHidc(h) > 0) return h
+        const collectif = collectifByKey.get(`${h.date || ''}_${h.seance || h.period || ''}`)
+        return getPlayerHidc(collectif) > 0 ? { ...h, hidc: getPlayerHidc(collectif) } : h
+      })
+    }
     
     // Une entrée d'historique correspond-elle à une période "résumé" (Session/Complet) ?
     // Ces lignes dupliquent les métriques de la/les période(s) spécifique(s) de la même
@@ -5843,14 +5855,13 @@ function fmtDate(str) {
 function getPlayerHidc(row) {
   if (!row || typeof row !== 'object') return 0
   const toNumber = value => Number(String(value ?? '').replace(/,/g, '.'))
-  const direct = row.hidc ?? row.HIDc ?? row.HIDC ?? row.hidcTotal
-  const directValue = toNumber(direct)
-  if (Number.isFinite(directValue) && directValue > 0) return directValue
-  const key = Object.keys(row).find(k => String(k).toLowerCase().replace(/\s+/g, '').includes('hidc'))
-  const aliasValue = key ? toNumber(row[key]) : 0
-  if (Number.isFinite(aliasValue) && aliasValue > 0) return aliasValue
-  const fallback = toNumber(row.distHI)
-  return Number.isFinite(fallback) ? fallback : 0
+  const keys = Object.keys(row).filter(k => String(k).toLowerCase().replace(/\s+/g, '').includes('hidc'))
+  const orderedKeys = ['hidc', 'HIDc', 'HIDC', 'hidcTotal', ...keys]
+  for (const key of orderedKeys) {
+    const value = toNumber(row[key])
+    if (Number.isFinite(value) && value > 0) return value
+  }
+  return 0
 }
 
 function calcStats(j) {
