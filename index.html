@@ -5607,7 +5607,7 @@
   const c = document.getElementById('gps-content')
   
   // Vérifier le cache d'abord avec clé spécifique aux options
-  const cacheKey = 'gps_' + (joueurActif?.id||'none') + '_' + JSON.stringify(options)
+  const cacheKey = 'gps_v2_' + (joueurActif?.id||'none') + '_' + JSON.stringify(options)
   const cachedData = getCache(cacheKey)
   if (cachedData) {
     c.innerHTML = cachedData.html
@@ -5725,7 +5725,7 @@
             const dureeCalc = Math.round((hCorr.distTot || 0) / hCorr.mMin)
             if (isFinite(dureeCalc) && dureeCalc > 0) hCorr.duree = dureeCalc
           }
-          if (hCorr.hidc == null) hCorr.hidc = getPlayerHidc(hCorr)
+          hCorr.hidc = getPlayerHidc(hCorr)
           return hCorr
         })
     }
@@ -5842,15 +5842,15 @@ function fmtDate(str) {
 
 function getPlayerHidc(row) {
   if (!row || typeof row !== 'object') return 0
+  const toNumber = value => Number(String(value ?? '').replace(/,/g, '.'))
   const direct = row.hidc ?? row.HIDc ?? row.HIDC ?? row.hidcTotal
-  if (direct != null && direct !== '') {
-    const value = Number(String(direct).replace(/,/g, '.'))
-    if (Number.isFinite(value)) return value
-  }
+  const directValue = toNumber(direct)
+  if (Number.isFinite(directValue) && directValue > 0) return directValue
   const key = Object.keys(row).find(k => String(k).toLowerCase().replace(/\s+/g, '').includes('hidc'))
-  if (!key) return 0
-  const value = Number(String(row[key]).replace(/,/g, '.'))
-  return Number.isFinite(value) ? value : 0
+  const aliasValue = key ? toNumber(row[key]) : 0
+  if (Number.isFinite(aliasValue) && aliasValue > 0) return aliasValue
+  const fallback = toNumber(row.distHI)
+  return Number.isFinite(fallback) ? fallback : 0
 }
 
 function calcStats(j) {
