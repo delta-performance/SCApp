@@ -8129,7 +8129,6 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             const objSup = resultat.objectifSup || 0
             // Objectif "classique" hors HG/Suppléants (ces derniers sont gérés séparément)
             const objHI = Math.max(0, objHITotal - objHG - objSup)
-            const objAcc = resultat.accB23 || 0
             const objHidc = resultat.hidc || 0
             const distHIParJour = resultat.distHIParJourAdaptatif || resultat.distHIParJour || null
             const hgObjParJour = resultat.hgObjParJour || {}
@@ -8173,7 +8172,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // Données par semaine
             perWeekData.push({
               semaine: planif.semaine,
-              objHI, realHI, objAcc, realAcc, objHidc, realVolHI, realHidc, realVmax,
+              objHI, realHI, realAcc, objHidc, realVolHI, realHidc, realVmax,
               objHG, realHG, objSup, realSup,
               hasData: histSemaine.length > 0
             })
@@ -8207,9 +8206,6 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 const realDayAcc = realDayClassique.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
 
                 const valHI = distHIParJour ? (distHIParJour[jour] || 0) : 0
-                // Objectif acc proportionnel pour ce jour
-                const objAccJour = objHI > 0 && objAcc > 0 ? (valHI / objHI) * objAcc : 0
-
                 const objHGJour = hgObjParJour[jour] || 0
                 // Réel HG du jour calculé localement (fiable), fallback sur la valeur sauvegardée si aucune donnée locale
                 const realHGJour = realDayHG.length > 0
@@ -8221,7 +8217,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 perDayData.push({
                   jour, dateStr: dateJourStr,
                   objHI: valHI || 0, realHI: realDayHI,
-                  objAcc: objAccJour, realAcc: realDayAcc,
+                  realAcc: realDayAcc,
                   objHG: objHGJour, realHG: realHGJour,
                   objSup: objSupJour, realSup: realSupJour,
                   hasData, semaine: planif.semaine
@@ -8230,7 +8226,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             } else {
               perDayData.push({
                 jour: 'Semaine', dateStr: planif.semaine,
-                objHI, realHI, objAcc, realAcc,
+                objHI, realHI, realAcc,
                 objHG, realHG, objSup, realSup,
                 hasData: histSemaine.length > 0, semaine: planif.semaine
               })
@@ -8238,8 +8234,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           })
 
           // ===== CALCUL TOTAUX POUR KPIs ET SCORES BRUTS =====
-          let scoreGlobal, scoreHI, scoreAcc
-          let totalRealHI, totalObjHI, totalRealAcc, totalObjAcc, totalObjHidc, totalRealHidc, totalRealVmax
+          let scoreGlobal, scoreHI
+          let totalRealHI, totalObjHI, totalObjHidc, totalRealHidc, totalRealVmax
 
           // Source d'historique selon le mode
           const histSource = objMode === 'hebdomadaire' ? histComplete : hist
@@ -8259,16 +8255,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             } else if (daysWithData.length) {
               scoreHI = 150 // Objectif dépassé quand obj = 0 et on a des données
             } else { scoreHI = 0 }
-            const daysAcc = daysWithData.filter(d => d.objAcc > 0)
-            if (daysAcc.length) {
-              scoreAcc = Math.round(daysAcc.reduce((s, d) => s + Math.min((d.realAcc / d.objAcc) * 100, 150), 0) / daysAcc.length)
-            } else { scoreAcc = 0 }
-
             // Totaux pour KPIs = sommes journalières (classique + HG + Sup, jours avec données seulement)
             totalRealHI = daysWithData.reduce((s, d) => s + d.realTotal, 0)
             totalObjHI = daysWithData.reduce((s, d) => s + d.objTotal, 0)
-            totalRealAcc = daysWithData.reduce((s, d) => s + d.realAcc, 0)
-            totalObjAcc = daysWithData.reduce((s, d) => s + d.objAcc, 0)
             totalObjHidc = perWeekData.reduce((s, w) => s + w.objHidc, 0)
             totalRealHidc = perWeekData.reduce((s, w) => s + w.realHidc, 0)
             totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
@@ -8276,30 +8265,25 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // Mode hebdomadaire = totaux par semaine (classique + HG + Suppléants combinés)
             totalObjHI = perWeekData.reduce((s, w) => s + w.objHI + (w.objHG || 0) + (w.objSup || 0), 0)
             totalRealHI = perWeekData.reduce((s, w) => s + w.realHI + (w.realHG || 0) + (w.realSup || 0), 0)
-            totalObjAcc = perWeekData.reduce((s, w) => s + w.objAcc, 0)
-            totalRealAcc = perWeekData.reduce((s, w) => s + w.realAcc, 0)
             totalObjHidc = perWeekData.reduce((s, w) => s + w.objHidc, 0)
             totalRealHidc = perWeekData.reduce((s, w) => s + w.realHidc, 0)
             totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
 
             scoreHI = totalObjHI > 0 ? Math.round((totalRealHI / totalObjHI) * 100) : 0
-            scoreAcc = totalObjAcc > 0 ? Math.round((totalRealAcc / totalObjAcc) * 100) : 0
           }
 
           // ===== SCORE INDIVIDUEL =====
           if (objMode === 'hebdomadaire') {
-            // Mode hebdomadaire : moyenne simple des % d'avancement HI et Accel
-            scoreGlobal = Math.round((scoreHI + scoreAcc) / 2)
+            // Mode hebdomadaire : avancement de l'objectif HI
+            scoreGlobal = Math.min(100, scoreHI)
           } else {
             // Mode quotidien : formule pondérée (même formule que renderer/gps.html)
             const _hasV = histSource.some(r => String(r.period || '').toLowerCase().includes('vitesse'))
-            const _mH = _hasV ? 45 : 55, _mA = _hasV ? 25 : 30, _mR = 15, _mV = _hasV ? 15 : 0
+            const _mH = _hasV ? 70 : 85, _mR = 15, _mV = _hasV ? 15 : 0
 
             const _pH = totalObjHI > 0 ? Math.min(150, Math.round(totalRealHI / totalObjHI * 100)) : totalObjHI === 0 ? 150 : null
-            const _pA = totalObjAcc > 0 ? Math.min(150, Math.round(totalRealAcc / totalObjAcc * 100)) : totalObjAcc === 0 ? 150 : null
 
             const _sH = _pH !== null ? Math.round(_sHIAcc(_pH) * _mH) : 0
-            const _sA = _pA !== null ? Math.round(_sHIAcc(_pA) * _mA) : 0
 
             const _seuil = calcSeuilPosteRythme(s.posteGPS)
             const _mminJ = calcMMinRythme(histSource)
@@ -8310,7 +8294,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             const _vmOk = _vm6 > 0 && scorePlayerStats.vmax > 0 && (scorePlayerStats.vmax / _vm6 * 100) >= 90
             const _sV = _hasV ? (_vmOk ? _mV : Math.round(_mV * 0.25)) : 0
 
-            scoreGlobal = Math.min(100, _sH + _sA + _sR + _sV)
+            scoreGlobal = Math.min(100, _sH + _sR + _sV)
           }
 
           // Couleur du score (alignée sur renderer/gps.html)
@@ -8333,7 +8317,6 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           // ===== KPI GRID =====
           const kpiData = [
             { label: 'Dist HSR >18 km/h', real: totalRealHI, obj: totalObjHI, unit: 'm', color: '#E24B4A', decimals: 0 },
-            { label: 'Acc B2+B3', real: totalRealAcc, obj: totalObjAcc, unit: '', color: '#EF9F27', decimals: 0 },
             { label: 'Zone intensité', real: totalRealHidc, obj: totalObjHidc, unit: 'm', color: '#B85CDE', decimals: 0 },
             { label: 'Vmax max', real: totalRealVmax, obj: null, unit: 'km/h', color: '#1D9E75', decimals: 1 },
           ]
@@ -8519,7 +8502,6 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const objStats = {
             distHI: totalObjHI > 0 ? totalObjHI / Math.max(planifsMatched.length, 1) : 0,
             hidc: 0, mMin: 0, hiMin: 0, vmax: 0,
-            accB23: totalObjAcc > 0 ? totalObjAcc / Math.max(planifsMatched.length, 1) : 0
           }
 
           function drawRadar(canvas, pVals, cVals, labels, fmts) {
@@ -8617,20 +8599,20 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           radarSec.appendChild(radarGrid)
           objContent.appendChild(radarSec)
 
-          const radarLabels = ['Dist HSR >18 km/h', 'm/min', 'HI/min', 'Zone intensité', 'Vmax', 'Acc']
-          const radarFmts = [v => v.toFixed(0) + 'm', v => v.toFixed(1), v => v.toFixed(2), v => v.toFixed(0), v => v.toFixed(1) + 'km/h', v => v.toFixed(0)]
+          const radarLabels = ['Dist HSR >18 km/h', 'm/min', 'HI/min', 'Zone intensité', 'Vmax']
+          const radarFmts = [v => v.toFixed(0) + 'm', v => v.toFixed(1), v => v.toFixed(2), v => v.toFixed(0), v => v.toFixed(1) + 'km/h']
 
           function drawRadars(compareMode) {
             const cmp = calcCompareStats(compareMode)
             const modeLabels = { 'self': 'Mes séances', 'team-avg': 'Moy. équipe', 'team-max': 'Max équipe', 'poste-avg': 'Moy. poste', 'poste-max': 'Max poste' }
             leg1.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Moi</span><span style="color:#378ADD;">● ${modeLabels[compareMode] || 'Comparaison'}</span></div>`
-            const pVals1 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.hidc, playerStats.vmax, playerStats.distHI > 0 ? (totalRealAcc / Math.max(histForRadar.length, 1)) : 0]
-            const cVals1 = cmp ? [cmp.distHI, cmp.mMin, cmp.hiMin, cmp.hidc, cmp.vmax, cmp.accB23] : [0, 0, 0, 0, 0, 0]
+            const pVals1 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.hidc, playerStats.vmax]
+            const cVals1 = cmp ? [cmp.distHI, cmp.mMin, cmp.hiMin, cmp.hidc, cmp.vmax] : [0, 0, 0, 0, 0]
             drawRadar(canvas1, pVals1, cVals1, radarLabels, radarFmts)
 
             leg2.innerHTML = `<div style="display:flex;justify-content:center;gap:10px;"><span style="color:#FECC00;">● Réel</span><span style="color:#378ADD;">● Objectif</span></div>`
-            const pVals2 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.hidc, playerStats.vmax, totalRealAcc / Math.max(histForRadar.length, 1)]
-            const cVals2 = [objStats.distHI, 0, 0, 0, 0, objStats.accB23]
+            const pVals2 = [playerStats.distHI, playerStats.mMin, playerStats.hiMin, playerStats.hidc, playerStats.vmax]
+            const cVals2 = [objStats.distHI, 0, 0, 0, 0]
             drawRadar(canvas2, pVals2, cVals2, radarLabels, radarFmts)
           }
 
