@@ -396,6 +396,15 @@
     .birthday-icon { font-size: 36px; margin-bottom: 8px; }
     .birthday-text { font-size: 22px; font-weight: 800; }
     .birthday-sub { font-size: 14px; font-weight: 600; margin-top: 4px; }
+    #daily-notifications { position: fixed; top: 62px; left: 12px; z-index: 1100; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 24px)); pointer-events: none; }
+    .daily-notification { pointer-events: auto; background: #1a1a1a; color: #fff; border: 1px solid #FECC0055; border-left: 4px solid #FECC00; border-radius: 10px; padding: 11px 12px; box-shadow: 0 8px 24px #0009; font-size: 12px; line-height: 1.4; animation: dailyNotificationIn .2s ease-out; }
+    .daily-notification.absence { border-left-color: #EF9F27; border-color: #EF9F2744; }
+    .daily-notification-title { display: flex; align-items: center; gap: 7px; font-weight: 700; color: #FECC00; margin-bottom: 5px; }
+    .daily-notification.absence .daily-notification-title { color: #EF9F27; }
+    .daily-notification-close { margin-left: auto; border: 0; background: none; color: #888; cursor: pointer; font-size: 13px; padding: 0 2px; }
+    .daily-notification-close:hover { color: #fff; }
+    .daily-notification-body { color: #ddd; white-space: pre-line; }
+    @keyframes dailyNotificationIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
     #bonus-player-body-chart .body-chart-container{padding:0!important;width:100%!important;height:100%!important}#bonus-player-body-chart .body-chart-svg{height:250px!important;width:auto!important;max-height:250px!important;max-width:100%!important}
     .bonus-player-point{transform:translate(-50%,-50%);width:28px;height:28px;padding:0;border-radius:50%;border:2px solid #E24B4A;background:#E24B4A;color:#fff;box-shadow:0 0 12px #E24B4A99;font-size:16px;line-height:1;cursor:pointer}.bonus-player-point.active{background:#fff;color:#E24B4A;border-color:#fff}
   </style>
@@ -487,6 +496,7 @@
 </head>
 <body>
 
+  <div id="daily-notifications" aria-live="polite"></div>
   <canvas id="fireworks-canvas" class="fireworks-canvas"></canvas>
   <div id="birthday-banner" class="birthday-banner">
     <div class="birthday-icon">🎉</div>
@@ -1527,12 +1537,15 @@
             // Chargement minimal à l'ouverture : uniquement la liste des joueurs
             // pour la sélection/association. Les configs (ratios, exercices, types
             // d'événements) sont chargées à la demande dans chaque module.
-            const [jSnap, bSnap] = await Promise.all([
+            const [jSnap, bSnap, aSnap] = await Promise.all([
               getDocs(collection(db, 'joueurs')),
-              getDocs(collection(db, 'blessures'))
+              getDocs(collection(db, 'blessures')),
+              getDocs(collection(db, 'absences')).catch(e => { console.warn('[Player-app] Absences indisponibles:', e); return { docs: [] }; })
             ]);
             joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived);
             blessures = bSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const notificationsAbsences = aSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            afficherNotificationsQuotidiennes(joueurs, notificationsAbsences);
 
             // Attendre que les rôles/permissions du staff soient chargés avant de
             // déterminer l'accès "voir tous les joueurs" (évite un faux négatif
@@ -9804,6 +9817,28 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
     function norm(s){return String(s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
     function parseD(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{4})(\d{2})(\d{2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
     function parseDate(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{4})(\d{2})(\d{2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
+
+    // ===== NOTIFICATIONS QUOTIDIENNES =====
+    function afficherNotificationsQuotidiennes(listeJoueurs, listeAbsences){
+      const container=document.getElementById('daily-notifications')
+      if(!container)return
+      const now=new Date(),today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+      const birthDate=j=>getPlayerBirthDate(j)
+      const birthdays=listeJoueurs.filter(j=>{const d=birthDate(j);return d&&d.getMonth()===new Date().getMonth()&&d.getDate()===new Date().getDate()})
+      const absences=listeAbsences.filter(a=>a.statut==='encours'&&a.debut&&a.debut<=today&&(!a.fin||a.fin>=today))
+      const notices=[]
+      if(absences.length)notices.push({id:'absences-'+today+'-'+absences.map(a=>a.id).sort().join(','),type:'absence',icon:'⚫',title:'Absences du jour',body:absences.map(a=>{const j=listeJoueurs.find(x=>x.id===a.joueurId);return '• '+(j?((j.prenom||'')+' '+(j.nom||'')).trim():'Joueur inconnu')+(a.motif||a.type?' — '+(a.motif||a.type):'')}).join('\n')})
+      if(birthdays.length)notices.push({id:'anniversaires-'+today+'-'+birthdays.map(j=>j.id).sort().join(','),type:'birthday',icon:'🎉',title:'Évènement du jour',body:birthdays.map(j=>`Aujourd'hui, c'est l'anniversaire de ${j.prenom||''} ${j.nom||''}`.trim()+' !').join('\n')})
+      let dismissed={};try{dismissed=JSON.parse(localStorage.getItem('sca_player_daily_notifications_dismissed')||'{}')}catch(e){}
+      container.innerHTML=''
+      notices.filter(n=>!dismissed[n.id]).forEach(n=>{
+        const el=document.createElement('div');el.className='daily-notification '+n.type
+        el.innerHTML='<div class="daily-notification-title"><span>'+n.icon+'</span><span>'+n.title+'</span><button class="daily-notification-close" aria-label="Fermer">✕</button></div><div class="daily-notification-body"></div>'
+        el.querySelector('.daily-notification-body').textContent=n.body
+        el.querySelector('.daily-notification-close').onclick=()=>{dismissed[n.id]=true;localStorage.setItem('sca_player_daily_notifications_dismissed',JSON.stringify(dismissed));el.remove()}
+        container.appendChild(el)
+      })
+    }
 
     // ===== FEU D'ARTIFICE D'OUVERTURE + ANNIVERSAIRE =====
     function getPlayerBirthDate(j){
