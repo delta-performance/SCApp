@@ -1537,15 +1537,13 @@
             // Chargement minimal à l'ouverture : uniquement la liste des joueurs
             // pour la sélection/association. Les configs (ratios, exercices, types
             // d'événements) sont chargées à la demande dans chaque module.
-            const [jSnap, bSnap, aSnap] = await Promise.all([
+            const [jSnap, bSnap] = await Promise.all([
               getDocs(collection(db, 'joueurs')),
-              getDocs(collection(db, 'blessures')),
-              getDocs(collection(db, 'absences')).catch(e => { console.warn('[Player-app] Absences indisponibles:', e); return { docs: [] }; })
+              getDocs(collection(db, 'blessures'))
             ]);
             joueurs = jSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.archived);
             blessures = bSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            const notificationsAbsences = aSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            afficherNotificationsQuotidiennes(joueurs, notificationsAbsences);
+            afficherNotificationsQuotidiennes(joueurs);
 
             // Attendre que les rôles/permissions du staff soient chargés avant de
             // déterminer l'accès "voir tous les joueurs" (évite un faux négatif
@@ -9819,15 +9817,13 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
     function parseDate(v){const s=String(v||'').trim();let m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);m=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{4})(\d{2})(\d{2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d.getTime())?null:d}
 
     // ===== NOTIFICATIONS QUOTIDIENNES =====
-    function afficherNotificationsQuotidiennes(listeJoueurs, listeAbsences){
+    function afficherNotificationsQuotidiennes(listeJoueurs){
       const container=document.getElementById('daily-notifications')
       if(!container)return
       const now=new Date(),today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
       const birthDate=j=>getPlayerBirthDate(j)
-      const birthdays=listeJoueurs.filter(j=>{const d=birthDate(j);return d&&d.getMonth()===new Date().getMonth()&&d.getDate()===new Date().getDate()})
-      const absences=listeAbsences.filter(a=>a.statut==='encours'&&a.debut&&a.debut<=today&&(!a.fin||a.fin>=today))
+      const birthdays=listeJoueurs.filter(j=>{const d=birthDate(j);return d&&d.getMonth()===now.getMonth()&&d.getDate()===now.getDate()})
       const notices=[]
-      if(absences.length)notices.push({id:'absences-'+today+'-'+absences.map(a=>a.id).sort().join(','),type:'absence',icon:'⚫',title:'Absences du jour',body:absences.map(a=>{const j=listeJoueurs.find(x=>x.id===a.joueurId);return '• '+(j?((j.prenom||'')+' '+(j.nom||'')).trim():'Joueur inconnu')+(a.motif||a.type?' — '+(a.motif||a.type):'')}).join('\n')})
       if(birthdays.length)notices.push({id:'anniversaires-'+today+'-'+birthdays.map(j=>j.id).sort().join(','),type:'birthday',icon:'🎉',title:'Évènement du jour',body:birthdays.map(j=>`Aujourd'hui, c'est l'anniversaire de ${j.prenom||''} ${j.nom||''}`.trim()+' !').join('\n')})
       let dismissed={};try{dismissed=JSON.parse(localStorage.getItem('sca_player_daily_notifications_dismissed')||'{}')}catch(e){}
       container.innerHTML=''
