@@ -2886,6 +2886,44 @@
 
     // ===== TIMER ÉNERGÉTIQUE =====
     const nrgTimers = {}
+    const nrgWakeLockUsers = new Set()
+    let nrgWakeLock = null
+    let nrgWakeLockRequest = null
+
+    function nrgRequestWakeLock() {
+      if (!nrgWakeLockUsers.size || document.visibilityState !== 'visible' || !navigator.wakeLock || nrgWakeLock || nrgWakeLockRequest) return
+      nrgWakeLockRequest = navigator.wakeLock.request('screen').then(lock => {
+        if (!nrgWakeLockUsers.size || document.visibilityState !== 'visible') {
+          lock.release().catch(() => {})
+          return
+        }
+        nrgWakeLock = lock
+        lock.addEventListener('release', () => {
+          nrgWakeLock = null
+          if (nrgWakeLockUsers.size && document.visibilityState === 'visible') nrgRequestWakeLock()
+        })
+      }).catch(() => {}).finally(() => {
+        nrgWakeLockRequest = null
+      })
+    }
+
+    function nrgStartWakeLock(timerKey) {
+      nrgWakeLockUsers.add(timerKey)
+      nrgRequestWakeLock()
+    }
+
+    function nrgStopWakeLock(timerKey) {
+      nrgWakeLockUsers.delete(timerKey)
+      if (!nrgWakeLockUsers.size && nrgWakeLock) {
+        nrgWakeLock.release().catch(() => {})
+        nrgWakeLock = null
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') nrgRequestWakeLock()
+    })
+
     function nrgFormatTime(sec) {
       const m = Math.floor(sec / 60)
       const s = sec % 60
@@ -2946,6 +2984,7 @@
       let remaining = totalSec
       startBtn.onclick = () => {
         clearTimer()
+        nrgStartWakeLock(timerKey)
         startBtn.style.display = 'none'
         stopBtn.style.display = 'inline-block'
         nrgTimers[timerKey] = setInterval(() => {
@@ -2953,6 +2992,7 @@
           updateDisplay(remaining)
           if (remaining <= 0) {
             clearTimer()
+            nrgStopWakeLock(timerKey)
             nrgPlayAlarm()
             stopBtn.style.display = 'none'
             startBtn.style.display = 'inline-block'
@@ -2964,12 +3004,14 @@
       }
       stopBtn.onclick = () => {
         clearTimer()
+        nrgStopWakeLock(timerKey)
         stopBtn.style.display = 'none'
         startBtn.style.display = 'inline-block'
         startBtn.textContent = '▶ Reprendre'
       }
       resetBtn.onclick = () => {
         clearTimer()
+        nrgStopWakeLock(timerKey)
         remaining = totalSec
         updateDisplay(remaining)
         stopBtn.style.display = 'none'
@@ -3258,6 +3300,7 @@
         if(phaseIdx >= phases.length){
           clearTimer()
           isRunning = false
+          nrgStopWakeLock(timerKey)
           nrgPlayAlarm()
           stopBtn.style.display = 'none'
           startBtn.style.display = 'inline-block'
@@ -3306,6 +3349,7 @@
       startBtn.onclick = () => {
         if(startBtn.disabled) return
         clearTimer()
+        nrgStartWakeLock(timerKey)
         isRunning = true
         startBtn.style.display = 'none'
         stopBtn.style.display = 'inline-block'
@@ -3318,6 +3362,7 @@
       }
       stopBtn.onclick = () => {
         clearTimer()
+        nrgStopWakeLock(timerKey)
         isRunning = false
         stopBtn.style.display = 'none'
         startBtn.style.display = 'inline-block'
@@ -3333,6 +3378,7 @@
       }
       resetBtn.onclick = () => {
         clearTimer()
+        nrgStopWakeLock(timerKey)
         isRunning = false
         phaseIdx = 0
         remaining = phases[0].sec
