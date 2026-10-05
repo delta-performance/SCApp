@@ -5966,6 +5966,11 @@ function isQTGPSPeriod(period) {
   const normalized = normaliserLibelleGPS(period)
   return !normalized.includes('sequence de jeu') && /^qt\s*0?\d+$/.test(normalized)
 }
+function normaliserCleQTGPS(period) {
+  const normalized = normaliserLibelleGPS(period)
+  const match = normalized.match(/^qt\s*0*(\d+)$/)
+  return match ? 'qt' + Number(match[1]) : normalized
+}
 function isMatchSession(h) {
   const seance = normaliserLibelleGPS(h.seance)
   const period = normaliserLibelleGPS(h.period)
@@ -5973,6 +5978,61 @@ function isMatchSession(h) {
   const seanceMatch = seance.includes('match') || /_j\d*/.test(seance) || /\bj\d+\b/.test(seance)
   const periodMatch = period.includes('match') || periodNames.some(p => normaliserLibelleGPS(p).includes('match'))
   return seanceMatch || periodMatch
+}
+function calculerHidcParQTMatch(match, joueurs) {
+  const matchKey = normaliserLibelleGPS(match.key || match.matchKey)
+  const matchDate = parseDate(match.dateISO || match.date)
+  const parQT = new Map()
+  ;(joueurs || []).forEach((joueur, index) => {
+    const joueurKey = String(joueur.joueurId || joueur.id || joueur.nomGPS || index)
+    ;(joueur.historique || []).filter(h => {
+      const seance = normaliserLibelleGPS(h.seance)
+      if (seance && (seance === matchKey || normaliserLibelleGPS(getMatchKey(h)) === matchKey)) return true
+      const date = parseDate(h.date)
+      return seance && matchDate && date && date.toDateString() === matchDate.toDateString() && isMatchSession(h)
+    }).forEach(h => {
+      Object.entries(h.perPeriod || {}).forEach(([period, stats]) => {
+        if (!isQTGPSPeriod(period) || stats?.hidc == null) return
+        const qtKey = normaliserCleQTGPS(period)
+        if (!parQT.has(qtKey)) parQT.set(qtKey, { qt: period, joueurs: new Map() })
+        const joueursQT = parQT.get(qtKey).joueurs
+        joueursQT.set(joueurKey, (joueursQT.get(joueurKey) || 0) + (Number(stats.hidc) || 0))
+      })
+    })
+  })
+  return [...parQT.values()].map(({ qt, joueurs }) => ({
+    qt,
+    hidc: joueurs.size ? [...joueurs.values()].reduce((sum, value) => sum + value, 0) / joueurs.size : 0
+  })).sort((a, b) => (parseInt(a.qt.replace(/\D/g, ''), 10) || 0) - (parseInt(b.qt.replace(/\D/g, ''), 10) || 0))
+}
+function calculerHidcParPosteMatch(match, joueurs) {
+  const matchKey = normaliserLibelleGPS(match.key || match.matchKey)
+  const matchDate = parseDate(match.dateISO || match.date)
+  const parPoste = new Map()
+  ;(joueurs || []).forEach((joueur, index) => {
+    const joueurKey = String(joueur.joueurId || joueur.id || joueur.nomGPS || index)
+    const lignes = (joueur.historique || []).filter(h => {
+      const seance = normaliserLibelleGPS(h.seance)
+      if (seance && (seance === matchKey || normaliserLibelleGPS(getMatchKey(h)) === matchKey)) return true
+      const date = parseDate(h.date)
+      return seance && matchDate && date && date.toDateString() === matchDate.toDateString() && isMatchSession(h)
+    })
+    let hidc = 0
+    let hasQTData = false
+    lignes.forEach(h => Object.entries(h.perPeriod || {}).forEach(([period, stats]) => {
+      if (!isQTGPSPeriod(period) || stats?.hidc == null) return
+      hidc += Number(stats.hidc) || 0
+      hasQTData = true
+    }))
+    if (!hasQTData) return
+    const poste = getRapportPosteGroupe(joueur.posteGPS || joueur.poste || '')
+    if (!parPoste.has(poste)) parPoste.set(poste, { total: 0, joueurs: new Set() })
+    const statsPoste = parPoste.get(poste)
+    if (statsPoste.joueurs.has(joueurKey)) return
+    statsPoste.joueurs.add(joueurKey)
+    statsPoste.total += hidc
+  })
+  return Object.fromEntries([...parPoste].map(([poste, stats]) => [poste, stats.total / stats.joueurs.size]))
 }
 
 async function chargerRapportMatch() {
@@ -5990,6 +6050,7 @@ async function chargerRapportMatch() {
     ])
     const sPerso = snapPerso.exists() ? snapPerso.data() : {}
     const sCol = snapCol.exists() ? snapCol.data() : {}
+    window.__allJoueursData = sCol.joueurs || []
 
     // Nouveau : stats communes par match calculées dans gps-match.html
     const rawMatchs = sCol.matchs || {}
@@ -6440,6 +6501,14 @@ function renderScoreSectionMobile(c, ffr, match) {
 function renderMatchTab(c, match, persoHist) {
   const persoRow = persoHist.find(h => h.matchKey === match.key)
   const equipe = match.equipe || {}
+  const hidcHistoriqueParQT = calculerHidcParQTMatch(match, window.__allJoueursData || [])
+  const hidcHistoriqueIndex = new Map(hidcHistoriqueParQT.map(q => [normaliserCleQTGPS(q.qt), q.hidc]))
+  const qtStatsHidc = (match.qtStats && match.qtStats.length ? match.qtStats : hidcHistoriqueParQT).map(q => ({
+    ...q,
+    hidc: Number(q.hidc) > 0 ? Number(q.hidc) : (hidcHistoriqueIndex.get(normaliserCleQTGPS(q.qt)) || 0)
+  }))
+  const hidcMatchStocke = Number(match.hidc) || Number(equipe.hidc) || 0
+  const hidcMatch = hidcMatchStocke > 0 ? hidcMatchStocke : qtStatsHidc.reduce((sum, q) => sum + (q.hidc || 0), 0)
 
   // Header jaune comme gps-match.html
   const head = document.createElement('div')
@@ -6473,7 +6542,7 @@ function renderMatchTab(c, match, persoHist) {
   hidcSec.style.cssText = 'background:#1a1a1a;border:1px solid #B85CDE44;border-radius:12px;padding:14px;margin-bottom:14px;text-align:center;'
   hidcSec.innerHTML = `
     <div style="font-size:11px;font-weight:700;color:#B85CDE;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Zone intensité (HIDc)</div>
-    <div style="font-size:28px;font-weight:800;color:#fff;">${fmtNum(match.hidc ?? equipe.hidc, 0)} m</div>
+    <div style="font-size:28px;font-weight:800;color:#fff;">${fmtNum(hidcMatch > 0 ? hidcMatch : null, 0)} m</div>
     <div style="font-size:10px;color:#666;margin-top:3px;">Moyenne équipe · QT</div>`
   c.appendChild(hidcSec)
 
@@ -6513,6 +6582,10 @@ function renderMatchTab(c, match, persoHist) {
   })
   seqSec.appendChild(seqWrap)
   c.appendChild(seqSec)
+
+  if (qtStatsHidc.some(q => q.hidc > 0)) {
+    renderQTBarChart(c, qtStatsHidc, 'hidc', 'Zone intensité (HIDc)', 'm', '#B85CDE')
+  }
 
   // Graphiques par QT (m/min, HI/min, temps de jeu effectif) — comme gps-match.html
   if (match.qtStats && match.qtStats.length) {
@@ -6556,7 +6629,12 @@ function renderPosteTab(c, match) {
     {k:'vmax',l:'Vmax',u:'km/h',c:'#1D9E75',fn:m=>m.vmax},
     {k:'load',l:'Charge',u:'UA',c:'#7F77DD',fn:m=>m.load},
   ]
-  const posteStats = match.posteStats || {}
+  const posteStats = Object.fromEntries(Object.entries(match.posteStats || {}).map(([poste, stats]) => [poste, { ...stats }]))
+  Object.entries(calculerHidcParPosteMatch(match, window.__allJoueursData || [])).forEach(([poste, hidc]) => {
+    const stats = getPosteStat(posteStats, poste)
+    if (stats) stats.hidc = Number(stats.hidc) || hidc
+    else posteStats[poste] = { hidc }
+  })
 
   // Barres comparaison inter-postes
   metriques.forEach(met => {
@@ -6748,7 +6826,14 @@ function renderIndividuelTab(c, persoHist, persoMatchs) {
 
   // Utiliser les stats brutes si disponibles (HI correct), sinon fallback sur l'historique
   const lastHI = lastMatchStats ? lastMatchStats.distHI : (last.distHI || 0)
-  const lastHidc = lastMatchStats ? getPlayerHidc(lastMatchStats) : getPlayerHidc(last)
+  const lastHidc = getPlayerHidc(lastMatchStats) || getPlayerHidc(last)
+  const hidcQTFromHistory = new Map(Object.entries(last.perPeriod || {})
+    .filter(([period, stats]) => isQTGPSPeriod(period) && stats?.hidc != null)
+    .map(([period, stats]) => [normaliserCleQTGPS(period), Number(stats.hidc) || 0]))
+  const qtStatsHidc = (lastMatchStats?.qtStats?.length ? lastMatchStats.qtStats : [...hidcQTFromHistory].map(([qt, hidc]) => ({ qt, hidc }))).map(q => ({
+    ...q,
+    hidc: Number(q.hidc) > 0 ? Number(q.hidc) : (hidcQTFromHistory.get(normaliserCleQTGPS(q.qt)) || 0)
+  }))
   const lastDist = lastMatchStats ? lastMatchStats.distTot : (last.distTot || 0)
   const lastVmax = lastMatchStats ? lastMatchStats.vmax : (last.vmax || 0)
   const lastLoad = lastMatchStats ? lastMatchStats.load : (last.load || 0)
@@ -6800,6 +6885,10 @@ function renderIndividuelTab(c, persoHist, persoMatchs) {
     </div>
   `
   c.appendChild(hero)
+
+  if (qtStatsHidc.some(q => q.hidc > 0)) {
+    renderQTBarChart(c, qtStatsHidc, 'hidc', 'Zone intensité (HIDc)', 'm', '#B85CDE')
+  }
 
   // === Graphiques individuels du dernier match (même que Stats Match) ===
   if (lastMatchStats) {
