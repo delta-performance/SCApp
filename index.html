@@ -5959,12 +5959,19 @@ function calcMoyennes(joueurs) {
   }
 }
 
+function normaliserLibelleGPS(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+}
+function isQTGPSPeriod(period) {
+  const normalized = normaliserLibelleGPS(period)
+  return !normalized.includes('sequence de jeu') && /^qt\s*0?\d+$/.test(normalized)
+}
 function isMatchSession(h) {
-  const seance = String(h.seance || '').toLowerCase()
-  const period = String(h.period || '').toLowerCase()
+  const seance = normaliserLibelleGPS(h.seance)
+  const period = normaliserLibelleGPS(h.period)
   const periodNames = Array.isArray(h.periodNames) ? h.periodNames : []
   const seanceMatch = seance.includes('match') || /_j\d*/.test(seance) || /\bj\d+\b/.test(seance)
-  const periodMatch = period.includes('match') || periodNames.some(p => String(p).toLowerCase().includes('match'))
+  const periodMatch = period.includes('match') || periodNames.some(p => normaliserLibelleGPS(p).includes('match'))
   return seanceMatch || periodMatch
 }
 
@@ -6979,7 +6986,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         if (vueMode === 'derniere') {
           document.getElementById('hero-sub-nbseances').textContent = `km/h · dernier jour`
         } else {
-          document.getElementById('hero-sub-nbseances').textContent = `km/h · ${hist.length} séance${hist.length > 1 ? 's' : ''}`
+          const histStats = filtrerHistoriqueStatsGPS(hist)
+          document.getElementById('hero-sub-nbseances').textContent = `km/h · ${histStats.length} séance${histStats.length > 1 ? 's' : ''}`
         }
       }
 
@@ -7184,6 +7192,49 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         })
       })
 
+      function filtrerHistoriqueStatsGPS(hist) {
+        return (Array.isArray(hist) ? hist : []).map(h => {
+          if (!isMatchSession(h)) return h
+          const perPeriod = h.perPeriod && typeof h.perPeriod === 'object' ? h.perPeriod : {}
+          const periodesQT = Object.entries(perPeriod).filter(([period]) =>
+            isQTGPSPeriod(period) && !normaliserLibelleGPS(period).includes('sequence de jeu')
+          )
+          if (!periodesQT.length) {
+            if (Object.keys(perPeriod).length) return null
+            const periodNames = Array.isArray(h.periodNames) ? h.periodNames : []
+            return isQTGPSPeriod(h.period) && (!periodNames.length || (periodNames.length === 1 && isQTGPSPeriod(periodNames[0]))) ? h : null
+          }
+          const somme = key => periodesQT.reduce((total, [, period]) => total + (Number(period?.[key]) || 0), 0)
+          const maximum = key => Math.max(...periodesQT.map(([, period]) => Number(period?.[key]) || 0), 0)
+          const distTot = somme('distTot')
+          const distHI = somme('distHI')
+          const duree = somme('duree')
+          const accB2 = somme('accB2')
+          const accB3 = somme('accB3')
+          return {
+            ...h,
+            period: periodesQT[0][0],
+            periodNames: periodesQT.map(([period]) => period),
+            perPeriod: Object.fromEntries(periodesQT),
+            distTot,
+            distHI,
+            hidc: somme('hidc'),
+            duree,
+            accB2,
+            accB3,
+            accB23: accB2 + accB3,
+            volHI: somme('volHI'),
+            load: somme('load'),
+            rhie: somme('rhie'),
+            sprint: somme('sprint'),
+            vmax: maximum('vmax'),
+            vmaxPct: maximum('vmaxPct'),
+            mMin: duree > 0 ? +(distTot / duree).toFixed(1) : 0,
+            hiMin: duree > 0 ? +(distHI / duree).toFixed(2) : 0
+          }
+        }).filter(Boolean)
+      }
+
       // ===== FONCTIONS DE CALCUL DES STATS PAR PERIODE =====
       function isValidPeriod(period) {
         // Aligné sur gps-shared.js (appli coach) : on exclut uniquement la
@@ -7277,7 +7328,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       // ===== RENDU STATS =====
       function renderStats() {
         zoneStats.innerHTML = ''
-        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        const hist = filtrerHistoriqueStatsGPS(historiqueFiltre.length ? historiqueFiltre : (s.historique || []))
 
         // Utiliser calculerStatsFiltre pour obtenir les stats sur la période
         const statsFiltre = calculerStatsFiltre(hist)
@@ -7534,7 +7585,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
       let seancePeriodFilter = 'all' // 'all' or a specific period name
       function renderSeances() {
         zoneSeances.innerHTML = ''
-        let hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        let hist = filtrerHistoriqueStatsGPS(historiqueFiltre.length ? historiqueFiltre : (s.historique || []))
         if (!hist.length) {
           zoneSeances.innerHTML = '<div class="empty-msg"><div class="empty-icon">📋</div>Aucune séance pour la période sélectionnée</div>'
           return
@@ -7665,7 +7716,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         }
         
         // Calculer les stats sur la période filtrée pour le joueur actuel
-        const hist = historiqueFiltre.length ? historiqueFiltre : (s.historique || [])
+        const hist = filtrerHistoriqueStatsGPS(historiqueFiltre.length ? historiqueFiltre : (s.historique || []))
         const statsFiltre = calculerStatsFiltre(hist, vueMode === 'derniere')
         
         // Fonction pour parser une date
@@ -7700,10 +7751,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
         // Calculer les stats pour tous les joueurs sur la période filtrée (aligné sur l'appli coach)
         const statsAllJoueurs = allJoueursData.map(j => {
           // Filtrer l'historique du joueur sur la même période
-          const histJoueur = (j.historique || []).filter(h => {
+          const histJoueur = filtrerHistoriqueStatsGPS((j.historique || []).filter(h => {
             const d = parseDate(h.date)
             return d && d >= dateDebut && d <= dateFin
-          })
+          }))
           
           if (histJoueur.length === 0) {
             return { nomGPS: j.nomGPS, posteGPS: j.posteGPS, stats: null }
@@ -7960,12 +8011,12 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
 
         // Toujours utiliser l'historique complet — les objectifs sont scopés
         // à la semaine de la dernière séance, indépendamment du filtre global
-        const histComplete = (s.historique || []).slice().sort((a,b) => {
+        const histComplete = filtrerHistoriqueStatsGPS((s.historique || []).slice().sort((a,b) => {
           const da = parseDate(String(a.date||'').trim()), db = parseDate(String(b.date||'').trim())
           if (!da || !db) return 0
           return da - db
-        })
-        const hist = historiqueFiltre.length ? historiqueFiltre : histComplete
+        }))
+        const hist = filtrerHistoriqueStatsGPS(historiqueFiltre.length ? historiqueFiltre : histComplete)
 
         // Déterminer la date de la dernière séance (depuis l'historique complet)
         const datesCompletes = histComplete.map(h => parseDate(String(h.date || '').trim())).filter(Boolean).sort((a,b) => a-b)
@@ -8098,12 +8149,11 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             allJoueursData.forEach(j => {
               const jGroupe = getPosteGroupe(j.posteGPS)
               if (groupeRef && groupeRef !== 'Autre' && jGroupe !== groupeRef) return
-              const histJoueur = j.historique || []
+              const histJoueur = filtrerHistoriqueStatsGPS(j.historique || [])
               histJoueur.forEach(r => {
-                const activity = String(r.seance || '').toLowerCase()
-                if (!activity.includes('match') || activity.includes('amical')) return
-                const period = String(r.period || '').trim().toLowerCase()
-                if (!period.includes('qt')) return
+                const activity = normaliserLibelleGPS(r.seance)
+                if (!isMatchSession(r) || activity.includes('amical')) return
+                if (!isQTGPSPeriod(r.period)) return
                 const durMin = r.duree || 0
                 const dist = r.distTot || 0
                 if (dist <= 0 || durMin <= 0) return
@@ -8481,12 +8531,12 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           const semainesDimanches = planifsMatched.map(p => p.dimanche)
           const dateMin = semainesLundis.length ? new Date(Math.min(...semainesLundis)) : null
           const dateMax = semainesDimanches.length ? new Date(Math.max(...semainesDimanches)) : null
-          const histForRadar = objMode === 'hebdomadaire' 
+          const histForRadar = filtrerHistoriqueStatsGPS(objMode === 'hebdomadaire' 
             ? histComplete.filter(h => {
                 const d = parseDate(h.date)
                 return d && dateMin && dateMax && d >= dateMin && d <= dateMax
               })
-            : hist
+            : hist)
           const playerStats = calculerStatsFiltre(histForRadar)
           const normaliserPoste = (poste) => {
             const p = String(poste || '').toLowerCase()
@@ -8503,10 +8553,10 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             const dateFin = datesFiltre[datesFiltre.length - 1]
 
             const perPlayer = allJoueursData.map(j => {
-              const histJoueur = (j.historique || []).filter(h => {
+              const histJoueur = filtrerHistoriqueStatsGPS((j.historique || []).filter(h => {
                 const d = parseDate(h.date)
                 return d && d >= dateDebut && d <= dateFin
-              })
+              }))
               if (!histJoueur.length) return null
               const totalDistHI = histJoueur.reduce((sum, h) => sum + (h.distHI || 0), 0)
               const totalVolHI = histJoueur.reduce((sum, h) => sum + (h.volHI || 0), 0)
