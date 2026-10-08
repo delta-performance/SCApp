@@ -1462,7 +1462,10 @@
       errorEl.textContent = '';
       
       try {
-        await signInWithPopup(auth, GoogleAuthProvider);
+        const redirectUrl = new URL(window.location.href);
+        redirectUrl.search = '';
+        redirectUrl.hash = '';
+        await signInWithPopup(auth, GoogleAuthProvider, { redirectTo: redirectUrl.toString() });
       } catch (e) {
         console.error(e);
         if (e.code !== 'auth/popup-closed-by-user') {
