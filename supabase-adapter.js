@@ -20281,14 +20281,17 @@ var COLLECTION_TO_TABLE = {
   "gps": "stats_gps",
   "progressionsBonus": "progressions_bonus",
   "changeLog": "change_log",
-  "morphoOverrides": "morpho_overrides"
+  "morphoOverrides": "morpho_overrides",
+  "recuperationSessions": "recuperation_sessions",
+  "recuperationReponses": "recuperation_reponses"
 };
 var UUID_PK_CONFLICT = {
   "wellness": "joueur_id,date",
   "poids": "joueur_id,date",
   "change_log": null
 };
-var DATA_JSONB_TABLES = /* @__PURE__ */ new Set(["blessures", "absences", "joueurs", "creneaux_blesses", "planifications_blesses", "stats_gps", "fv_profils", "vitesse_data", "puissance_data", "rfu_data", "progressions_bonus", "change_log", "morpho_overrides"]);
+var DATA_JSONB_TABLES = /* @__PURE__ */ new Set(["blessures", "absences", "joueurs", "creneaux_blesses", "planifications_blesses", "stats_gps", "fv_profils", "vitesse_data", "puissance_data", "progressions_bonus", "blocs_bonus", "change_log", "morpho_overrides", "entrainements", "feuilles_match"]);
+var JSONB_FILTER_TABLES = /* @__PURE__ */ new Set();
 var TABLE_COLUMNS = {
   blessures: /* @__PURE__ */ new Set([
     "id",
@@ -20370,9 +20373,81 @@ var TABLE_COLUMNS = {
   fv_profils: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
   vitesse_data: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
   puissance_data: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
-  rfu_data: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
   progressions_bonus: /* @__PURE__ */ new Set(["id", "club_id", "joueur_id", "date", "updated_at", "data"]),
-  morpho_overrides: /* @__PURE__ */ new Set(["id", "club_id", "derogation", "poids", "masse_grasse", "updated_at", "data"])
+  blocs_bonus: /* @__PURE__ */ new Set(["id", "club_id", "nom", "theme", "groupes", "progression", "data"]),
+  morpho_overrides: /* @__PURE__ */ new Set(["id", "club_id", "derogation", "poids", "masse_grasse", "updated_at", "data"]),
+  entrainements: /* @__PURE__ */ new Set([
+    "id",
+    "club_id",
+    "date",
+    "jour",
+    "semaine",
+    "saved_at",
+    "joueurs",
+    "seances",
+    "equipes",
+    "donnees_joueurs",
+    "sequences_map",
+    "poste_remplacants",
+    "poste_split_seqs",
+    "poste_split_blocs",
+    "nb_seq",
+    "dist_rep",
+    "entr_date",
+    "mode_rotation",
+    "data"
+  ]),
+  feuilles_match: /* @__PURE__ */ new Set([
+    "id",
+    "club_id",
+    "date",
+    "heure",
+    "lieu",
+    "adversaire",
+    "compet",
+    "journee",
+    "staff",
+    "feuille",
+    "feuille2",
+    "updated_at",
+    "data"
+  ]),
+  planning: /* @__PURE__ */ new Set([
+    "id",
+    "club_id",
+    "date",
+    "heure_debut",
+    "heure_fin",
+    "lieu",
+    "type",
+    "titre",
+    "description",
+    "visible",
+    "notif",
+    "intensity",
+    "groupe_id",
+    "groupe_ids",
+    "column_span",
+    "visible_players",
+    "blesses_ids",
+    "opponent",
+    "opponent_name",
+    "opponent_logo",
+    "match_location",
+    "selected_lines",
+    "selected_positions",
+    "is_bonus",
+    "bonus_participants",
+    "result",
+    "competition",
+    "score",
+    "notes",
+    "synced_from_calendrier",
+    "created_at",
+    "updated_at"
+  ]),
+  recuperation_sessions: /* @__PURE__ */ new Set(["id", "club_id", "date", "active", "eligible_player_ids", "manual_player_ids", "created_at", "updated_at", "data"]),
+  recuperation_reponses: /* @__PURE__ */ new Set(["id", "club_id", "session_id", "joueur_id", "date", "total_points", "choix", "submitted_at", "updated_at", "data"])
 };
 function camelToSnake(str) {
   if (!/[A-Z]/.test(str)) return str;
@@ -20523,12 +20598,13 @@ function setPersistence(auth, persistence) {
 var browserLocalPersistence = "local";
 var browserSessionPersistence = "session";
 var GoogleAuthProvider = { PROVIDER_ID: "google" };
-async function signInWithPopup(auth, provider) {
-  const { data, error } = await auth._supabase.auth.signInWithOAuth({ provider: "google" });
+async function signInWithPopup(auth, provider, options = {}) {
+  const { data, error } = await auth._supabase.auth.signInWithOAuth({ provider: provider.PROVIDER_ID || "google", options });
   if (error) throw error;
   return data;
 }
-function getFirestore(app) {
+function getSupabaseClient(db) {
+  if (db && typeof db.from === "function") return db;
   if (!supabase) {
     supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { persistSession: true, autoRefreshToken: true }
@@ -20536,21 +20612,37 @@ function getFirestore(app) {
   }
   return supabase;
 }
+function getFirestore(app) {
+  return getSupabaseClient();
+}
 function collection(db, name, ...args) {
   return {
     __type: "collection",
     __collectionName: name,
     __table: COLLECTION_TO_TABLE[name] || name,
-    __db: db
+    __db: getSupabaseClient(db),
+    id: name,
+    path: name
   };
 }
 function doc(db, collectionName, id, ...args) {
+  if (db && db.__type === "collection") {
+    if (collectionName === void 0) {
+      id = crypto.randomUUID();
+    } else {
+      id = collectionName;
+    }
+    collectionName = db.__collectionName;
+    db = db.__db;
+  }
   return {
     __type: "doc",
     __collectionName: collectionName,
     __table: COLLECTION_TO_TABLE[collectionName] || collectionName,
     __id: id,
-    __db: db
+    __db: getSupabaseClient(db),
+    id,
+    path: collectionName + "/" + id
   };
 }
 function where(field, op, value) {
@@ -20640,7 +20732,14 @@ function wrapDoc(row, id) {
   let data = convertKeysToCamel(row);
   if (row.data && typeof row.data === "object" && !Array.isArray(row.data)) {
     const extra = convertKeysToCamel(row.data);
-    data = { ...extra, ...data };
+    const realCols = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => {
+        if (v === null || v === void 0) return false;
+        if (typeof v === "string" && v === "") return false;
+        return true;
+      })
+    );
+    data = { ...extra, ...realCols };
     delete data.data;
   }
   return {
@@ -21098,10 +21197,11 @@ var TABLE_SELECT_COLUMNS = {
   // Keep all columns since the page needs them
   // planifications_gps: resultats JSONB is the largest — but needed for display
   // Keep all columns since the page needs them
-  // entrainements: donnees_joueurs JSONB can be very large
-  entrainements: "id,club_id,seances,joueurs,updated_at",
+  // entrainements: donnees_joueurs JSONB can be very large (excluded from default select)
+  // Include all composition columns needed by chargerEquipesEntrainement.
+  entrainements: "id,club_id,date,jour,semaine,saved_at,joueurs,seances,equipes,sequences_map,poste_remplacants,poste_split_seqs,poste_split_blocs,nb_seq,dist_rep,entr_date,mode_rotation,data",
   // feuilles_match: feuille/feuille2 JSONB needed for stats view and auto-load on page open
-  feuilles_match: "id,club_id,date,lieu,adversaire,compet,journee,feuille,feuille2,staff,updated_at"
+  feuilles_match: "id,club_id,date,heure,lieu,adversaire,compet,journee,feuille,feuille2,staff,updated_at,data"
   // wellness: hooper JSONB is small, keep all
   // dispo_kine: plages JSONB is small, keep all
 };
@@ -21117,8 +21217,8 @@ async function getDocsRaw(queryRef) {
     return { docs, empty: docs.length === 0, size: docs.length, forEach: (cb) => docs.forEach(cb), metadata: { hasPendingWrites: false, fromCache: false } };
   }
   if (table === "charges_reelles") {
-    const constraints = queryRef.__constraints || [];
-    const seanceConstraint = constraints.find((c) => c.__type === "where" && camelToSnake(c.__field) === "seance_id");
+    const constraints2 = queryRef.__constraints || [];
+    const seanceConstraint = constraints2.find((c) => c.__type === "where" && camelToSnake(c.__field) === "seance_id");
     if (seanceConstraint) {
       const seanceId = seanceConstraint.__value;
       const { data: rows, error: error2 } = await supabase2.from("charges_reelles").select("*").eq("seance_id", seanceId);
@@ -21151,11 +21251,65 @@ async function getDocsRaw(queryRef) {
     }
   }
   const selectCols = TABLE_SELECT_COLUMNS[table] || "*";
+  const constraints = queryRef.__constraints || [];
   let q = supabase2.from(table).select(selectCols);
-  q = applyConstraints(q, queryRef.__constraints || []);
+  if (JSONB_FILTER_TABLES.has(table) && constraints.length > 0) {
+    const { data: allRows, error: err } = await q;
+    if (err) throw err;
+    const rows = allRows || [];
+    const docs = rows.map((r) => wrapDoc(r));
+    const filtered = docs.filter((doc2) => docMatchesCamelConstraints(doc2.data(), constraints));
+    return { docs: filtered, empty: filtered.length === 0, size: filtered.length, forEach: (cb) => filtered.forEach(cb), metadata: { hasPendingWrites: false, fromCache: false } };
+  }
+  q = applyConstraints(q, constraints);
+  const hasLimit = constraints.some((c) => c && c.__type === "limit");
+  if (!hasLimit) q = q.limit(1e4);
+  const hasOrderBy = constraints.some((c) => c && c.__type === "orderBy");
+  const DATE_TABLES = /* @__PURE__ */ new Set(["wellness", "poids", "dataperf", "maxtestes", "vitessedata", "puissancedata", "rfudata", "progressions_bonus", "fiches_seances", "feuillesmatch", "blocsb_bonus", "creneaux_blesses", "seancesenergetique", "rfudata"]);
+  if (!hasOrderBy && DATE_TABLES.has(table)) {
+    q = q.order("date", { ascending: false });
+  }
+  if (table === "wellness" || table === "poids") {
+    console.log("[getDocsRaw]", table, "constraints:", JSON.stringify(constraints.map((c) => ({ field: c.__field, op: c.__op, val: c.__value }))), "hasLimit:", hasLimit, "hasOrderBy:", hasOrderBy);
+  }
   const { data, error } = await q;
   if (error) throw error;
+  if (table === "wellness" || table === "poids") {
+    console.log("[getDocsRaw]", table, "returned", (data || []).length, "rows");
+  }
   return wrapSnapshot(data || []);
+}
+function docMatchesCamelConstraints(docData, constraints) {
+  if (!constraints || !constraints.length) return true;
+  for (const c of constraints) {
+    if (!c || c.__type !== "where") continue;
+    const field = c.__field;
+    const op = c.__op;
+    const val = c.__value;
+    let queryVal = val;
+    if (val instanceof Date) queryVal = val.toISOString();
+    const rowVal = docData ? docData[field] : void 0;
+    if (op === "==" || op === "=") {
+      if (rowVal !== queryVal) return false;
+    } else if (op === "!=") {
+      if (rowVal === queryVal) return false;
+    } else if (op === ">") {
+      if (!(rowVal > queryVal)) return false;
+    } else if (op === ">=") {
+      if (!(rowVal >= queryVal)) return false;
+    } else if (op === "<") {
+      if (!(rowVal < queryVal)) return false;
+    } else if (op === "<=") {
+      if (!(rowVal <= queryVal)) return false;
+    } else if (op === "in") {
+      if (!Array.isArray(queryVal) || !queryVal.includes(rowVal)) return false;
+    } else if (op === "array-contains") {
+      if (!Array.isArray(rowVal) || !rowVal.includes(queryVal)) return false;
+    } else if (op === "array-contains-any") {
+      if (!Array.isArray(rowVal) || !queryVal.some((v) => rowVal.includes(v))) return false;
+    }
+  }
+  return true;
 }
 async function getDocs(queryRef) {
   if (typeof window !== "undefined" && window.getDocs) {
@@ -21215,12 +21369,15 @@ async function setDoc(docRef, dataObj, options) {
   } else if (isMerge) {
     const updateData = { ...rowData };
     delete updateData.id;
-    const { error } = await supabase2.from(table).update(updateData).eq("id", id);
+    const { data: updated, error } = await supabase2.from(table).update(updateData).eq("id", id).select();
     if (error && error.code === "PGRST116") {
       const { error: insertError } = await supabase2.from(table).upsert(rowData);
       if (insertError) throw insertError;
     } else if (error) {
       throw error;
+    } else if (!updated || updated.length === 0) {
+      const { error: insertError } = await supabase2.from(table).upsert(rowData);
+      if (insertError) throw insertError;
     }
   } else {
     const { error } = await supabase2.from(table).upsert(rowData);
@@ -21426,6 +21583,12 @@ function onSnapshot(ref, ...args) {
     };
   }
   const channelName = table;
+  const matchesConstraints = (rawRow) => {
+    if (JSONB_FILTER_TABLES.has(table)) {
+      return docMatchesCamelConstraints(wrapDoc(rawRow).data(), queryConstraints);
+    }
+    return rowMatchesConstraints(rawRow, queryConstraints);
+  };
   let channel = supabase2.channel(channelName);
   channel = channel.on(
     "postgres_changes",
@@ -21444,7 +21607,7 @@ function onSnapshot(ref, ...args) {
       const eventType = payload.eventType;
       const row = payload.new || payload.old || payload.record;
       if (eventType === "INSERT" && payload.new) {
-        if (!rowMatchesConstraints(payload.new, queryConstraints)) return;
+        if (!matchesConstraints(payload.new)) return;
         const exists = cachedRows.some((r) => r.id === payload.new.id);
         if (!exists) {
           cachedRows = [...cachedRows, payload.new];
@@ -21452,7 +21615,7 @@ function onSnapshot(ref, ...args) {
         }
       } else if (eventType === "UPDATE" && payload.new) {
         const wasInCache = cachedRows.some((r) => r.id === payload.new.id);
-        const matchesNow = rowMatchesConstraints(payload.new, queryConstraints);
+        const matchesNow = matchesConstraints(payload.new);
         if (wasInCache && matchesNow) {
           cachedRows = cachedRows.map((r) => r.id === payload.new.id ? payload.new : r);
           cachedDocs = (cachedDocs || []).map((d) => d.id === payload.new.id ? wrapSingleDoc(payload.new) : d);
