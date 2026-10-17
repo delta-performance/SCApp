@@ -8195,7 +8195,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
           if (p >= 85) return 0.8 + (p - 85) * 0.02
           if (p >= 70) return 0.6 + (p - 70) * 0.2 / 15
           if (p >= 50) return 0.4 + (p - 50) * 0.01
-          return 0
+          // Keep partial progress meaningful below 50% instead of zeroing the HI score.
+          return Math.max(0, p) * 0.008
         }
         function _sRythme(real, seuil) {
           if (seuil <= 0) return 0.5
@@ -8339,6 +8340,8 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             const objHI = Math.max(0, objHITotal - objHG - objSup)
             const objHidc = resultat.hidc || 0
             const distHIParJour = resultat.distHIParJourAdaptatif || resultat.distHIParJour || null
+            const hidcParJour = resultat.hidcParJour || {}
+            const pctParJour = resultat.pctParJour || planif.pctParJour || {}
             const hgObjParJour = resultat.hgObjParJour || {}
             const hgRealParJour = resultat.hgRealParJour || {}
             const supObjParJour = resultat.supObjParJour || {}
@@ -8389,7 +8392,12 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // (un jour HG-seul comme un Vendredi sans entraînement normal doit quand même apparaître)
             const hgJoursEff = (planif.hgJours && planif.hgJours.length > 0) ? planif.hgJours : (planif.hgJour ? [planif.hgJour] : [])
             const supJoursEff = planif.supJours || []
-            const joursNormal = distHIParJour ? Object.keys(distHIParJour) : []
+            const joursNormal = [...new Set([
+              ...Object.keys(distHIParJour || {}),
+              ...Object.keys(hidcParJour),
+              ...Object.keys(pctParJour),
+              ...(resultat.joursActifs || planif.joursActifs || [])
+            ])]
             const joursUnion = [...new Set([...joursNormal, ...hgJoursEff, ...supJoursEff])]
               .sort((a, b) => (JOURS_OFF[a] ?? 99) - (JOURS_OFF[b] ?? 99))
 
@@ -8412,8 +8420,20 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 const realDayHG = realDay.filter(h => isHGRow(h))
                 const realDayHI = realDayClassique.reduce((sum, h) => sum + (h.distHI || 0), 0)
                 const realDayAcc = realDayClassique.reduce((sum, h) => sum + (h.accB2 || 0) + (h.accB3 || 0), 0)
+                const realDayHidc = realDay.reduce((sum, h) => sum + (h.hidc || 0), 0)
+                const realDayVmax = Math.max(...realDay.map(h => h.vmax || 0), 0)
 
-                const valHI = distHIParJour ? (distHIParJour[jour] || 0) : 0
+                const pctJour = Number(pctParJour[jour])
+                const valHI = distHIParJour?.[jour] != null
+                  ? Number(distHIParJour[jour]) || 0
+                  : Number.isFinite(pctJour)
+                    ? objHI * pctJour / 100
+                    : objHI / Math.max(joursUnion.length, 1)
+                const objHidcJour = hidcParJour[jour] != null
+                  ? Number(hidcParJour[jour]) || 0
+                  : Number.isFinite(pctJour)
+                    ? objHidc * pctJour / 100
+                    : objHidc / Math.max(joursUnion.length, 1)
                 const objHGJour = hgObjParJour[jour] || 0
                 // Réel HG du jour calculé localement (fiable), fallback sur la valeur sauvegardée si aucune donnée locale
                 const realHGJour = realDayHG.length > 0
@@ -8425,6 +8445,7 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
                 perDayData.push({
                   jour, dateStr: dateJourStr,
                   objHI: valHI || 0, realHI: realDayHI,
+                  objHidc: objHidcJour, realHidc: realDayHidc, realVmax: realDayVmax,
                   realAcc: realDayAcc,
                   objHG: objHGJour, realHG: realHGJour,
                   objSup: objSupJour, realSup: realSupJour,
@@ -8466,9 +8487,9 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // Totaux pour KPIs = sommes journalières (classique + HG + Sup, jours avec données seulement)
             totalRealHI = daysWithData.reduce((s, d) => s + d.realTotal, 0)
             totalObjHI = daysWithData.reduce((s, d) => s + d.objTotal, 0)
-            totalObjHidc = perWeekData.reduce((s, w) => s + w.objHidc, 0)
-            totalRealHidc = perWeekData.reduce((s, w) => s + w.realHidc, 0)
-            totalRealVmax = Math.max(...perWeekData.map(w => w.realVmax), 0)
+            totalObjHidc = daysWithData.reduce((s, d) => s + (d.objHidc || 0), 0)
+            totalRealHidc = daysWithData.reduce((s, d) => s + (d.realHidc || 0), 0)
+            totalRealVmax = Math.max(...daysWithData.map(d => d.realVmax || 0), 0)
           } else {
             // Mode hebdomadaire = totaux par semaine (classique + HG + Suppléants combinés)
             totalObjHI = perWeekData.reduce((s, w) => s + w.objHI + (w.objHG || 0) + (w.objSup || 0), 0)
@@ -8485,11 +8506,11 @@ function renderGPSStats(c, s, joueur, allJoueursData = [], planifsGPS = []) {
             // Mode hebdomadaire : avancement de l'objectif HI
             scoreGlobal = Math.min(100, scoreHI)
           } else {
-            // Mode quotidien : formule pondérée (même formule que renderer/gps.html)
+            // Mode quotidien : score pondéré calculé à partir de la réalisation moyenne par jour.
             const _hasV = histSource.some(r => String(r.period || '').toLowerCase().includes('vitesse'))
             const _mH = _hasV ? 70 : 85, _mR = 15, _mV = _hasV ? 15 : 0
 
-            const _pH = totalObjHI > 0 ? Math.min(150, Math.round(totalRealHI / totalObjHI * 100)) : totalObjHI === 0 ? 150 : null
+            const _pH = totalObjHI > 0 ? Math.min(150, scoreHI) : totalObjHI === 0 ? 150 : null
 
             const _sH = _pH !== null ? Math.round(_sHIAcc(_pH) * _mH) : 0
 
