@@ -2888,12 +2888,12 @@
       return exo.distanceManuelle || 0
     }
     function distanceTotaleEnergetique(exo){
-      return Math.round(distancePerRepEnergetique(exo) * (exo.nbReps||1) * (exo.nbSeries||1))
+      return Math.round(distancePerRepEnergetique(exo) * (exo.nbReps??1) * (exo.nbSeries||1))
     }
     function caloriesParRepEnergetique(exo){ return exo.caloriesManuelles || 0 }
-    function caloriesTotalesEnergetique(exo){ return Math.round((exo.caloriesManuelles||0) * (exo.nbReps||1) * (exo.nbSeries||1)) }
+    function caloriesTotalesEnergetique(exo){ return Math.round((exo.caloriesManuelles||0) * (exo.nbReps??1) * (exo.nbSeries||1)) }
     function tempsParRepEnergetique(exo){ return exo.tempsManuel || 0 }
-    function tempsTotalEnergetique(exo){ return Math.round((exo.tempsManuel||0) * (exo.nbReps||1) * (exo.nbSeries||1)) }
+    function tempsTotalEnergetique(exo){ return Math.round((exo.tempsManuel||0) * (exo.nbReps??1) * (exo.nbSeries||1)) }
     function fmtCalEnergetique(c){ if(!c) return '—'; return c + ' cal' }
     function fmtTempsEnergetique(t){ if(!t) return '—'; const m=Math.floor(t/60), s=t%60; return m+"'"+String(s).padStart(2,'0') }
     const TYPE_ICONS_ENERGETIQUE = { course:'🏃', velo:'🚴', ski:'⛷️', natation:'🏊', wattbike:'⚡', rameur:'🚣', assaultbike:'🚲', crossfit:'🏋️', rhie:'🔥', autre:'🔧' }
@@ -3103,7 +3103,7 @@
 
     function nrgBuildExoPhases(exo){
       const nbSeries = exo.nbSeries || 1
-      const nbReps = exo.nbReps || 1
+      const nbReps = exo.nbReps ?? 1
       const unite = exo.unite || 'distance'
       const phases = []
 
@@ -3167,7 +3167,7 @@
       if(!phases.length) return null
       const unite = exo.unite || 'distance'
       const nbSeries = exo.nbSeries || 1
-      const nbReps = exo.nbReps || 1
+      const nbReps = exo.nbReps ?? 1
 
       const wrap = document.createElement('div')
       wrap.className = 'nrg-exo-timer'
@@ -4276,6 +4276,8 @@
             bEl.innerHTML = `<div class="seance-bloc-header">${bloc.nom}<span class="seance-groupe-badge">${g.nom}</span></div>${bloc.comment?`<div class="seance-bloc-comment">📝 ${bloc.comment}</div>`:''}`
             g.exercices?.forEach((exo, exoIdx) => {
               if(!exo.nom) return
+              const repsIndividuelles=exo.nbRepsParJoueur?.[String(joueurActif.id)]
+              if(repsIndividuelles!==undefined) exo={...exo,nbReps:repsIndividuelles}
               const unite = exo.unite || 'distance'
               const perRep = distancePerRepEnergetique(exo)
               const total = distanceTotaleEnergetique(exo)
@@ -4332,7 +4334,7 @@
               eEl.innerHTML = `
                 <div style="flex:1;">
                   <div class="seance-exo-nom">${typeIcon} ${exo.nom}<span class="nrg-exo-type-badge ${exo.type||'autre'}">${typeLabel}</span></div>
-                  <div class="seance-exo-params">${exo.nbSeries||1} séries × ${exo.nbReps||1} rép.${uniteVal?' × '+uniteVal:''}${recupInfo}</div>
+                  <div class="seance-exo-params">${exo.nbSeries||1} séries × ${exo.nbReps??1} rép.${uniteVal?' × '+uniteVal:''}${recupInfo}</div>
                   ${chargeText?`<div class="seance-charge">${chargeText}</div>`:''}
                   ${objText?`<div class="seance-exo-params">${objText}</div>`:''}
                   ${exo.intensite?`<div class="seance-exo-params">🎯 Intensité : ${exo.intensite}</div>`:''}
