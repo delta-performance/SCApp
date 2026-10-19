@@ -1116,6 +1116,25 @@
     let wellnessHistory=[]
     let openingFireworksDone=false
 
+    // Les groupes automatiques gardent parfois une ancienne liste de joueurs ;
+    // les exclusions manuelles restent prioritaires pour déterminer l'affectation réelle.
+    function groupeAssigneJoueur(groupe, joueur) {
+      if (!groupe || !joueur) return false
+      const joueurId = String(typeof joueur === 'object' ? joueur.id : joueur)
+      const nomLegacy = typeof joueur === 'object' && joueur.nom && joueur.prenom
+        ? `${joueur.nom}_${joueur.prenom}`
+        : null
+      const membres = Array.isArray(groupe.joueurs) ? groupe.joueurs.map(String) : []
+      if (!membres.includes(joueurId) && (!nomLegacy || !membres.includes(nomLegacy))) return false
+      if (Array.isArray(groupe.joueursForcesExclus) && groupe.joueursForcesExclus.map(String).includes(joueurId)) return false
+      if (groupe.affectationsJoueurs?.[joueurId]?.actif === false) return false
+      return true
+    }
+
+    function blocAssigneJoueur(bloc, joueur) {
+      return (bloc?.groupes || []).some(groupe => groupeAssigneJoueur(groupe, joueur))
+    }
+
     // ==================== OPTIONS EXO (alternatives) ====================
     // Détermine l'exo réel à afficher/saisir pour un joueur sur un exo à options.
     function resoudreExoOption(exo, jid, seanceId, blocId, groupeId) {
@@ -2471,13 +2490,13 @@
           .filter(s => s.statut === 'publie')
           .filter(s => {
             const allBlocs = [...(s.blocs || []), ...(s.blocsBlesses || [])]
-            return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+            return allBlocs.some(b => blocAssigneJoueur(b, joueurActif))
           })
         const nrgSeances = nrgSnap.docs.map(d => ({ id: d.id, ...d.data(), _type: 'nrg' }))
           .filter(s => s.statut === 'publie')
           .filter(s => {
             const allBlocs = [...(s.blocs || []), ...(s.blocsBlesses || [])]
-            return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+            return allBlocs.some(b => blocAssigneJoueur(b, joueurActif))
           })
         const allSeances = [...muscuSeances, ...nrgSeances].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
         if (allSeances.length === 0) { container.innerHTML = ''; return }
@@ -2598,12 +2617,7 @@
         // Filtrer uniquement les séances où le joueur est assigné (blocs normaux + blessés)
         const seancesJoueur = seancesSemaine.filter(seance => {
           const allBlocs = [...(seance.blocs || []), ...(seance.blocsBlesses || [])]
-          return allBlocs.some(bloc => 
-            bloc.groupes?.some(groupe => 
-              groupe.joueurs?.includes(joueurActif.id) || 
-              groupe.joueurs?.includes(joueurActif.nom + '_' + joueurActif.prenom)
-            )
-          )
+          return allBlocs.some(bloc => blocAssigneJoueur(bloc, joueurActif))
         })
 
         if(!seancesJoueur.length){
@@ -2621,7 +2635,7 @@
         let aUneSeance=false
         for(const sa of seancesSemaine){
           const estAssigne = [...(sa.blocs || []), ...(sa.blocsBlesses || [])]
-            .some(b=>b.groupes?.some(g=>g.joueurs?.includes(joueurActif.id)))
+            .some(b=>blocAssigneJoueur(b, joueurActif))
           if(!estAssigne) continue
           
           aUneSeance=true
@@ -2651,18 +2665,18 @@
           const allBlocsP = [...(sa.blocs || []), ...(sa.blocsBlesses || [])]
           const renderedLeaders = new Set()
           allBlocsP.forEach(bloc => {
-            const playerGJ = bloc.groupes?.find(g => g.joueurs?.includes(joueurActif.id))
+            const playerGJ = bloc.groupes?.find(g => groupeAssigneJoueur(g, joueurActif))
             if (!playerGJ && !bloc.linkedTo) return
             const leaderId = bloc.linkedTo || bloc.id
             if (renderedLeaders.has(leaderId)) return
             const leader = allBlocsP.find(b => b.id === leaderId) || bloc
             const mega = [leader, ...allBlocsP.filter(b => b.id !== leader.id && b.linkedTo === leader.id)]
-            const playerGroupes = mega.flatMap(b => (b.groupes || []).filter(g => (g.joueurs || []).includes(joueurActif.id)))
+            const playerGroupes = mega.flatMap(b => (b.groupes || []).filter(g => groupeAssigneJoueur(g, joueurActif)))
             if (!playerGroupes.length) return
             aBlocPourMoi = true
             const playerExos = []
             mega.forEach(b => (b.groupes || []).forEach(g => {
-              if ((g.joueurs || []).includes(joueurActif.id)) {
+              if (groupeAssigneJoueur(g, joueurActif)) {
                 (g.exercices || []).forEach(exo => playerExos.push({ b, g, exo }))
               }
             }))
@@ -2828,7 +2842,7 @@
                 .filter(s => s.statut === 'publie')
               const nrgJoueur = nrgSeances.filter(nrg => {
                 const allBlocs = [...(nrg.blocs || []), ...(nrg.blocsBlesses || [])]
-                return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+                return allBlocs.some(b => blocAssigneJoueur(b, joueurActif))
               })
               if (nrgJoueur.length > 0) {
                 const nrgLink = document.createElement('div')
@@ -4227,7 +4241,7 @@
 
         const seancesJoueur = seancesSemaine.filter(sa => {
           const allBlocs = [...(sa.blocs || []), ...(sa.blocsBlesses || [])]
-          return allBlocs.some(b => b.groupes?.some(g => g.joueurs?.includes(joueurActif.id)))
+          return allBlocs.some(b => blocAssigneJoueur(b, joueurActif))
         })
 
         if(!seancesJoueur.length){
@@ -4268,7 +4282,7 @@
           }
           card.appendChild(body)
           allBlocs.forEach(bloc => {
-            const g = bloc.groupes?.find(g => g.joueurs?.includes(joueurActif.id))
+            const g = bloc.groupes?.find(g => groupeAssigneJoueur(g, joueurActif))
             if(!g) return
             const bEl = document.createElement('div')
             bEl.className = 'seance-bloc'
