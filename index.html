@@ -1135,6 +1135,23 @@
       return (bloc?.groupes || []).some(groupe => groupeAssigneJoueur(groupe, joueur))
     }
 
+    window.__debugJoueurSeances=function(){
+      const id=joueurActif?.id
+      const lignes=(window._seancesAffichees||[]).flatMap(seance=>
+        [...(seance.blocs||[]).map(bloc=>({bloc,blesses:false})),...(seance.blocsBlesses||[]).map(bloc=>({bloc,blesses:true}))].flatMap(({bloc,blesses})=>
+          (bloc.groupes||[]).map(groupe=>({
+            seanceId:seance.id,date:seance.date,theme:seance.theme,bloc:bloc.nom,blocsBlesses:blesses,groupe:groupe.nom,
+            joueurId:id,membreBrut:(groupe.joueurs||[]).some(jid=>String(jid)===String(id)),
+            excluForce:(groupe.joueursForcesExclus||[]).some(jid=>String(jid)===String(id)),
+            affectationInactive:groupe.affectationsJoueurs?.[id]?.actif===false
+          }))
+        )
+      )
+      console.info('[Debug séances joueur]',{id,joueur:joueurActif?`${joueurActif.prenom||''} ${joueurActif.nom||''}`.trim():null,lignes})
+      console.table(lignes)
+      return lignes
+    }
+
     // ==================== OPTIONS EXO (alternatives) ====================
     // Détermine l'exo réel à afficher/saisir pour un joueur sur un exo à options.
     function resoudreExoOption(exo, jid, seanceId, blocId, groupeId) {
