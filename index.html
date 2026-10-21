@@ -2221,9 +2221,15 @@
     function dropSetDisplayHTMLP(exo){
       const drop=exo?.dropSet
       if(!drop)return ''
-      const unit=drop.repsMode==='time'?'s':drop.repsMode==='meters'?'m':' reps'
-      const reps=drop.clusterPattern?`${crossTextEscP(drop.clusterPattern)}${unit}`:`${drop.nbReps||10}${unit}`
-      return `<div class="seance-exo-params" style="color:#E9A23B;"><b style="display:inline-block;padding:1px 5px;border:1px solid #E9A23B;border-radius:4px;">D</b> ${crossTextEscP(drop.nbSets||1)}×${reps} · ${crossTextEscP(drop.pct||70)}% de la charge précédente${drop.clusterRest?' · cluster repos '+crossTextEscP(drop.clusterRest):''}</div>`
+      const unitFor=type=>type==='time'?'s':type==='meters'?'m':' reps'
+      const splits=Array.isArray(drop.clusterSplit)?drop.clusterSplit:[]
+      const clusterParts=splits.length>1?splits.map(part=>`${crossTextEscP(part.value)}${unitFor(part.type)}`).join('+'):drop.clusterPattern?crossTextEscP(drop.clusterPattern):''
+      const reps=clusterParts?`${clusterParts} (cluster)`:`${crossTextEscP(drop.nbReps||8)}${unitFor(drop.repsMode)}`
+      const plan=drop.variableSeries&&drop.seriesData?.length
+        ? drop.seriesData.map((series,index)=>`D${index+1}: ${crossTextEscP(series.reps??drop.nbReps??8)}${unitFor(drop.repsMode)} @ ${crossTextEscP(series.intensity??drop.pct??70)}%`).join(' · ')
+        : `${crossTextEscP(drop.nbSets||2)}×${reps} · ${crossTextEscP(drop.pct||70)}% de la charge précédente`
+      const clusterInfo=drop.variableSeries&&clusterParts?` · cluster ${clusterParts}`:''
+      return `<div class="seance-exo-params" style="color:#E9A23B;"><b style="display:inline-block;padding:1px 5px;border:1px solid #E9A23B;border-radius:4px;">D</b> ${plan}${clusterInfo}${drop.clusterRest?' · cluster repos '+crossTextEscP(drop.clusterRest):''}</div>`
     }
     function crossTrainingExerciseDisplayHTMLP(exo){
       if(exo?.crossQuantity==null||exo.crossQuantity==='')return ''
@@ -2975,19 +2981,23 @@
                 const base=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}`
                 const lastMain=parseFloat(chargesReelles[`${base}_s${exo.nbSets||1}`]??chargesReelles[base])
                 let previous=Number.isFinite(lastMain)?lastMain:null
-                for(let d=1;d<=(drop.nbSets||1);d++){
+                const dropCount=drop.variableSeries?(drop.seriesData?.length||drop.nbSets||1):(drop.nbSets||2)
+                for(let d=1;d<=dropCount;d++){
                   const key=`${base}_drop_s${d}`
                   const actual=chargesReelles[key]||''
-                  const target=previous!=null?Math.round(previous*(Number(drop.pct||70)/100)*2)/2:null
+                  const seriesData=drop.variableSeries?drop.seriesData?.[d-1]:null
+                  const dropPct=Number(seriesData?.intensity??drop.pct??70)
+                  const target=previous!=null?Math.round(previous*(dropPct/100)*2)/2:null
                   const repsUnit=drop.repsMode==='time'?'s':drop.repsMode==='meters'?'m':' reps'
-                  const prescribed=drop.clusterPattern?`${drop.clusterPattern}${repsUnit}`:`${drop.nbReps||10}${repsUnit}`
+                  const cluster=Array.isArray(drop.clusterSplit)&&drop.clusterSplit.length>1?` · C${drop.clusterSplit.map(part=>part.value).join('+')}`:''
+                  const prescribed=`${seriesData?.reps??drop.nbReps??8}${repsUnit}${cluster}`
                   const box=document.createElement('div')
                   box.className='serie-box'
                   box.style.borderColor='#E9A23B55'
                   const label=document.createElement('div')
                   label.className='serie-lbl'
                   label.style.color='#E9A23B'
-                  label.textContent=`D${d} · ${prescribed} · ${drop.pct||70}%`
+                  label.textContent=`D${d} · ${prescribed} · ${dropPct}%`
                   const input=document.createElement('input')
                   input.className='serie-inp drop-set-input'
                   input.type='number';input.step='0.5';input.inputMode='decimal'
@@ -2995,7 +3005,7 @@
                   input.placeholder=target!=null?String(target):'Charge kg'
                   input.dataset.dropBase=base
                   input.dataset.dropIndex=String(d)
-                  input.dataset.dropPct=String(drop.pct||70)
+                  input.dataset.dropPct=String(dropPct)
                   input.dataset.dropKey=key
                   input.dataset.mainSets=String(exo.nbSets||1)
                   input.onchange=()=>window.sauverDropSet(sa.id,key,joueurActif.id,input.value,input)
