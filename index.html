@@ -2215,6 +2215,93 @@
       if (exo.repsIsMeters) return (exo.nbReps || '') + 'm'
       return exo.nbReps || ''
     }
+    function crossTextEscP(value){
+      return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))
+    }
+    function dropSetDisplayHTMLP(exo){
+      const drop=exo?.dropSet
+      if(!drop)return ''
+      const unit=drop.repsMode==='time'?'s':drop.repsMode==='meters'?'m':' reps'
+      const reps=drop.clusterPattern?`${crossTextEscP(drop.clusterPattern)}${unit}`:`${drop.nbReps||10}${unit}`
+      return `<div class="seance-exo-params" style="color:#E9A23B;"><b style="display:inline-block;padding:1px 5px;border:1px solid #E9A23B;border-radius:4px;">D</b> ${crossTextEscP(drop.nbSets||1)}×${reps} · ${crossTextEscP(drop.pct||70)}% de la charge précédente${drop.clusterRest?' · cluster repos '+crossTextEscP(drop.clusterRest):''}</div>`
+    }
+    function crossTrainingExerciseDisplayHTMLP(exo){
+      if(exo?.crossQuantity==null||exo.crossQuantity==='')return ''
+      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${crossTextEscP(exo.crossQuantity)} ${crossTextEscP(exo.crossUnit||'reps')}${exo.crossLoad?` @ ${crossTextEscP(exo.crossLoad)} kg`:''}</div>`
+    }
+    function crossTrainingGroupSummaryP(groupe){
+      const wod=groupe?.crossTraining
+      if(!wod?.enabled)return ''
+      const labels={emom:'EMOM',amrap:'AMRAP','death-by':'Death By','for-time':'For Time',rft:'Rounds for Time','for-reps':'For Reps','for-load':'For Load',chipper:'Chipper',tabata:'Tabata'}
+      const bits=[labels[wod.format]||'CrossTraining']
+      if(wod.format==='emom'||wod.format==='tabata')bits.push(`${wod.durationMinutes||10} min`)
+      else if(wod.timeCap)bits.push(`cap ${crossTextEscP(wod.timeCap)}`)
+      if(wod.rounds)bits.push(wod.format==='for-load'?`${crossTextEscP(wod.rounds)} tentatives`:`${crossTextEscP(wod.rounds)} rounds max`)
+      if(wod.workSeconds)bits.push(`${crossTextEscP(wod.workSeconds)}s ON`)
+      if(wod.restSeconds)bits.push(`${crossTextEscP(wod.restSeconds)}s OFF`)
+      return `<div class="seance-bloc-comment" style="color:#79B8FF;">🏋️ ${crossTextEscP(groupe.nom||'Groupe')} · Crosstraining · ${bits.join(' · ')}</div>`
+    }
+    function crossTrainingResultFieldsP(format){
+      if(format==='for-time'||format==='rft'||format==='chipper')return [{key:'time',label:'Temps réalisé (mm:ss)',type:'text',placeholder:'12:34'}]
+      if(format==='for-load')return [{key:'load',label:'Charge max (kg)',type:'number',placeholder:'kg'}]
+      if(format==='amrap'||format==='death-by'||format==='emom'||format==='rft')return [
+        {key:'rounds',label:'Rounds complétés',type:'number',placeholder:'0'},
+        {key:'reps',label:'Reps du dernier round',type:'number',placeholder:'0'}
+      ]
+      return [{key:'reps',label:'Total reps',type:'number',placeholder:'0'}]
+    }
+    function crossTrainingResultKeyP(seanceId,blocId,groupeId,joueurId,field){
+      return `${seanceId}_${blocId}_${groupeId}_wod_${joueurId}_${field}`
+    }
+    function actualiserDropSetApercusP(base){
+      const inputs=[...document.querySelectorAll('.drop-set-input')].filter(input=>input.dataset.dropBase===base).sort((a,b)=>Number(a.dataset.dropIndex)-Number(b.dataset.dropIndex))
+      if(!inputs.length)return
+      let previous=parseFloat(chargesReelles[`${base}_s${inputs[0].dataset.mainSets||1}`]??chargesReelles[base])
+      if(!Number.isFinite(previous))previous=null
+      inputs.forEach(input=>{
+        const pct=Number(input.dataset.dropPct)||70
+        const target=previous!=null?Math.round(previous*pct/100*2)/2:null
+        input.placeholder=target!=null?String(target):'Charge kg'
+        const hint=input.parentElement?.querySelector('.serie-pre')
+        if(hint)hint.textContent=target!=null?`${target} kg prévu`:'Saisis la charge du set précédent'
+        const actual=parseFloat(input.value||chargesReelles[input.dataset.dropKey])
+        previous=Number.isFinite(actual)?actual:target
+      })
+    }
+    function renderPlayerCrossTrainingScore(bloc,groupe,seanceId,joueurId){
+      if(!groupe.crossTraining?.enabled)return null
+      const card=document.createElement('div')
+      card.style.cssText='margin:8px 0;padding:10px;border:1px solid #4A9EFF55;border-radius:9px;background:#4A9EFF0b;'
+      const title=document.createElement('div')
+      title.textContent=`🏋️ ${groupe.nom} · ${groupe.crossTraining.format==='for-time'?'For Time':groupe.crossTraining.format==='for-load'?'For Load':String(groupe.crossTraining.format||'CrossTraining').toUpperCase()}`
+      title.style.cssText='font-size:11px;font-weight:800;color:#79B8FF;margin-bottom:7px;'
+      card.appendChild(title)
+      const row=document.createElement('div')
+      row.style.cssText='display:flex;flex-wrap:wrap;gap:7px;'
+      crossTrainingResultFieldsP(groupe.crossTraining.format).forEach(field=>{
+        const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)
+        const label=document.createElement('label')
+        label.style.cssText='display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px;font-size:10px;color:#888;'
+        label.textContent=field.label
+        const input=document.createElement('input')
+        input.type=field.type
+        input.placeholder=field.placeholder
+        input.value=chargesReelles[key]||''
+        input.style.cssText='width:100%;padding:9px;border:1px solid #2a2a2a;border-radius:7px;background:#0f0f0f;color:#79B8FF;font-size:15px;font-weight:700;'
+        input.onchange=async()=>{
+          const value=input.value.trim()
+          chargesReelles[key]=value
+          try{
+            await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[key]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+            _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`CrossTraining ${groupe.nom}`)
+          }catch(error){console.error('[Joueur] résultat CrossTraining:',error)}
+        }
+        label.appendChild(input)
+        row.appendChild(label)
+      })
+      card.appendChild(row)
+      return card
+    }
     // Helpers pour affichage des exercices énergétiques intégrés dans une séance muscu
     const NRG_TYPES_PLAYER=[
       {id:'course',icon:'🏃',nom:'Course'},
@@ -2733,11 +2820,19 @@
                 (g.exercices || []).forEach(exo => playerExos.push({ b, g, exo }))
               }
             }))
+            const playerCrossGroups=mega.flatMap(bloc=>(bloc.groupes||[])
+              .filter(groupe=>groupe.crossTraining?.enabled&&groupeAssigneJoueur(groupe,joueurActif))
+              .map(groupe=>({bloc,groupe})))
             renderedLeaders.add(leaderId)
             const bEl=document.createElement('div');bEl.className='seance-bloc'
             bEl.style.border='none';bEl.style.borderRadius='0';bEl.style.marginBottom='0'
             const groupBadges = playerGroupes.map(g => g.nom).join(' / ')
             bEl.innerHTML=`<div class="seance-bloc-header">${leader.nom}<span class="seance-groupe-badge">${groupBadges}</span></div>${leader.comment?`<div class="seance-bloc-comment">📝 ${leader.comment}</div>`:''}${playerGroupes.map(gJ => gJ.comment ? `<div class="seance-bloc-comment" style="color:#666;">💬 ${gJ.comment}</div>` : '').join('')}`
+            playerCrossGroups.forEach(({bloc:crossBloc,groupe:crossGroupe})=>{
+              const summary=document.createElement('div')
+              summary.innerHTML=crossTrainingGroupSummaryP(crossGroupe)
+              bEl.appendChild(summary.firstElementChild)
+            })
             playerExos.forEach((item, i) => { const exoOrig=item.exo; const gJ=item.g; const bloc=item.b; const megaLabel=String.fromCharCode(65 + i);
               // Les exercices énergétiques utilisent nrgNom plutôt que exercice.
               if(!exoOrig.exercice && !exoOrig.isEnergetique)return
@@ -2800,6 +2895,8 @@
                   <div class="seance-charge">${reco}</div>
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
                 </div>`}
+                ${dropSetDisplayHTMLP(exo)}
+                ${crossTrainingExerciseDisplayHTMLP(exo)}
               `
 
               if(exo.isEnergetique){
@@ -2870,7 +2967,53 @@
                 }
                 eEl.querySelector('div[style*="flex:1"]').appendChild(gr)
               }
+              if(exo.dropSet){
+                const drop=exo.dropSet
+                const dropGrid=document.createElement('div')
+                dropGrid.className='series-grid'
+                dropGrid.style.marginTop='7px'
+                const base=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}`
+                const lastMain=parseFloat(chargesReelles[`${base}_s${exo.nbSets||1}`]??chargesReelles[base])
+                let previous=Number.isFinite(lastMain)?lastMain:null
+                for(let d=1;d<=(drop.nbSets||1);d++){
+                  const key=`${base}_drop_s${d}`
+                  const actual=chargesReelles[key]||''
+                  const target=previous!=null?Math.round(previous*(Number(drop.pct||70)/100)*2)/2:null
+                  const repsUnit=drop.repsMode==='time'?'s':drop.repsMode==='meters'?'m':' reps'
+                  const prescribed=drop.clusterPattern?`${drop.clusterPattern}${repsUnit}`:`${drop.nbReps||10}${repsUnit}`
+                  const box=document.createElement('div')
+                  box.className='serie-box'
+                  box.style.borderColor='#E9A23B55'
+                  const label=document.createElement('div')
+                  label.className='serie-lbl'
+                  label.style.color='#E9A23B'
+                  label.textContent=`D${d} · ${prescribed} · ${drop.pct||70}%`
+                  const input=document.createElement('input')
+                  input.className='serie-inp drop-set-input'
+                  input.type='number';input.step='0.5';input.inputMode='decimal'
+                  input.value=actual
+                  input.placeholder=target!=null?String(target):'Charge kg'
+                  input.dataset.dropBase=base
+                  input.dataset.dropIndex=String(d)
+                  input.dataset.dropPct=String(drop.pct||70)
+                  input.dataset.dropKey=key
+                  input.dataset.mainSets=String(exo.nbSets||1)
+                  input.onchange=()=>window.sauverDropSet(sa.id,key,joueurActif.id,input.value,input)
+                  const hint=document.createElement('div')
+                  hint.className='serie-pre'
+                  hint.textContent=target!=null?`${target} kg prévu`:'Saisis la charge du set précédent'
+                  box.append(label,input,hint)
+                  dropGrid.appendChild(box)
+                  const actualNumber=parseFloat(actual)
+                  previous=Number.isFinite(actualNumber)?actualNumber:target
+                }
+                eEl.querySelector('div[style*="flex:1"]')?.appendChild(dropGrid)
+              }
               bEl.appendChild(eEl)
+            })
+            playerCrossGroups.forEach(({bloc:crossBloc,groupe:crossGroupe})=>{
+              const resultCard=renderPlayerCrossTrainingScore(crossBloc,crossGroupe,sa.id,joueurActif.id)
+              if(resultCard)bEl.appendChild(resultCard)
             })
             body.appendChild(bEl)
           })
@@ -4528,6 +4671,7 @@
     window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId,reps){
       if(!val)return
       chargesReelles[clef]=val;inp.style.color='#1D9E75'
+      actualiserDropSetApercusP(clef.replace(/_s\d+$/,''))
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
       const updates={[clef]:val,updatedAt:serverTimestamp()}
       if(reps!=null&&reps!==undefined)updates[clef+'_reps']=reps
@@ -4584,6 +4728,17 @@
       _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',exoName||'')
     }
 
+    window.sauverDropSet=async function(seanceId,clef,joueurId,val,input){
+      const value=String(val??'').replace(',','.').trim()
+      chargesReelles[clef]=value
+      if(input)input.style.color=value?'#1D9E75':'#FECC00'
+      actualiserDropSetApercusP(clef.replace(/_drop_s\d+$/,''))
+      try{
+        await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[clef]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+        _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc','Drop Set')
+      }catch(error){console.error('[Joueur] sauvegarde Drop Set:',error)}
+    }
+
     window.sauverToutesLesSeries=async function(seanceId,clefBase,nbSets,joueurId,val,inp,ckId){
       if(!val&&val!==0)return
       const updates={}
@@ -4592,6 +4747,7 @@
         chargesReelles[clef]=val
         updates[clef]=val
       }
+      actualiserDropSetApercusP(clefBase)
       updates.updatedAt=serverTimestamp()
       inp.style.color='#1D9E75'
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
