@@ -2231,29 +2231,166 @@
       const clusterInfo=drop.variableSeries&&clusterParts?` · cluster ${clusterParts}`:''
       return `<div class="seance-exo-params" style="color:#E9A23B;"><b style="display:inline-block;padding:1px 5px;border:1px solid #E9A23B;border-radius:4px;">D</b> ${plan}${clusterInfo}${drop.clusterRest?' · cluster repos '+crossTextEscP(drop.clusterRest):''}</div>`
     }
-    function crossTrainingExerciseDisplayHTMLP(exo){
-      if(exo?.crossQuantity==null||exo.crossQuantity==='')return ''
-      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${crossTextEscP(exo.crossQuantity)} ${crossTextEscP(exo.crossUnit||'reps')}${exo.crossLoad?` @ ${crossTextEscP(exo.crossLoad)} kg`:''}</div>`
+    function backoffSetDisplayHTMLP(exo){
+      const backoff=exo?.backoffSet
+      if(!backoff)return ''
+      const unit=backoff.repsMode==='time'?'s':backoff.repsMode==='meters'?'m':' reps'
+      const splits=Array.isArray(backoff.clusterSplit)?backoff.clusterSplit:[]
+      const clusterParts=splits.length>1?splits.map(part=>`${crossTextEscP(part.value)}${part.type==='time'?'s':part.type==='meters'?'m':' reps'}`).join('+'):''
+      const reps=clusterParts?`${clusterParts} (cluster)`:`${crossTextEscP(backoff.nbReps||8)}${unit}`
+      const plan=backoff.variableSeries&&backoff.seriesData?.length
+        ?backoff.seriesData.map((serie,index)=>`B${index+1}: ${crossTextEscP(serie.reps??backoff.nbReps??8)}${unit} @ ${crossTextEscP(serie.intensity??backoff.pct??80)}%`).join(' · ')
+        :`${crossTextEscP(backoff.nbSets||3)}×${reps} · ${crossTextEscP(backoff.pct||80)}% du Top Set (plateau)`
+      const clusterInfo=backoff.variableSeries&&clusterParts?` · cluster ${clusterParts}`:''
+      return `<div class="seance-exo-params" style="color:#79B8FF;"><b style="display:inline-block;padding:1px 5px;border:1px solid #79B8FF;border-radius:4px;">B</b> ${plan}${clusterInfo}${backoff.clusterRest?' · cluster repos '+crossTextEscP(backoff.clusterRest):''}</div>`
+    }
+    function crossTrainingExerciseDisplayHTMLP(exo,format='for-time',position=1){
+      const quantity=exo?.crossQuantity
+      const unit=crossTextEscP(exo?.crossUnit||'reps')
+      const load=exo?.crossLoad
+        ?` · ${format==='for-load'?'repère':'charge prescrite'} ${crossTextEscP(exo.crossLoad)} ${exo.crossLoadUnit==='pct'?'% 1RM':'kg'}`
+        :''
+      let prescription=''
+      if(format==='death-by'){
+        const start=quantity==null||quantity===''?1:quantity
+        prescription=`Départ ${crossTextEscP(start)} ${unit} · +${crossTextEscP(exo.crossIncrement??1)} ${unit}/min`
+      }else if(format==='emom'){
+        prescription=`Min ${crossTextEscP(exo?.crossMinute||position)} · ${quantity==null||quantity===''?'quantité à définir':`${crossTextEscP(quantity)} ${unit}`}`
+      }else if(format==='chipper'){
+        prescription=`1 passage · ${quantity==null||quantity===''?'quantité à définir':`${crossTextEscP(quantity)} ${unit}`}`
+      }else if(format==='tabata'){
+        prescription=quantity==null||quantity===''?'AMRAP à chaque intervalle':`Cible ${crossTextEscP(quantity)} ${unit}/intervalle`
+      }else if(format==='for-load'){
+        prescription=`${quantity==null||quantity===''?'Répétitions à définir':`${crossTextEscP(quantity)} ${unit}/tentative`}`
+      }else if(quantity!=null&&quantity!==''){
+        prescription=`${crossTextEscP(quantity)} ${unit}`
+      }else if(format){
+        prescription='Prescription à définir'
+      }
+      if(!prescription&&!load&&!exo?.crossNote)return ''
+      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${prescription}${load}${exo?.crossNote?` · ${crossTextEscP(exo.crossNote)}`:''}</div>`
     }
     function crossTrainingGroupSummaryP(groupe){
       const wod=groupe?.crossTraining
       if(!wod?.enabled)return ''
-      const labels={emom:'EMOM',amrap:'AMRAP','death-by':'Death By','for-time':'For Time',rft:'Rounds for Time','for-reps':'For Reps','for-load':'For Load',chipper:'Chipper',tabata:'Tabata'}
+      const labels={emom:'EMOM',amrap:'AMRAP','death-by':'Death By','for-time':'For Time',rft:'Rounds for Time','for-reps':'For Reps','for-load':'For Load',chipper:'Chipper',tabata:'Tabata',intervals:'Intervals','for-quality':'For Quality'}
       const bits=[labels[wod.format]||'CrossTraining']
-      if(wod.format==='emom'||wod.format==='tabata')bits.push(`${wod.durationMinutes||10} min`)
-      else if(wod.timeCap)bits.push(`cap ${crossTextEscP(wod.timeCap)}`)
-      if(wod.rounds)bits.push(wod.format==='for-load'?`${crossTextEscP(wod.rounds)} tentatives`:`${crossTextEscP(wod.rounds)} rounds max`)
-      if(wod.workSeconds)bits.push(`${crossTextEscP(wod.workSeconds)}s ON`)
-      if(wod.restSeconds)bits.push(`${crossTextEscP(wod.restSeconds)}s OFF`)
-      return `<div class="seance-bloc-comment" style="color:#79B8FF;">🏋️ ${crossTextEscP(groupe.nom||'Groupe')} · Crosstraining · ${bits.join(' · ')}</div>`
+      if(wod.format==='emom'){
+        bits.push(`${crossTextEscP(wod.durationMinutes??10)} min`)
+        bits.push(`cycle ${crossTextEscP(wod.cycleMinutes||1)} min`)
+      }else if(wod.format==='amrap'||wod.format==='for-reps'){
+        bits.push(`${crossTextEscP(wod.durationMinutes??10)} min`)
+      }else if(wod.format==='rft'){
+        bits.push(`${crossTextEscP(wod.rounds??3)} rounds`)
+        if(wod.timeCap)bits.push(`cap ${crossTextEscP(wod.timeCap)}`)
+      }else if(wod.format==='chipper'){
+        bits.push('1 passage')
+        if(wod.timeCap)bits.push(`cap ${crossTextEscP(wod.timeCap)}`)
+      }else if(wod.format==='for-time'){
+        if(wod.timeCap)bits.push(`cap ${crossTextEscP(wod.timeCap)}`)
+      }else if(wod.format==='death-by'){
+        bits.push('incrément par mouvement / minute')
+      }else if(wod.format==='for-load'){
+        if(wod.loadLimitType==='time')bits.push(`temps disponible ${crossTextEscP(wod.timeCap||'—')}`)
+        else bits.push(`${crossTextEscP(wod.attempts??wod.rounds??3)} tentatives / mouvement`)
+      }else if(wod.format==='tabata'){
+        bits.push(`${crossTextEscP(wod.intervals??8)} × ${crossTextEscP(wod.workSeconds??20)}s / ${crossTextEscP(wod.restSeconds??10)}s`)
+        bits.push(wod.tabataScore==='lowest'?'score: plus petit intervalle':'score: total reps')
+        if(Number(wod.transitionRestSeconds)>0)bits.push(`${crossTextEscP(wod.transitionRestSeconds)}s entre mouvements`)
+      }else if(wod.format==='intervals'){
+        bits.push(`${crossTextEscP(wod.intervals??8)} intervalles`)
+        bits.push(`${crossTextEscP(wod.workSeconds??40)}s / ${crossTextEscP(wod.restSeconds??20)}s`)
+      }else if(wod.format==='for-quality'&&wod.rounds){
+        bits.push(`${crossTextEscP(wod.rounds)} passages`)
+      }
+      const procedure=crossTrainingProcedureTextP(groupe)
+      return `<div><div class="seance-bloc-comment" style="color:#79B8FF;">🏋️ ${crossTextEscP(groupe.nom||'Groupe')} · Crosstraining · ${bits.join(' · ')}</div><div class="seance-bloc-comment" style="color:#77899a;font-size:10px;">${procedure}</div></div>`
     }
-    function crossTrainingResultFieldsP(format){
-      if(format==='for-time'||format==='rft'||format==='chipper')return [{key:'time',label:'Temps réalisé (mm:ss)',type:'text',placeholder:'12:34'}]
-      if(format==='for-load')return [{key:'load',label:'Charge max (kg)',type:'number',placeholder:'kg'}]
-      if(format==='amrap'||format==='death-by'||format==='emom'||format==='rft')return [
-        {key:'rounds',label:'Rounds complétés',type:'number',placeholder:'0'},
-        {key:'reps',label:'Reps du dernier round',type:'number',placeholder:'0'}
+    function crossTrainingProcedureTextP(groupe){
+      const wod=groupe?.crossTraining||{}
+      const exos=groupe?.exercices||[]
+      const unit=exo=>crossTextEscP(exo.crossUnit||'reps')
+      const movement=exo=>crossTextEscP(exo.nrgNom||exo.exercice||'Mouvement')
+      const amount=exo=>exo.crossQuantity==null||exo.crossQuantity===''?'quantité à définir':`${crossTextEscP(exo.crossQuantity)} ${unit(exo)}`
+      const movementPlan=exos.map(exo=>`${movement(exo)}: ${amount(exo)}${exo.crossLoad?` · ${wod.format==='for-load'?'repère':'charge'} ${crossTextEscP(exo.crossLoad)} ${exo.crossLoadUnit==='pct'?'% 1RM':'kg'}`:''}${exo.crossNote?` (${crossTextEscP(exo.crossNote)})`:''}`).join(' → ')||'aucun mouvement configuré'
+      if(wod.format==='emom'){
+        const cycle=Math.max(1,Number(wod.cycleMinutes)||1)
+        const minutes=new Map()
+        exos.forEach((exo,index)=>{
+          const minute=Math.max(1,Number(exo.crossMinute)||index+1)
+          if(!minutes.has(minute))minutes.set(minute,[])
+          minutes.get(minute).push(`${movement(exo)} · ${amount(exo)}`)
+        })
+        const schedule=[...minutes.entries()].sort((a,b)=>a[0]-b[0]).map(([minute,tasks])=>`M${minute}: ${tasks.join(' + ')}`).join(' · ')
+        const cycles=Math.floor((Number(wod.durationMinutes)||10)/cycle)
+        return `À chaque top minute, faire le travail prévu puis récupérer le temps restant. Cycle de ${cycle} min${cycles?` répété ${cycles} fois`:''}${schedule?` — ${schedule}`:''}.`
+      }
+      if(wod.format==='death-by'){
+        return `À chaque minute, chaque mouvement augmente de son incrément : ${exos.map(exo=>`${movement(exo)} ${crossTextEscP(exo.crossQuantity??1)} ${unit(exo)} puis +${crossTextEscP(exo.crossIncrement??1)} ${unit(exo)}/min`).join(' · ')}. Arrêt dès qu’une minute n’est pas terminée. Score : minute d’arrêt et unités réalisées sur cette minute.`
+      }
+      if(wod.format==='chipper')return `Un seul passage, dans cet ordre : ${movementPlan}. Finir toute la quantité d’un mouvement avant le suivant.`
+      if(wod.format==='for-time')return `Effectuer le travail dans cet ordre : ${movementPlan}. Saisir le temps final ou la progression si le cap est atteint.`
+      if(wod.format==='rft')return `Répéter ${crossTextEscP(wod.rounds??3)} fois ce circuit : ${movementPlan}. Saisir le temps final ou les rounds/reps au cap.`
+      if(wod.format==='amrap')return `Pendant ${crossTextEscP(wod.durationMinutes??10)} min, répéter ce circuit autant que possible : ${movementPlan}. Score : rounds complets + reps du round commencé.`
+      if(wod.format==='for-reps')return `Pendant ${crossTextEscP(wod.durationMinutes??10)} min, accumuler le maximum : ${movementPlan}.`
+      if(wod.format==='for-load'){
+        return wod.loadLimitType==='time'
+          ?`Trouver la charge maximale pour chaque mouvement dans ${crossTextEscP(wod.timeCap||'le temps disponible')} : ${movementPlan}.`
+          :`Utiliser jusqu’à ${crossTextEscP(wod.attempts??wod.rounds??3)} tentatives par mouvement : ${movementPlan}. Saisir la charge maximale validée pour chacun.`
+      }
+      if(wod.format==='tabata'){
+        return `Pour chaque mouvement (${movementPlan}) : ${crossTextEscP(wod.intervals??8)} intervalles de ${crossTextEscP(wod.workSeconds??20)} s de travail et ${crossTextEscP(wod.restSeconds??10)} s de repos${Number(wod.transitionRestSeconds)>0?`, puis ${crossTextEscP(wod.transitionRestSeconds)} s avant le suivant`:''}. Score : ${wod.tabataScore==='lowest'?'plus petit intervalle':'total des reps'}.`
+      }
+      if(wod.format==='intervals')return `${crossTextEscP(wod.intervals??8)} intervalles de ${crossTextEscP(wod.workSeconds??40)} s / ${crossTextEscP(wod.restSeconds??20)} s. Mouvements : ${movementPlan}.`
+      if(wod.format==='for-quality')return `Réaliser ${movementPlan} en privilégiant la qualité technique ; ne pas chercher à finir le plus vite possible.`
+      return ''
+    }
+    function crossTrainingResultFieldsP(config){
+      const groupe=config?.crossTraining?config:null
+      const wod=groupe?groupe.crossTraining:(typeof config==='string'?{format:config}:config||{})
+      const format=wod.format
+      if(format==='for-time'||format==='chipper')return [
+        {key:'time',label:'Temps final (mm:ss)',shortLabel:'Temps',type:'text',placeholder:'12:34'},
+        {key:'reps',label:'Reps si cap',shortLabel:'Reps cap',type:'number',placeholder:'0'}
       ]
+      if(format==='rft')return [
+        {key:'time',label:'Temps final (mm:ss)',shortLabel:'Temps',type:'text',placeholder:'12:34'},
+        {key:'rounds',label:'Rounds au cap',shortLabel:'Rounds',type:'number',placeholder:'0'},
+        {key:'reps',label:'Reps du round incomplet',shortLabel:'Reps cap',type:'number',placeholder:'0'}
+      ]
+      if(format==='for-load'){
+        const exos=groupe?.exercices||[]
+        if(exos.length===1){
+          const name=exos[0].nrgNom||exos[0].exercice||'Mouvement'
+          return [{key:'load',label:`${name} · charge max validée (kg)`,shortLabel:`Charge ${name.slice(0,8)}`,type:'number',placeholder:'kg'}]
+        }
+        return exos.length
+          ?exos.map(exo=>{const name=exo.nrgNom||exo.exercice||'Mouvement';return{key:`load_${exo.id}`,label:`${name} · charge max (kg)`,shortLabel:`Charge ${name.slice(0,8)}`,type:'number',placeholder:'kg'}})
+          :[{key:'load',label:'Charge max validée (kg)',shortLabel:'Charge kg',type:'number',placeholder:'kg'}]
+      }
+      if(format==='death-by'){
+        const exos=groupe?.exercices||[]
+        const base=[{key:'rounds',label:'Minute à laquelle le travail a échoué',shortLabel:'Minute arrêt',type:'number',placeholder:'0'}]
+        return exos.length>1
+          ?base.concat(exos.map(exo=>{const name=exo.nrgNom||exo.exercice||'Mouvement';return{key:`deathby_partial_${exo.id}`,label:`Unités faites pendant la minute d’arrêt · ${name} (${exo.crossUnit||'reps'})`,shortLabel:`${name.slice(0,8)}`,type:'number',placeholder:'0'}}))
+          :base.concat([{key:'reps',label:`Unités réalisées pendant la minute d’arrêt (${exos[0]?.crossUnit||'reps'})`,shortLabel:'Partiel',type:'number',placeholder:'0'}])
+      }
+      if(format==='amrap')return [
+        {key:'rounds',label:'Rounds complets',shortLabel:'Rounds',type:'number',placeholder:'0'},
+        {key:'reps',label:'Reps du round incomplet',shortLabel:'Reps',type:'number',placeholder:'0'}
+      ]
+      if(format==='emom'||format==='intervals')return [
+        {key:'rounds',label:format==='emom'?'Minutes/cycles validés':'Intervalles validés',shortLabel:format==='emom'?'Cycles':'Intervalles',type:'number',placeholder:'0'},
+        {key:'reps',label:'Reps de l’intervalle incomplet',shortLabel:'Reps part.',type:'number',placeholder:'0'}
+      ]
+      if(format==='tabata')return [{
+        key:'reps',
+        label:wod.tabataScore==='lowest'?'Plus petit intervalle (reps)':'Total reps',
+        shortLabel:wod.tabataScore==='lowest'?'Min. reps':'Total reps',
+        type:'number',
+        placeholder:'0'
+      }]
+      if(format==='for-quality')return [{key:'note',label:'Note qualité',shortLabel:'Qualité',type:'text',placeholder:'Validé / remarque'}]
       return [{key:'reps',label:'Total reps',type:'number',placeholder:'0'}]
     }
     function crossTrainingResultKeyP(seanceId,blocId,groupeId,joueurId,field){
@@ -2274,6 +2411,56 @@
         previous=Number.isFinite(actual)?actual:target
       })
     }
+    function actualiserBackoffSetApercusP(base){
+      const inputs=[...document.querySelectorAll('.backoff-set-input')].filter(input=>input.dataset.backoffBase===base)
+      if(!inputs.length)return
+      const top=parseFloat(chargesReelles[`${base}_s${inputs[0].dataset.mainSets||1}`]??chargesReelles[base])
+      inputs.forEach(input=>{
+        const target=Number.isFinite(top)?Math.round(top*(Number(input.dataset.backoffPct||80)/100)*2)/2:null
+        input.placeholder=target!=null?`${target} kg (plateau)`:'kg (plateau)'
+        const hint=input.parentElement?.querySelector('.serie-pre')
+        if(hint)hint.textContent=target!=null?`${target} kg · plateau`:'Charge de référence du Top Set'
+      })
+    }
+    function makePlayerBackoffSetControls(exo,bloc,groupe,joueurId,seanceId){
+      const backoff=exo?.backoffSet
+      if(!backoff)return null
+      const base=`${seanceId}_${bloc.id}_${groupe.id}_${exo.id}_${joueurId}`
+      const top=parseFloat(chargesReelles[`${base}_s${exo.nbSets||1}`]??chargesReelles[base])
+      const count=backoff.variableSeries?(backoff.seriesData?.length||backoff.nbSets||1):(backoff.nbSets||3)
+      const wrap=document.createElement('div')
+      wrap.className='series-grid'
+      wrap.style.marginTop='7px'
+      for(let index=0;index<count;index++){
+        const number=index+1
+        const series=backoff.variableSeries?backoff.seriesData?.[index]:null
+        const pct=Number(series?.intensity??backoff.pct??80)
+        const target=Number.isFinite(top)?Math.round(top*pct/100*2)/2:null
+        const key=`${base}_backoff_s${number}`
+        const actual=chargesReelles[key]||''
+        const reps=Number(series?.reps??backoff.nbReps??8)
+        const cluster=Array.isArray(backoff.clusterSplit)&&backoff.clusterSplit.length>1?` · C${backoff.clusterSplit.map(part=>part.value).join('+')}`:''
+        const box=document.createElement('div')
+        box.className='serie-box'
+        box.style.borderColor='#4A9EFF66'
+        const label=document.createElement('div')
+        label.className='serie-lbl'
+        label.style.color='#79B8FF'
+        label.textContent=`B${number} · ${reps} reps${cluster} · ${pct}% plateau`
+        const input=document.createElement('input')
+        input.className='serie-inp backoff-set-input'
+        input.type='number';input.step='0.5';input.inputMode='decimal';input.value=actual
+        input.placeholder=target!=null?`${target} kg (plateau)`:'kg (plateau)'
+        Object.assign(input.dataset,{backoffBase:base,backoffIndex:String(number),backoffPct:String(pct),backoffKey:key,mainSets:String(exo.nbSets||1)})
+        input.onchange=()=>window.sauverBackoffSet(seanceId,key,joueurId,input.value,input)
+        const hint=document.createElement('div')
+        hint.className='serie-pre'
+        hint.textContent=target!=null?`${target} kg · plateau`:'Charge de référence du Top Set'
+        box.append(label,input,hint)
+        wrap.appendChild(box)
+      }
+      return wrap
+    }
     function renderPlayerCrossTrainingScore(bloc,groupe,seanceId,joueurId){
       if(!groupe.crossTraining?.enabled)return null
       const card=document.createElement('div')
@@ -2284,7 +2471,7 @@
       card.appendChild(title)
       const row=document.createElement('div')
       row.style.cssText='display:flex;flex-wrap:wrap;gap:7px;'
-      crossTrainingResultFieldsP(groupe.crossTraining.format).forEach(field=>{
+      crossTrainingResultFieldsP(groupe).forEach(field=>{
         const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)
         const label=document.createElement('label')
         label.style.cssText='display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px;font-size:10px;color:#888;'
@@ -2842,6 +3029,9 @@
             playerExos.forEach((item, i) => { const exoOrig=item.exo; const gJ=item.g; const bloc=item.b; const megaLabel=String.fromCharCode(65 + i);
               // Les exercices énergétiques utilisent nrgNom plutôt que exercice.
               if(!exoOrig.exercice && !exoOrig.isEnergetique)return
+              const crossFormat=gJ.crossTraining?.format
+              const isWod=!!gJ.crossTraining?.enabled
+              const crossPosition=(gJ.exercices||[]).findIndex(item=>item.id===exoOrig.id)+1||1
 
               // Résoudre l'option : exo principal OU option choisie/imposée
               const optRes = resoudreExoOption(exoOrig, joueurActif.id, sa.id, bloc.id, gJ.id)
@@ -2861,6 +3051,16 @@
                 return
               }
               const exo = optRes.exo
+              if(isWod){
+                const exoCard=document.createElement('div')
+                exoCard.className='seance-exo'
+                const wodName=exo.nrgNom||exo.exercice||'Mouvement'
+                const wodPhoto=exoPhotoUrl(wodName)
+                const wodPhotoHtml=wodPhoto?`<img src="${wodPhoto}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"/>`:''
+                exoCard.innerHTML=`${wodPhotoHtml}<div style="flex:1;"><div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${wodName}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':''}</div>${crossTrainingExerciseDisplayHTMLP(exo,crossFormat,crossPosition)}</div>`
+                bEl.appendChild(exoCard)
+                return
+              }
 
               // Chercher la photo de l'exercice
               const exoData=exercicesList.find(e=>e.nom===exo.exercice)
@@ -2893,24 +3093,24 @@
               
               eEl.innerHTML=`
                 ${photoHtml}
-                ${exo.isEnergetique
+                ${exo.isEnergetique&&!isWod
                   ? energetiqueMuscuDisplayHTML(exo,exoOrig,optRes)
                   : `<div style="flex:1;">
-                  <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${exo.exercice}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')}</div>
-                  <div class="seance-exo-params">${paramsText}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · récup='+exo.recup:''}</div>
+                  <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${exo.nrgNom||exo.exercice||'Mouvement'}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')}</div>
+                  ${isWod?'':`<div class="seance-exo-params">${paramsText}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · récup='+exo.recup:''}</div>
                   <div class="seance-charge">${reco}</div>
-                  ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}
+                  ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}`}
                 </div>`}
-                ${dropSetDisplayHTMLP(exo)}
-                ${crossTrainingExerciseDisplayHTMLP(exo)}
+                ${isWod?'':dropSetDisplayHTMLP(exo)}
+                ${isWod?'':backoffSetDisplayHTMLP(exo)}
               `
 
-              if(exo.isEnergetique){
+              if(exo.isEnergetique&&!isWod){
                 // Pas de saisie de charge pour les exos énergétiques intégrés
                 bEl.appendChild(eEl)
                 return
               }
-              if(hasInput){
+              if(!isWod&&hasInput){
                 const gr=document.createElement('div');gr.className='series-grid'
                 gr.style.marginTop='8px'
                 const clefBase=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}`
@@ -2973,7 +3173,7 @@
                 }
                 eEl.querySelector('div[style*="flex:1"]').appendChild(gr)
               }
-              if(exo.dropSet){
+              if(!isWod&&exo.dropSet){
                 const drop=exo.dropSet
                 const dropGrid=document.createElement('div')
                 dropGrid.className='series-grid'
@@ -3019,6 +3219,8 @@
                 }
                 eEl.querySelector('div[style*="flex:1"]')?.appendChild(dropGrid)
               }
+              const backoffControls=isWod?null:makePlayerBackoffSetControls(exo,bloc,gJ,joueurActif.id,sa.id)
+              if(backoffControls)eEl.querySelector('div[style*="flex:1"]')?.appendChild(backoffControls)
               bEl.appendChild(eEl)
             })
             playerCrossGroups.forEach(({bloc:crossBloc,groupe:crossGroupe})=>{
@@ -4682,6 +4884,7 @@
       if(!val)return
       chargesReelles[clef]=val;inp.style.color='#1D9E75'
       actualiserDropSetApercusP(clef.replace(/_s\d+$/,''))
+      actualiserBackoffSetApercusP(clef.replace(/_s\d+$/,''))
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
       const updates={[clef]:val,updatedAt:serverTimestamp()}
       if(reps!=null&&reps!==undefined)updates[clef+'_reps']=reps
@@ -4748,6 +4951,16 @@
         _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc','Drop Set')
       }catch(error){console.error('[Joueur] sauvegarde Drop Set:',error)}
     }
+    window.sauverBackoffSet=async function(seanceId,clef,joueurId,val,input){
+      const value=String(val??'').replace(',','.').trim()
+      chargesReelles[clef]=value
+      if(input)input.style.color=value?'#1D9E75':'#79B8FF'
+      actualiserBackoffSetApercusP(clef.replace(/_backoff_s\d+$/,''))
+      try{
+        await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[clef]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+        _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc','Back-off Set')
+      }catch(error){console.error('[Joueur] sauvegarde Back-off Set:',error)}
+    }
 
     window.sauverToutesLesSeries=async function(seanceId,clefBase,nbSets,joueurId,val,inp,ckId){
       if(!val&&val!==0)return
@@ -4758,6 +4971,7 @@
         updates[clef]=val
       }
       actualiserDropSetApercusP(clefBase)
+      actualiserBackoffSetApercusP(clefBase)
       updates.updatedAt=serverTimestamp()
       inp.style.color='#1D9E75'
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
