@@ -477,7 +477,7 @@
 
     // Force reload if app version changed (ensures players get latest code)
     (function() {
-      const CURRENT_VERSION = '1.0.35';
+      const CURRENT_VERSION = '1.0.36';
       try {
         const stored = localStorage.getItem('__playerAppVersion');
         if (stored && stored !== CURRENT_VERSION) {
@@ -1271,6 +1271,48 @@
     const aujourdhui=dateStrLocal(new Date())
     document.getElementById('header-date').textContent=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})
 
+    function groupPlayerChargeRows(rows) {
+      const docs = new Map()
+      for (const row of rows || []) {
+        const docId = `${row.seance_id}_${row.joueur_id}`
+        let data = docs.get(docId)
+        if (!data) { data = {}; docs.set(docId, data) }
+
+        const groupeId = row.groupe_id || ''
+        const normalGroupeId = groupeId.startsWith('grp_') ? groupeId : `grp_${groupeId}`
+        const exerciceId = row.exercice_id || ''
+        const variant = exerciceId.match(/_(drop|backoff)$/)
+        if (variant) {
+          const baseExerciceId = exerciceId.slice(0, -variant[0].length)
+          const normalExerciceId = baseExerciceId.startsWith('exo_') ? baseExerciceId : `exo_${baseExerciceId}`
+          const suffix = `${variant[1]}_s${row.numero_serie}`
+          data[`${row.seance_id}_${row.bloc_id}_${groupeId}_${baseExerciceId}_${row.joueur_id}_${suffix}`] = row.valeur
+          data[`${row.seance_id}_${row.bloc_id}_${normalGroupeId}_${normalExerciceId}_${row.joueur_id}_${suffix}`] = row.valeur
+        } else if (exerciceId.startsWith('wod_')) {
+          const field = exerciceId.slice(4)
+          data[`${row.seance_id}_${row.bloc_id}_${groupeId}_wod_${row.joueur_id}_${field}`] = row.valeur
+          data[`${row.seance_id}_${row.bloc_id}_${normalGroupeId}_wod_${row.joueur_id}_${field}`] = row.valeur
+        } else {
+          const normalExerciceId = exerciceId.startsWith('exo_') ? exerciceId : `exo_${exerciceId}`
+          const suffix = `${row.joueur_id}_s${row.numero_serie}`
+          data[`${row.seance_id}_${row.bloc_id}_${groupeId}_${exerciceId}_${suffix}`] = row.valeur
+          data[`${row.seance_id}_${row.bloc_id}_${normalGroupeId}_${normalExerciceId}_${suffix}`] = row.valeur
+        }
+      }
+      return docs
+    }
+
+    async function chargerChargesReellesSeances(seanceIds, joueurId) {
+      const ids = [...new Set(seanceIds.filter(Boolean))]
+      if (!ids.length || !joueurId) return new Map()
+      const { data, error } = await db.from('charges_reelles')
+        .select('seance_id,bloc_id,groupe_id,exercice_id,joueur_id,numero_serie,valeur')
+        .in('seance_id', ids)
+        .eq('joueur_id', joueurId)
+      if (error) throw error
+      return groupPlayerChargeRows(data)
+    }
+
     // Load custom event types from Firebase (merge with defaults like planning.html)
     async function loadEventTypesFromFirebase() {
       try {
@@ -1846,12 +1888,22 @@
         const doneBadge = document.getElementById('wellness-done-badge')
         if (doneBadge) doneBadge.style.display=wSnap.exists()?'block':'none'
       }catch(e){}
-      allerVers('menu')
+      const workState = readPlayerWorkState(j.id)
+      if (workState) {
+        if (workState.weekStart) currentWeekStart = getLundi(new Date(workState.weekStart + 'T12:00:00'))
+        allerVers('seance', {
+          targetSeanceId: workState.seanceId,
+          restoreScrollY: workState.scrollY
+        })
+      } else {
+        allerVers('menu')
+      }
     }
 
     window.seDeconnecter = async function() {
       if (confirm('Voulez-vous vous déconnecter de votre compte ?')) {
         try {
+          clearPlayerWorkState()
           await signOut(auth);
           joueurActif = null;
           localStorage.removeItem('sca_joueur_id');
@@ -1894,8 +1946,73 @@
       Object.keys(playerCache).forEach(k => delete playerCache[k])
     }
 
+    const PLAYER_WORK_STATE_KEY = 'sca_player_work_state_v1'
+    const PLAYER_WORK_STATE_MAX_AGE = 3 * 24 * 60 * 60 * 1000
+
+    function clearPlayerWorkState() {
+      try { localStorage.removeItem(PLAYER_WORK_STATE_KEY) } catch(e) {}
+    }
+
+    function readPlayerWorkState(playerId) {
+      try {
+        const state = JSON.parse(localStorage.getItem(PLAYER_WORK_STATE_KEY) || 'null')
+        if (!state || state.playerId !== playerId || state.screen !== 'seance') return null
+        if (!state.savedAt || Date.now() - state.savedAt > PLAYER_WORK_STATE_MAX_AGE) {
+          clearPlayerWorkState()
+          return null
+        }
+        return state
+      } catch(e) {
+        clearPlayerWorkState()
+        return null
+      }
+    }
+
+    function clearPlayerWorkDraft(key) {
+      const state = joueurActif ? readPlayerWorkState(joueurActif.id) : null
+      if (!state?.drafts || !Object.prototype.hasOwnProperty.call(state.drafts, key)) return
+      delete state.drafts[key]
+      state.savedAt = Date.now()
+      try { localStorage.setItem(PLAYER_WORK_STATE_KEY, JSON.stringify(state)) } catch(e) {}
+    }
+
+    function savePlayerWorkState(draftKey = null, draftValue = null) {
+      if (!joueurActif || document.querySelector('.screen.active')?.id !== 'screen-seance') return
+      const openCard = [...document.querySelectorAll('#seance-content > .seance-bloc')].find(card => {
+        const body = card.querySelector('[id^="seance-"][id$="-body"]')
+        return body && body.style.display !== 'none'
+      })
+      const body = openCard?.querySelector('[id^="seance-"][id$="-body"]')
+      const bodyId = body?.id || ''
+      const seanceId = bodyId.startsWith('seance-') && bodyId.endsWith('-body')
+        ? bodyId.slice(7, -5)
+        : null
+      const previous = readPlayerWorkState(joueurActif.id)
+      const drafts = { ...(previous?.drafts || {}) }
+      if (draftKey) drafts[draftKey] = String(draftValue ?? '')
+      try {
+        localStorage.setItem(PLAYER_WORK_STATE_KEY, JSON.stringify({
+          playerId: joueurActif.id,
+          screen: 'seance',
+          weekStart: dateStrLocal(currentWeekStart),
+          seanceId,
+          scrollY: window.scrollY || 0,
+          drafts,
+          savedAt: Date.now()
+        }))
+      } catch(e) {}
+    }
+
+    document.addEventListener('input', event => {
+      const input = event.target
+      if (input?.dataset?.chargeKey) savePlayerWorkState(input.dataset.chargeKey, input.value)
+    })
+
     // ===== NAVIGATION — CHARGEMENT DIRECT INTELLIGENT =====
     window.allerVers=function(screen, opts = {}){
+      if (document.querySelector('.screen.active')?.id === 'screen-seance' && screen !== 'seance') {
+        clearPlayerWorkState()
+      }
       document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'))
       const el=document.getElementById('screen-'+screen)
       if(!el){console.error('Screen manquant: screen-'+screen);return}
@@ -2451,7 +2568,7 @@
         input.className='serie-inp backoff-set-input'
         input.type='number';input.step='0.5';input.inputMode='decimal';input.value=actual
         input.placeholder=target!=null?`${target} kg (plateau)`:'kg (plateau)'
-        Object.assign(input.dataset,{backoffBase:base,backoffIndex:String(number),backoffPct:String(pct),backoffKey:key,mainSets:String(exo.nbSets||1)})
+        Object.assign(input.dataset,{backoffBase:base,backoffIndex:String(number),backoffPct:String(pct),backoffKey:key,chargeKey:key,mainSets:String(exo.nbSets||1)})
         input.onchange=()=>window.sauverBackoffSet(seanceId,key,joueurId,input.value,input)
         const hint=document.createElement('div')
         hint.className='serie-pre'
@@ -2480,12 +2597,14 @@
         input.type=field.type
         input.placeholder=field.placeholder
         input.value=chargesReelles[key]||''
+        input.dataset.chargeKey=key
         input.style.cssText='width:100%;padding:9px;border:1px solid #2a2a2a;border-radius:7px;background:#0f0f0f;color:#79B8FF;font-size:15px;font-weight:700;'
         input.onchange=async()=>{
           const value=input.value.trim()
           chargesReelles[key]=value
           try{
             await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[key]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+            clearPlayerWorkDraft(key)
             _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`CrossTraining ${groupe.nom}`)
           }catch(error){console.error('[Joueur] résultat CrossTraining:',error)}
         }
@@ -2953,6 +3072,15 @@
 
         // Stocker les séances affichées pour résoudre les options plus tard
         window._seancesAffichees = seancesJoueur
+        let chargesParSeance = new Map()
+        try {
+          chargesParSeance = await chargerChargesReellesSeances(
+            seancesJoueur.map(seance => seance.id),
+            joueurActif.id
+          )
+        } catch(e) {
+          console.warn('[Joueur] Chargement groupé des charges indisponible:', e)
+        }
         
         // Afficher toutes les séances de la semaine où le joueur est assigné
         c.innerHTML='<div style="font-size:11px;color:#555;margin-bottom:12px;">Séances de cette semaine</div>'
@@ -2972,7 +3100,7 @@
           
           aUneSeance=true
 
-          try{const crSnap=await getDoc(doc(db,'chargesReelles',`${sa.id}_${joueurActif.id}`));chargesReelles=crSnap.exists()?crSnap.data():{}}catch(e){chargesReelles={}}
+          chargesReelles = chargesParSeance.get(`${sa.id}_${joueurActif.id}`) || {}
           
           const seanceId='seance-'+sa.id
           const seanceCard=document.createElement('div')
@@ -3153,7 +3281,7 @@
                   const vs=chargesReelles[clefS1]||''
                   const ckId='ck_'+Math.random().toString(36).slice(2)
                   const box=document.createElement('div');box.className='serie-box';box.style.maxWidth='140px'
-                  box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div><input class="serie-inp" type="number" step="${broadJump?'0.1':'0.5'}" placeholder="${reco}" value="${vs}" style="font-size:18px;${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${exo.nbReps||''}" data-unit="${broadJump?'cm':''}" data-date="${sa.date||''}" onchange="sauverToutesLesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                  box.innerHTML=`<div class="serie-lbl" style="font-weight:700;color:#FECC00;">Toutes séries (1-${exo.nbSets||1})</div><input class="serie-inp" type="number" step="${broadJump?'0.1':'0.5'}" placeholder="${reco}" value="${vs}" style="font-size:18px;${vs?'color:#1D9E75':''}" data-charge-key="${clefS1}" data-exo="${exo.exercice}" data-reps="${exo.nbReps||''}" data-unit="${broadJump?'cm':''}" data-date="${sa.date||''}" onchange="sauverToutesLesSeries('${sa.id}','${clefBase}',${exo.nbSets||1},'${joueurActif.id}',this.value,this,'${ckId}')" /><div class="serie-pre">${reco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                   gr.appendChild(box)
                 } else {
                   // Saisie série par série
@@ -3167,7 +3295,7 @@
                     const serieRepsLabel=sData?` · ${sData.reps} reps${seriePctLabel}`:''
                     const serieReps=sData?sData.reps:null
                     const box=document.createElement('div');box.className='serie-box'
-                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="${broadJump?'0.1':'0.5'}" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" data-exo="${exo.exercice}" data-reps="${serieReps!==null?serieReps:(exo.nbReps||'')}" data-unit="${broadJump?'cm':''}" data-date="${sa.date||''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
+                    box.innerHTML=`<div class="serie-lbl">Série ${s}${serieRepsLabel}</div><input class="serie-inp" type="number" step="${broadJump?'0.1':'0.5'}" placeholder="${serieReco}" value="${vs}" style="${vs?'color:#1D9E75':''}" data-charge-key="${clef}" data-exo="${exo.exercice}" data-reps="${serieReps!==null?serieReps:(exo.nbReps||'')}" data-unit="${broadJump?'cm':''}" data-date="${sa.date||''}" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',${serieReps!==null?serieReps:'null'})" /><div class="serie-pre">${serieReco}</div><div class="serie-ok" id="${ckId}">${vs?'✓':''}</div>`
                     gr.appendChild(box)
                   }
                 }
@@ -3207,6 +3335,7 @@
                   input.dataset.dropIndex=String(d)
                   input.dataset.dropPct=String(dropPct)
                   input.dataset.dropKey=key
+                  input.dataset.chargeKey=key
                   input.dataset.mainSets=String(exo.nbSets||1)
                   input.onchange=()=>window.sauverDropSet(sa.id,key,joueurActif.id,input.value,input)
                   const hint=document.createElement('div')
@@ -3237,6 +3366,7 @@
             const isHidden=body.style.display==='none'
             body.style.display=isHidden?'block':'none'
             header.querySelector('span:last-child').textContent=isHidden?'▲':'▼'
+            savePlayerWorkState()
           }
           
           if(aBlocPourMoi){
@@ -3264,6 +3394,17 @@
         }
         
         if(!aUneSeance)c.innerHTML+='<div class="empty-msg">Tu n\'es assigné à aucune séance cette semaine.</div>'
+
+        if (!silent) {
+          const workState = readPlayerWorkState(joueurActif.id)
+          for (const input of c.querySelectorAll('[data-charge-key]')) {
+            const key = input.dataset.chargeKey
+            if (!Object.prototype.hasOwnProperty.call(workState?.drafts || {}, key)) continue
+            input.value = workState.drafts[key]
+            input.style.color = input.value ? '#FECC00' : ''
+            chargesReelles[key] = input.value
+          }
+        }
         
         // Auto-expand target séance
         if(!silent && options.targetSeanceId) {
@@ -3272,8 +3413,27 @@
             targetBody.style.display = 'block'
             const chevron = targetBody.closest('.seance-bloc')?.querySelector('.seance-bloc-header span:last-child')
             if(chevron) chevron.textContent = '▲'
-            setTimeout(() => targetBody.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
+            if (options.restoreScrollY != null && Number.isFinite(Number(options.restoreScrollY))) {
+              setTimeout(() => {
+                window.scrollTo(0, Number(options.restoreScrollY))
+                savePlayerWorkState()
+              }, 150)
+            } else {
+              setTimeout(() => {
+                targetBody.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                savePlayerWorkState()
+              }, 100)
+            }
+          } else {
+            clearPlayerWorkState()
           }
+        } else if (!silent && options.restoreScrollY != null && Number.isFinite(Number(options.restoreScrollY))) {
+          setTimeout(() => {
+            window.scrollTo(0, Number(options.restoreScrollY))
+            savePlayerWorkState()
+          }, 150)
+        } else if (!silent) {
+          savePlayerWorkState()
         }
         
       }catch(e){console.error(e);c.innerHTML='<div class="empty-msg" style="color:#E24B4A;">Erreur de chargement.</div>'}
@@ -3357,8 +3517,13 @@
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') nrgRequestWakeLock()
+      if (document.visibilityState === 'hidden') {
+        savePlayerWorkState()
+      } else {
+        nrgRequestWakeLock()
+      }
     })
+    window.addEventListener('pagehide', savePlayerWorkState)
 
     function nrgFormatTime(sec) {
       const m = Math.floor(sec / 60)
@@ -4888,7 +5053,10 @@
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
       const updates={[clef]:val,updatedAt:serverTimestamp()}
       if(reps!=null&&reps!==undefined)updates[clef+'_reps']=reps
-      try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+      try{
+        await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})
+        clearPlayerWorkDraft(clef)
+      }catch(e){console.error(e)}
       const exoName=inp&&inp.dataset?inp.dataset.exo:null
       const exoUnit=inp&&inp.dataset?inp.dataset.unit:null
       const exoDate=inp&&inp.dataset?inp.dataset.date:null
@@ -4948,6 +5116,7 @@
       actualiserDropSetApercusP(clef.replace(/_drop_s\d+$/,''))
       try{
         await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[clef]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+        clearPlayerWorkDraft(clef)
         _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc','Drop Set')
       }catch(error){console.error('[Joueur] sauvegarde Drop Set:',error)}
     }
@@ -4958,6 +5127,7 @@
       actualiserBackoffSetApercusP(clef.replace(/_backoff_s\d+$/,''))
       try{
         await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[clef]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+        clearPlayerWorkDraft(clef)
         _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc','Back-off Set')
       }catch(error){console.error('[Joueur] sauvegarde Back-off Set:',error)}
     }
@@ -4975,7 +5145,10 @@
       updates.updatedAt=serverTimestamp()
       inp.style.color='#1D9E75'
       const ck=document.getElementById(ckId);if(ck)ck.textContent='✓'
-      try{await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})}catch(e){console.error(e)}
+      try{
+        await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})
+        for(let s=1;s<=nbSets;s++)clearPlayerWorkDraft(clefBase+'_s'+s)
+      }catch(e){console.error(e)}
       const exoName=inp&&inp.dataset?inp.dataset.exo:null
       const exoUnit=inp&&inp.dataset?inp.dataset.unit:null
       const exoDate=inp&&inp.dataset?inp.dataset.date:null
