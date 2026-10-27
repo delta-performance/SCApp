@@ -2513,10 +2513,29 @@
     function crossTrainingResultKeyP(seanceId,blocId,groupeId,joueurId,field){
       return `${seanceId}_${blocId}_${groupeId}_wod_${joueurId}_${field}`
     }
+    function chargePrediteTopSetP(exo){
+      if(!exo)return null
+      const lastIndex=Math.max(0,(Number(exo.nbSets)||1)-1)
+      const serie=exo.variableSeries&&Array.isArray(exo.seriesData)
+        ?exo.seriesData[Math.min(lastIndex,exo.seriesData.length-1)]
+        :null
+      const label=labelChargeReco(Object.assign({},exo,{
+        rpe:serie?.intensity??exo.rpe,
+        nbReps:serie?.reps??exo.nbReps
+      }))
+      const text=String(label||'').replace(',','.')
+      const pdcLeste=text.match(/PDC\s*\+\s*(\d+(?:\.\d+)?)\s*kg/i)
+      if(pdcLeste&&Number(poidsJoueur)>0)return Number(poidsJoueur)+Number(pdcLeste[1])
+      const charge=text.match(/(\d+(?:\.\d+)?)\s*kg/i)
+      if(charge)return Number(charge[1])
+      if(/^PDC$/i.test(text.trim())&&Number(poidsJoueur)>0)return Number(poidsJoueur)
+      return null
+    }
     function actualiserDropSetApercusP(base){
       const inputs=[...document.querySelectorAll('.drop-set-input')].filter(input=>input.dataset.dropBase===base).sort((a,b)=>Number(a.dataset.dropIndex)-Number(b.dataset.dropIndex))
       if(!inputs.length)return
       let previous=parseFloat(chargesReelles[`${base}_s${inputs[0].dataset.mainSets||1}`]??chargesReelles[base])
+      if(!Number.isFinite(previous))previous=parseFloat(inputs[0].dataset.topPredicted)
       if(!Number.isFinite(previous))previous=null
       inputs.forEach(input=>{
         const pct=Number(input.dataset.dropPct)||70
@@ -2532,8 +2551,9 @@
       const inputs=[...document.querySelectorAll('.backoff-set-input')].filter(input=>input.dataset.backoffBase===base)
       if(!inputs.length)return
       const top=parseFloat(chargesReelles[`${base}_s${inputs[0].dataset.mainSets||1}`]??chargesReelles[base])
+      const topCharge=Number.isFinite(top)?top:parseFloat(inputs[0].dataset.topPredicted)
       inputs.forEach(input=>{
-        const target=Number.isFinite(top)?Math.round(top*(Number(input.dataset.backoffPct||80)/100)*2)/2:null
+        const target=Number.isFinite(topCharge)?Math.round(topCharge*(Number(input.dataset.backoffPct||80)/100)*2)/2:null
         input.placeholder=target!=null?`${target} kg (plateau)`:'kg (plateau)'
         const hint=input.parentElement?.querySelector('.serie-pre')
         if(hint)hint.textContent=target!=null?`${target} kg · plateau`:'Charge de référence du Top Set'
@@ -2543,7 +2563,9 @@
       const backoff=exo?.backoffSet
       if(!backoff)return null
       const base=`${seanceId}_${bloc.id}_${groupe.id}_${exo.id}_${joueurId}`
-      const top=parseFloat(chargesReelles[`${base}_s${exo.nbSets||1}`]??chargesReelles[base])
+      const predictedTop=chargePrediteTopSetP(exo)
+      const storedTop=parseFloat(chargesReelles[`${base}_s${exo.nbSets||1}`]??chargesReelles[base])
+      const top=Number.isFinite(storedTop)?storedTop:predictedTop
       const count=backoff.variableSeries?(backoff.seriesData?.length||backoff.nbSets||1):(backoff.nbSets||3)
       const wrap=document.createElement('div')
       wrap.className='series-grid'
@@ -2568,7 +2590,7 @@
         input.className='serie-inp backoff-set-input'
         input.type='number';input.step='0.5';input.inputMode='decimal';input.value=actual
         input.placeholder=target!=null?`${target} kg (plateau)`:'kg (plateau)'
-        Object.assign(input.dataset,{backoffBase:base,backoffIndex:String(number),backoffPct:String(pct),backoffKey:key,chargeKey:key,mainSets:String(exo.nbSets||1)})
+        Object.assign(input.dataset,{backoffBase:base,backoffIndex:String(number),backoffPct:String(pct),backoffKey:key,chargeKey:key,mainSets:String(exo.nbSets||1),topPredicted:predictedTop==null?'':String(predictedTop)})
         input.onchange=()=>window.sauverBackoffSet(seanceId,key,joueurId,input.value,input)
         const hint=document.createElement('div')
         hint.className='serie-pre'
@@ -3307,7 +3329,9 @@
                 dropGrid.className='series-grid'
                 dropGrid.style.marginTop='7px'
                 const base=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}`
-                const lastMain=parseFloat(chargesReelles[`${base}_s${exo.nbSets||1}`]??chargesReelles[base])
+                const predictedTop=chargePrediteTopSetP(exo)
+                const storedMain=parseFloat(chargesReelles[`${base}_s${exo.nbSets||1}`]??chargesReelles[base])
+                const lastMain=Number.isFinite(storedMain)?storedMain:predictedTop
                 let previous=Number.isFinite(lastMain)?lastMain:null
                 const dropCount=drop.variableSeries?(drop.seriesData?.length||drop.nbSets||1):(drop.nbSets||2)
                 for(let d=1;d<=dropCount;d++){
@@ -3337,6 +3361,7 @@
                   input.dataset.dropKey=key
                   input.dataset.chargeKey=key
                   input.dataset.mainSets=String(exo.nbSets||1)
+                  input.dataset.topPredicted=predictedTop==null?'':String(predictedTop)
                   input.onchange=()=>window.sauverDropSet(sa.id,key,joueurActif.id,input.value,input)
                   const hint=document.createElement('div')
                   hint.className='serie-pre'
