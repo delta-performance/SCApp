@@ -6937,7 +6937,7 @@ function renderQTBarChart(c, qtStats, field, title, unit, color) {
   })
 }
 
-function renderScoreSectionMobile(c, ffr, match) {
+function renderScoreSectionMobile(c, ffr, match, clubOnLeft = ffr?.clubIsDomicile !== false) {
   const sec = document.createElement('div')
   sec.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:16px;margin-bottom:14px;'
   if (!ffr) {
@@ -6946,22 +6946,27 @@ function renderScoreSectionMobile(c, ffr, match) {
     c.appendChild(sec)
     return
   }
-  const clubMene = ffr.scoreClub > ffr.scoreAdv
-  const advMene = ffr.scoreAdv > ffr.scoreClub
-  const colClub = clubMene ? '#1D9E75' : advMene ? '#E24B4A' : '#FECC00'
-  const colAdv = advMene ? '#1D9E75' : clubMene ? '#E24B4A' : '#FECC00'
+  const clubIsHome = ffr.clubIsDomicile !== false
+  const scoreHome = clubIsHome ? ffr.scoreClub : ffr.scoreAdv
+  const scoreAway = clubIsHome ? ffr.scoreAdv : ffr.scoreClub
+  const homeName = clubIsHome ? 'Nous' : ffr.nomAdv
+  const awayName = clubIsHome ? ffr.nomAdv : 'Nous'
+  const homeLogo = clubIsHome ? ffr.logoClub : ffr.logoAdv
+  const awayLogo = clubIsHome ? ffr.logoAdv : ffr.logoClub
+  const homeColor = scoreHome > scoreAway ? '#1D9E75' : scoreHome < scoreAway ? '#E24B4A' : '#FECC00'
+  const awayColor = scoreAway > scoreHome ? '#1D9E75' : scoreAway < scoreHome ? '#E24B4A' : '#FECC00'
   let html = `<div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Score final</div>
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:14px;">
       <div style="text-align:center;flex:1;">
-        ${ffr.logoClub ? `<img src="${ffr.logoClub}" style="width:36px;height:36px;object-fit:contain;margin-bottom:4px;">` : ''}
-        <div style="font-size:11px;color:#aaa;">Nous</div>
+        ${homeLogo ? `<img src="${homeLogo}" style="width:36px;height:36px;object-fit:contain;margin-bottom:4px;">` : ''}
+        <div style="font-size:11px;color:#aaa;">${homeName}</div>
       </div>
-      <div style="font-size:32px;font-weight:900;color:${colClub};">${ffr.scoreClub}</div>
+      <div style="font-size:32px;font-weight:900;color:${homeColor};">${scoreHome}</div>
       <div style="font-size:16px;color:#555;">—</div>
-      <div style="font-size:32px;font-weight:900;color:${colAdv};">${ffr.scoreAdv}</div>
+      <div style="font-size:32px;font-weight:900;color:${awayColor};">${scoreAway}</div>
       <div style="text-align:center;flex:1;">
-        ${ffr.logoAdv ? `<img src="${ffr.logoAdv}" style="width:36px;height:36px;object-fit:contain;margin-bottom:4px;">` : ''}
-        <div style="font-size:11px;color:#aaa;">${ffr.nomAdv}</div>
+        ${awayLogo ? `<img src="${awayLogo}" style="width:36px;height:36px;object-fit:contain;margin-bottom:4px;">` : ''}
+        <div style="font-size:11px;color:#aaa;">${awayName}</div>
       </div>
     </div>`
   // Score par quart-temps (matchs amicaux)
@@ -6969,11 +6974,13 @@ function renderScoreSectionMobile(c, ffr, match) {
     html += `<div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Score par quart-temps</div>
       <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">`
     Object.entries(ffr.qtScores).forEach(([qt, scores]) => {
+      const qtHome = clubIsHome ? scores.albi : scores.adv
+      const qtAway = clubIsHome ? scores.adv : scores.albi
       html += `<div style="flex:1;min-width:60px;background:#0f0f0f;border-radius:8px;padding:8px 4px;text-align:center;">
         <div style="font-size:9px;color:#555;margin-bottom:4px;">${qt}</div>
-        <div style="font-size:14px;font-weight:700;color:#FECC00;">${scores.albi != null ? scores.albi : '—'}</div>
+        <div style="font-size:14px;font-weight:700;color:#FECC00;">${qtHome != null ? qtHome : '—'}</div>
         <div style="font-size:9px;color:#444;margin:2px 0;">—</div>
-        <div style="font-size:14px;font-weight:700;color:#aaa;">${scores.adv != null ? scores.adv : '—'}</div>
+        <div style="font-size:14px;font-weight:700;color:#aaa;">${qtAway != null ? qtAway : '—'}</div>
       </div>`
     })
     html += `</div>`
@@ -6986,7 +6993,6 @@ function renderScoreSectionMobile(c, ffr, match) {
 
   // ===== TIMELINE 3 COLONNES (home | temps | away) — comme gps-match.html =====
   if (ffr.events && ffr.events.length) {
-    const isDomicileAlbi = ffr.clubIsDomicile !== false
     const typeLabels = { essai:'Essai', essai_penalite:'Essai de pénalité', transformation:'Transformation', penalite:'Pénalité', drop:'Drop', carton_jaune:'Carton jaune', carton_rouge:'Carton rouge', changement:'Changement' }
     const scoringTypes = new Set(['essai','essai_penalite','transformation','penalite','drop'])
     const ptsBadge = { essai:'+5', essai_penalite:'+7', transformation:'+2', penalite:'+3', drop:'+3' }
@@ -7020,52 +7026,76 @@ function renderScoreSectionMobile(c, ffr, match) {
       return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${s}px;height:${s}px;border-radius:50%;background:${col};font-size:${Math.round(s * 0.5)}px;flex-shrink:0;">•</span>`
     }
 
-    // Grouper par minute : home = gauche, away = droite
+    // Grouper par minute selon le côté choisi pour le club.
     const eventsByMinute = {}
     ffr.events.forEach(e => {
       if (!eventsByMinute[e.minute]) eventsByMinute[e.minute] = { home: [], away: [] }
-      const isClub = e.equipe === 'club'
-      const isHome = isDomicileAlbi ? isClub : !isClub
-      if (isHome) eventsByMinute[e.minute].home.push(e)
-      else eventsByMinute[e.minute].away.push(e)
+      const goesLeft = (e.equipe === 'club') === clubOnLeft
+      eventsByMinute[e.minute][goesLeft ? 'home' : 'away'].push(e)
     })
 
     const evtTimeline = document.createElement('div')
     evtTimeline.style.cssText = 'display:flex;flex-direction:column;gap:0;padding:10px 0;'
 
-    // Cumul scores progressif
+    // Keep the running score in club-adversary order, then display it home-away.
     let cumClub = 0, cumAdv = 0
+    const scoresAfterEvent = new Map()
+    ffr.events.forEach(e => {
+      if (scoringTypes.has(e.type)) {
+        if (e.equipe === 'club') cumClub += e.points
+        else cumAdv += e.points
+      }
+      scoresAfterEvent.set(e, { club: cumClub, adv: cumAdv })
+    })
+    const formatTimelineScore = score => clubIsHome
+      ? `${score.club}-${score.adv}`
+      : `${score.adv}-${score.club}`
+
+    const sideControl = document.createElement('div')
+    sideControl.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px;'
+    const sideOptions = [['gauche', true], ['droite', false]]
+    sideOptions.forEach(([label, isLeft]) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = `Nous à ${label}`
+      button.style.cssText = `padding:6px 9px;border-radius:7px;border:1px solid ${clubOnLeft === isLeft ? '#FECC00' : '#333'};background:${clubOnLeft === isLeft ? '#FECC0022' : '#111'};color:${clubOnLeft === isLeft ? '#FECC00' : '#888'};font-size:10px;font-weight:700;cursor:pointer;`
+      button.setAttribute('aria-pressed', String(clubOnLeft === isLeft))
+      button.onclick = () => {
+        c.innerHTML = ''
+        renderScoreSectionMobile(c, ffr, match, isLeft)
+      }
+      sideControl.appendChild(button)
+    })
+    sec.appendChild(sideControl)
 
     Object.keys(eventsByMinute).sort((a, b) => parseInt(a) - parseInt(b)).forEach(minute => {
       const minuteData = eventsByMinute[minute]
       const minuteWrap = document.createElement('div')
-      minuteWrap.style.cssText = 'display:grid;grid-template-columns:1fr 80px 1fr;align-items:center;position:relative;margin:2px 0;'
+      minuteWrap.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) 56px minmax(0,1fr);align-items:center;position:relative;margin:2px 0;width:100%;'
 
-      // ---- Colonne gauche (home) ----
+      // ---- Colonne gauche ----
       const homeCol = document.createElement('div')
-      homeCol.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-end;padding-right:0;'
+      homeCol.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-end;padding-right:0;min-width:0;'
 
       minuteData.home.forEach(e => {
         const isScore = scoringTypes.has(e.type)
         const pts = ptsBadge[e.type] || ''
-        if (e.equipe === 'club') cumClub += e.points; else cumAdv += e.points
         const evtColor = e.equipe === 'club' ? '#1D9E75' : '#E24B4A'
 
         const row = document.createElement('div')
-        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-end;'
+        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-end;min-width:0;max-width:100%;'
 
         if (isScore) {
-          const dH = isDomicileAlbi ? cumClub : cumAdv
-          const dA = isDomicileAlbi ? cumAdv : cumClub
-          const sc = cumClub > cumAdv ? '#1D9E75' : cumClub < cumAdv ? '#E24B4A' : '#FECC00'
+          const score = scoresAfterEvent.get(e)
+          const sc = score.club > score.adv ? '#1D9E75' : score.club < score.adv ? '#E24B4A' : '#FECC00'
           const sb = document.createElement('div')
           sb.style.cssText = `font-size:11px;font-weight:800;color:${sc};background:${sc}22;padding:3px 7px;border-radius:5px;white-space:nowrap;flex-shrink:0;`
-          sb.textContent = `${dH}-${dA}`
+          sb.textContent = formatTimelineScore(score)
           row.appendChild(sb)
         }
 
         const evtBlock = document.createElement('div')
-        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:nowrap;`
+        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:normal;overflow-wrap:anywhere;min-width:0;max-width:100%;`
         let joueurDisplay = e.joueur || typeLabels[e.type]
         if (e.type === 'changement' && e.joueur_entrant && e.joueur_sortant) {
           joueurDisplay = `<span style="font-weight:700;">${e.joueur_entrant}</span> → <span style="font-style:italic;font-weight:400;color:#aaa;">${e.joueur_sortant}</span>`
@@ -7075,7 +7105,7 @@ function renderScoreSectionMobile(c, ffr, match) {
         homeCol.appendChild(row)
       })
 
-      // ---- Colonne centre (bulle temps) ----
+      // ---- Colonne centrale (bulle temps) ----
       const centerCol = document.createElement('div')
       centerCol.style.cssText = 'display:flex;flex-direction:column;align-items:center;position:relative;z-index:2;'
       const vLine = document.createElement('div')
@@ -7086,21 +7116,20 @@ function renderScoreSectionMobile(c, ffr, match) {
       timeBubble.textContent = `${minute}'`
       centerCol.appendChild(timeBubble)
 
-      // ---- Colonne droite (away) ----
+      // ---- Colonne droite ----
       const awayCol = document.createElement('div')
-      awayCol.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding-left:0;'
+      awayCol.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding-left:0;min-width:0;'
 
       minuteData.away.forEach(e => {
         const isScore = scoringTypes.has(e.type)
         const pts = ptsBadge[e.type] || ''
-        if (e.equipe === 'club') cumClub += e.points; else cumAdv += e.points
         const evtColor = e.equipe === 'club' ? '#1D9E75' : '#E24B4A'
 
         const row = document.createElement('div')
-        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-start;'
+        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-start;min-width:0;max-width:100%;'
 
         const evtBlock = document.createElement('div')
-        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:nowrap;`
+        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:normal;overflow-wrap:anywhere;min-width:0;max-width:100%;`
         let joueurDisplay = e.joueur || typeLabels[e.type]
         if (e.type === 'changement' && e.joueur_entrant && e.joueur_sortant) {
           joueurDisplay = `<span style="font-weight:700;">${e.joueur_entrant}</span> → <span style="font-style:italic;font-weight:400;color:#aaa;">${e.joueur_sortant}</span>`
@@ -7109,12 +7138,11 @@ function renderScoreSectionMobile(c, ffr, match) {
         row.appendChild(evtBlock)
 
         if (isScore) {
-          const dH = isDomicileAlbi ? cumClub : cumAdv
-          const dA = isDomicileAlbi ? cumAdv : cumClub
-          const sc = cumClub > cumAdv ? '#1D9E75' : cumClub < cumAdv ? '#E24B4A' : '#FECC00'
+          const score = scoresAfterEvent.get(e)
+          const sc = score.club > score.adv ? '#1D9E75' : score.club < score.adv ? '#E24B4A' : '#FECC00'
           const sb = document.createElement('div')
           sb.style.cssText = `font-size:11px;font-weight:800;color:${sc};background:${sc}22;padding:3px 7px;border-radius:5px;white-space:nowrap;flex-shrink:0;`
-          sb.textContent = `${dH}-${dA}`
+          sb.textContent = formatTimelineScore(score)
           row.appendChild(sb)
         }
         awayCol.appendChild(row)
