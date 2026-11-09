@@ -1630,6 +1630,19 @@
       // Check persistent connection via Auth State Observer
       onAuthStateChanged(auth, async (user) => {
         if (user) {
+          try {
+            const { data: accessActive, error: accessError } = await auth._supabase.rpc('has_active_app_access');
+            if (accessError || accessActive !== true) {
+              await signOut(auth);
+              allerVers('login');
+              return;
+            }
+          } catch (e) {
+            console.error('[Player-app] Vérification d’accès impossible:', e);
+            await signOut(auth);
+            allerVers('login');
+            return;
+          }
           startConfigListeners();
           try {
             // Chargement minimal à l'ouverture : uniquement la liste des joueurs
@@ -7498,6 +7511,7 @@ function renderIndividuelTab(c, persoHist, persoMatchs) {
   const lastLoad = lastMatchStats ? lastMatchStats.load : (last.load || 0)
   const lastAcc = lastMatchStats ? lastMatchStats.accB23 : ((last.accB2 || 0) + (last.accB3 || 0))
   const lastDuree = lastMatchStats ? lastMatchStats.duree : (last.duree || 0)
+  const lastMMin = lastDuree > 0 ? +(lastDist / lastDuree).toFixed(1) : (lastMatchStats?.mMin || last.mMin || 0)
 
   const totalDist = hist.reduce((acc, h) => acc + (h.distTot || 0), 0)
   const totalHI = hist.reduce((acc, h) => acc + (h.distHI || 0), 0)
@@ -7516,6 +7530,10 @@ function renderIndividuelTab(c, persoHist, persoMatchs) {
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
         <div style="font-size:20px;font-weight:700;color:#fff;">${fmtKm(lastDist)}</div>
         <div style="font-size:10px;color:#666;">Distance</div>
+      </div>
+      <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
+        <div style="font-size:20px;font-weight:700;color:#FECC00;">${fmtNum(lastMMin, 1)}</div>
+        <div style="font-size:10px;color:#666;">m/min</div>
       </div>
       <div style="background:#0f0f0f;border-radius:10px;padding:10px;text-align:center;">
         <div style="font-size:20px;font-weight:700;color:#E24B4A;">${fmtNum(lastHI, 0)} m</div>
