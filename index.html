@@ -599,7 +599,13 @@
 
     <!-- SÉLECTION -->
     <div class="screen" id="screen-select">
-      <div class="screen-title">Bonjour !</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;">
+        <div class="screen-title" style="margin:0;">Bonjour !</div>
+        <button type="button" class="change-btn" onclick="seDeconnecter()"
+                style="margin:0;padding:7px 10px;color:#aaa;border-color:#444;white-space:nowrap;">
+          Déconnexion
+        </button>
+      </div>
       <div class="screen-sub">Qui es-tu ?</div>
       <div class="search-box">
         <input type="text" id="search-joueur" placeholder="Rechercher ton nom..."
@@ -1713,7 +1719,7 @@
                   } catch(e) { console.warn('[Player-app] Erreur backfill email:', e) }
                 }
                 // Vérifier si le joueur doit changer son mot de passe (première connexion)
-                if (!associatedPlayer.passwordChanged) {
+                if (!associatedPlayer.passwordChanged && user.userMetadata?.passwordChanged !== true) {
                   pendingPlayerAfterPwdChange = associatedPlayer;
                   allerVers('change-password');
                   return;
