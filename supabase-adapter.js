@@ -20554,7 +20554,15 @@ function onAuthStateChanged(auth, callback) {
 }
 async function signInWithEmailAndPassword(auth, email, password) {
   const { data, error } = await auth._supabase.auth.signInWithPassword({ email, password });
-  if (error) throw { code: "auth/invalid-credential", message: error.message };
+  if (error) {
+    const invalidCredentials = error.code === "invalid_credentials" || /invalid login credentials/i.test(error.message || "");
+    const networkFailure = error.name === "AuthRetryableFetchError";
+    throw {
+      code: invalidCredentials ? "auth/invalid-credential"
+        : networkFailure ? "auth/network-request-failed" : error.code,
+      message: error.message
+    };
+  }
   auth.currentUser = {
     uid: data.user.id,
     email: data.user.email,
@@ -20881,6 +20889,25 @@ async function getChargesReellesDocV2(supabase2, docRef) {
 function reconstructChargesReellesDoc(rows, docId) {
   const result = { id: docId };
   for (const row of rows) {
+    const setVariant = typeof row.exercice_id === "string" ? row.exercice_id.match(/_(drop|backoff)$/) : null;
+    if (setVariant) {
+      const exoId = row.exercice_id.slice(0, -setVariant[0].length);
+      const type = setVariant[1];
+      const key = `${row.seance_id}_${row.bloc_id}_${row.groupe_id}_${exoId}_${row.joueur_id}_${type}_s${row.numero_serie}`;
+      result[key] = row.valeur;
+      const normGroupeId = row.groupe_id && row.groupe_id.startsWith("grp_") ? row.groupe_id : "grp_" + row.groupe_id;
+      const normExoId = exoId && exoId.startsWith("exo_") ? exoId : "exo_" + exoId;
+      result[`${row.seance_id}_${row.bloc_id}_${normGroupeId}_${normExoId}_${row.joueur_id}_${type}_s${row.numero_serie}`] = row.valeur;
+      continue;
+    }
+    if (typeof row.exercice_id === "string" && row.exercice_id.startsWith("wod_")) {
+      const field = row.exercice_id.slice(4);
+      const key = `${row.seance_id}_${row.bloc_id}_${row.groupe_id}_wod_${row.joueur_id}_${field}`;
+      result[key] = row.valeur;
+      const normGroupeId = row.groupe_id && row.groupe_id.startsWith("grp_") ? row.groupe_id : "grp_" + row.groupe_id;
+      result[`${row.seance_id}_${row.bloc_id}_${normGroupeId}_wod_${row.joueur_id}_${field}`] = row.valeur;
+      continue;
+    }
     const key = row.seance_id + "_" + row.bloc_id + "_" + row.groupe_id + "_" + row.exercice_id + "_" + row.joueur_id + "_s" + row.numero_serie;
     result[key] = row.valeur;
     const normGroupeId = row.groupe_id && row.groupe_id.startsWith("grp_") ? row.groupe_id : "grp_" + row.groupe_id;
@@ -20930,6 +20957,42 @@ async function setChargesReellesDoc(supabase2, docRef, dataObj, options) {
   let skippedKeys = [];
   for (const [key, value] of Object.entries(dataObj)) {
     if (key === "id" || key === "updatedAt") continue;
+    const setVariant=parseSupplementalSetResultKey(key,seanceId,joueurId);
+    if(setVariant){
+      if(value===""||value&&value.__deleteField){
+        deleteOps.push(
+          supabase2.from("charges_reelles").delete().eq("seance_id",seanceId).eq("joueur_id",joueurId)
+            .eq("bloc_id",setVariant.blocId).eq("groupe_id",setVariant.groupeId)
+            .eq("exercice_id",`${setVariant.exoId}_${setVariant.variant}`).eq("numero_serie",setVariant.numeroSerie)
+        )
+      }else{
+        upsertRows.push({
+          club_id:DEFAULT_CLUB_ID,joueur_id:joueurId,seance_id:seanceId,
+          bloc_id:setVariant.blocId,groupe_id:setVariant.groupeId,
+          exercice_id:`${setVariant.exoId}_${setVariant.variant}`,numero_serie:setVariant.numeroSerie,
+          valeur:String(value),updated_at:now
+        })
+      }
+      continue
+    }
+    const wodResult = parseCrossTrainingResultKey(key,seanceId,joueurId);
+    if(wodResult){
+      if(value===""||value&&value.__deleteField){
+        deleteOps.push(
+          supabase2.from("charges_reelles").delete().eq("seance_id",seanceId).eq("joueur_id",joueurId)
+            .eq("bloc_id",wodResult.blocId).eq("groupe_id",wodResult.groupeId)
+            .eq("exercice_id",wodResult.exerciceId).eq("numero_serie",1)
+        )
+      }else{
+        upsertRows.push({
+          club_id:DEFAULT_CLUB_ID,joueur_id:joueurId,seance_id:seanceId,
+          bloc_id:wodResult.blocId,groupe_id:wodResult.groupeId,
+          exercice_id:wodResult.exerciceId,numero_serie:1,
+          valeur:String(value),updated_at:now
+        })
+      }
+      continue
+    }
     if (key.endsWith("_mode") || key.endsWith("_leste") || key.endsWith("_reps")) {
       continue;
     }
@@ -21072,6 +21135,43 @@ async function setChargesReellesDoc(supabase2, docRef, dataObj, options) {
       if (error) throw error;
     }
   }
+}
+function parseSupplementalSetResultKey(key,seanceId,joueurId){
+  const suffix=key.match(/_(drop|backoff)_s(\d+)$/)
+  if(!suffix)return null
+  const prefix=key.slice(0,suffix.index)
+  const playerSuffix=`_${joueurId}`
+  if(!prefix.endsWith(playerSuffix))return null
+  const qualified=prefix.slice(0,-playerSuffix.length)
+  if(!qualified.startsWith(`${seanceId}_`))return null
+  const middle=qualified.slice(seanceId.length+1)
+  const groupMarker=middle.indexOf("_grp_")
+  const exerciseMarker=middle.indexOf("_exo_",groupMarker+1)
+  if(groupMarker<=0||exerciseMarker<0)return null
+  return{
+    blocId:middle.slice(0,groupMarker),
+    groupeId:middle.slice(groupMarker+1,exerciseMarker),
+    exoId:middle.slice(exerciseMarker+1),
+    variant:suffix[1],
+    numeroSerie:Number(suffix[2])
+  }
+}
+function parseCrossTrainingResultKey(key,seanceId,joueurId){
+  if(!key.startsWith(`${seanceId}_`))return null
+  const wodMarker=key.indexOf("_wod_",seanceId.length+1)
+  if(wodMarker<0)return null
+  const tail=key.slice(wodMarker+5)
+  const playerPrefix=`${joueurId}_`
+  if(!tail.startsWith(playerPrefix))return null
+  const field=tail.slice(playerPrefix.length)
+  if(!["time","load","rounds","reps","note"].includes(field)&&!field.startsWith("load_exo_")&&!field.startsWith("deathby_partial_"))return null
+  const middle=key.slice(seanceId.length+1,wodMarker)
+  const groupMarker=middle.indexOf("_grp_")
+  if(groupMarker<=0)return null
+  const blocId=middle.slice(0,groupMarker)
+  const groupeId=middle.slice(groupMarker+1)
+  if(!groupeId.startsWith("grp_"))return null
+  return{blocId,groupeId,exerciceId:`wod_${field}`}
 }
 async function deleteChargesReellesDoc(supabase2, docRef) {
   const fullId = docRef.__id;
