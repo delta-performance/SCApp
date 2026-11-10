@@ -1,5 +1,5 @@
-const CACHE_NAME = 'sca-player';
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
+const CACHE_NAME = `sca-player-${APP_VERSION}`;
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -11,7 +11,8 @@ self.addEventListener('activate', e => {
       self.clients.claim(),
       // Clean up old caches
       caches.keys().then(keys => Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+        keys.filter(k => (k === 'sca-player' || k.startsWith('sca-player-')) && k !== CACHE_NAME)
+          .map(k => caches.delete(k))
       ))
     ])
   );
@@ -35,6 +36,11 @@ self.addEventListener('fetch', e => {
 
   // Ignorer les extensions navigateur, les données inline, etc.
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
+
+  // Never cache Supabase/API responses or other cross-origin content.
+  if (url.origin !== self.location.origin) {
     return;
   }
 
