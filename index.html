@@ -431,7 +431,8 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => {
+        navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
+          reg.update().catch(() => {});
           // Check for updates every 60s
           setInterval(() => reg.update().catch(() => {}), 60000);
           // Detect new SW waiting to activate
@@ -448,10 +449,11 @@
         }).catch(err => console.error('SW register error:', err));
 
         // Listen for new controller (SW took control)
+        let hadServiceWorkerController = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
-          // Page will reload automatically if user clicked the banner
-          // If skipWaiting was called, this fires — reload to get new content
-          if (window.__swUpdatePending) {
+          const isUpdate = hadServiceWorkerController;
+          hadServiceWorkerController = true;
+          if (isUpdate || window.__swUpdatePending) {
             window.location.reload();
           }
         });
@@ -477,15 +479,17 @@
 
     // Force reload if app version changed (ensures players get latest code)
     (function() {
-      const CURRENT_VERSION = '1.0.36';
+      const CURRENT_VERSION = '1.0.37';
       try {
         const stored = localStorage.getItem('__playerAppVersion');
         if (stored && stored !== CURRENT_VERSION) {
           console.log('[Player-app] Version changed: ' + stored + ' → ' + CURRENT_VERSION + ', reloading...');
           localStorage.setItem('__playerAppVersion', CURRENT_VERSION);
-          // Clear all caches to force fresh load
+          // Clear this app's caches to force a fresh load
           if ('caches' in window) {
-            caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => {
+            caches.keys().then(keys => Promise.all(
+              keys.filter(k => k === 'sca-player' || k.startsWith('sca-player-')).map(k => caches.delete(k))
+            )).then(() => {
               window.location.reload();
             });
           } else {
@@ -1539,6 +1543,8 @@
         let errorMsg = 'Une erreur est survenue.';
         if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
           errorMsg = 'Email ou mot de passe incorrect.';
+        } else if (e.code === 'auth/network-request-failed' || e.name === 'AuthRetryableFetchError' || e.name === 'TypeError') {
+          errorMsg = 'Connexion impossible pour le moment. Vérifie internet puis réessaie.';
         } else if (e.code === 'auth/email-already-in-use') {
           errorMsg = 'Cet email est déjà associé à un compte.';
         } else if (e.code === 'auth/weak-password') {
@@ -1632,14 +1638,30 @@
         if (user) {
           try {
             const { data: accessActive, error: accessError } = await auth._supabase.rpc('has_active_app_access');
-            if (accessError || accessActive !== true) {
+            if (accessError) {
+              console.error('[Player-app] Vérification d’accès impossible:', accessError);
+              document.getElementById('login-error-msg').textContent =
+                'Connexion établie, mais la vérification de ton accès est temporairement indisponible. Réessaie dans quelques instants.';
+              const submitBtn = document.getElementById('btn-login-submit');
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Se reconnecter';
+              allerVers('login');
+              return;
+            }
+            if (accessActive !== true) {
+              document.getElementById('login-error-msg').textContent =
+                'Ton compte n’a pas accès à cette application. Contacte le staff.';
               await signOut(auth);
               allerVers('login');
               return;
             }
           } catch (e) {
             console.error('[Player-app] Vérification d’accès impossible:', e);
-            await signOut(auth);
+            document.getElementById('login-error-msg').textContent =
+              'Connexion établie, mais la vérification de ton accès est temporairement indisponible. Réessaie dans quelques instants.';
+            const submitBtn = document.getElementById('btn-login-submit');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Se reconnecter';
             allerVers('login');
             return;
           }
@@ -6664,11 +6686,12 @@ function calculerHidcParQTMatch(match, joueurs) {
       return seance && matchDate && date && date.toDateString() === matchDate.toDateString() && isMatchSession(h)
     }).forEach(h => {
       Object.entries(h.perPeriod || {}).forEach(([period, stats]) => {
-        if (!isQTGPSPeriod(period) || stats?.hidc == null) return
+        const hidc = getPlayerHidc(stats)
+        if (!isQTGPSPeriod(period) || hidc <= 0) return
         const qtKey = normaliserCleQTGPS(period)
         if (!parQT.has(qtKey)) parQT.set(qtKey, { qt: period, joueurs: new Map() })
         const joueursQT = parQT.get(qtKey).joueurs
-        joueursQT.set(joueurKey, (joueursQT.get(joueurKey) || 0) + (Number(stats.hidc) || 0))
+        joueursQT.set(joueurKey, (joueursQT.get(joueurKey) || 0) + hidc)
       })
     })
   })
@@ -6676,6 +6699,22 @@ function calculerHidcParQTMatch(match, joueurs) {
     qt,
     hidc: joueurs.size ? [...joueurs.values()].reduce((sum, value) => sum + value, 0) / joueurs.size : 0
   })).sort((a, b) => (parseInt(a.qt.replace(/\D/g, ''), 10) || 0) - (parseInt(b.qt.replace(/\D/g, ''), 10) || 0))
+}
+function calculerHidcMoyenMatch(match, joueurs) {
+  const matchKey = normaliserLibelleGPS(match.key || match.matchKey)
+  const matchDate = parseDate(match.dateISO || match.date)
+  const valeurs = []
+  ;(joueurs || []).forEach(joueur => {
+    const lignes = (joueur.historique || []).filter(h => {
+      const seance = normaliserLibelleGPS(h.seance)
+      if (seance && (seance === matchKey || normaliserLibelleGPS(getMatchKey(h)) === matchKey)) return true
+      const date = parseDate(h.date)
+      return seance && matchDate && date && date.toDateString() === matchDate.toDateString() && isMatchSession(h)
+    })
+    const hidc = lignes.reduce((sum, h) => sum + getPlayerHidc(h), 0)
+    if (hidc > 0) valeurs.push(hidc)
+  })
+  return valeurs.length ? valeurs.reduce((sum, value) => sum + value, 0) / valeurs.length : 0
 }
 function calculerHidcParPosteMatch(match, joueurs) {
   const matchKey = normaliserLibelleGPS(match.key || match.matchKey)
@@ -7035,7 +7074,10 @@ function renderScoreSectionMobile(c, ffr, match, clubOnLeft = ffr?.clubIsDomicil
     })
 
     const evtTimeline = document.createElement('div')
-    evtTimeline.style.cssText = 'display:flex;flex-direction:column;gap:0;padding:10px 0;'
+    evtTimeline.style.cssText = 'display:flex;flex-direction:column;gap:0;padding:10px 0;min-width:980px;box-sizing:border-box;'
+    const evtScroll = document.createElement('div')
+    evtScroll.style.cssText = 'width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;'
+    evtScroll.appendChild(evtTimeline)
 
     // Keep the running score in club-adversary order, then display it home-away.
     let cumClub = 0, cumAdv = 0
@@ -7083,7 +7125,7 @@ function renderScoreSectionMobile(c, ffr, match, clubOnLeft = ffr?.clubIsDomicil
         const evtColor = e.equipe === 'club' ? '#1D9E75' : '#E24B4A'
 
         const row = document.createElement('div')
-        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-end;min-width:0;max-width:100%;'
+        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-end;width:max-content;flex-shrink:0;'
 
         if (isScore) {
           const score = scoresAfterEvent.get(e)
@@ -7095,7 +7137,7 @@ function renderScoreSectionMobile(c, ffr, match, clubOnLeft = ffr?.clubIsDomicil
         }
 
         const evtBlock = document.createElement('div')
-        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:normal;overflow-wrap:anywhere;min-width:0;max-width:100%;`
+        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:nowrap;flex-shrink:0;`
         let joueurDisplay = e.joueur || typeLabels[e.type]
         if (e.type === 'changement' && e.joueur_entrant && e.joueur_sortant) {
           joueurDisplay = `<span style="font-weight:700;">${e.joueur_entrant}</span> → <span style="font-style:italic;font-weight:400;color:#aaa;">${e.joueur_sortant}</span>`
@@ -7126,10 +7168,10 @@ function renderScoreSectionMobile(c, ffr, match, clubOnLeft = ffr?.clubIsDomicil
         const evtColor = e.equipe === 'club' ? '#1D9E75' : '#E24B4A'
 
         const row = document.createElement('div')
-        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-start;min-width:0;max-width:100%;'
+        row.style.cssText = 'display:flex;align-items:center;gap:4px;justify-content:flex-start;width:max-content;flex-shrink:0;'
 
         const evtBlock = document.createElement('div')
-        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:normal;overflow-wrap:anywhere;min-width:0;max-width:100%;`
+        evtBlock.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 10px;background:#1e1e1e;border-radius:6px;border:1px solid ${evtColor}44;white-space:nowrap;flex-shrink:0;`
         let joueurDisplay = e.joueur || typeLabels[e.type]
         if (e.type === 'changement' && e.joueur_entrant && e.joueur_sortant) {
           joueurDisplay = `<span style="font-weight:700;">${e.joueur_entrant}</span> → <span style="font-style:italic;font-weight:400;color:#aaa;">${e.joueur_sortant}</span>`
@@ -7154,7 +7196,7 @@ function renderScoreSectionMobile(c, ffr, match, clubOnLeft = ffr?.clubIsDomicil
       evtTimeline.appendChild(minuteWrap)
     })
 
-    sec.appendChild(evtTimeline)
+    sec.appendChild(evtScroll)
 
     // Branches SVG (connecteurs entre events et bulle temps)
     requestAnimationFrame(() => {
@@ -7201,14 +7243,16 @@ function renderScoreSectionMobile(c, ffr, match, clubOnLeft = ffr?.clubIsDomicil
 function renderMatchTab(c, match, persoHist) {
   const persoRow = persoHist.find(h => h.matchKey === match.key)
   const equipe = match.equipe || {}
-  const hidcHistoriqueParQT = calculerHidcParQTMatch(match, window.__allJoueursData || [])
+  const joueursHidc = window.__allJoueursData || []
+  const hidcHistoriqueParQT = calculerHidcParQTMatch(match, joueursHidc)
   const hidcHistoriqueIndex = new Map(hidcHistoriqueParQT.map(q => [normaliserCleQTGPS(q.qt), q.hidc]))
   const qtStatsHidc = (match.qtStats && match.qtStats.length ? match.qtStats : hidcHistoriqueParQT).map(q => ({
     ...q,
-    hidc: Number(q.hidc) > 0 ? Number(q.hidc) : (hidcHistoriqueIndex.get(normaliserCleQTGPS(q.qt)) || 0)
+    hidc: getPlayerHidc(q) || (hidcHistoriqueIndex.get(normaliserCleQTGPS(q.qt)) || 0)
   }))
-  const hidcMatchStocke = Number(match.hidc) || Number(equipe.hidc) || 0
-  const hidcMatch = hidcMatchStocke > 0 ? hidcMatchStocke : qtStatsHidc.reduce((sum, q) => sum + (q.hidc || 0), 0)
+  const hidcQT = qtStatsHidc.reduce((sum, q) => sum + (q.hidc || 0), 0)
+  const hidcHistorique = calculerHidcMoyenMatch(match, joueursHidc)
+  const hidcMatch = hidcQT || hidcHistorique || getPlayerHidc(match) || getPlayerHidc(equipe)
 
   // Header jaune comme gps-match.html
   const head = document.createElement('div')
