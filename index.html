@@ -294,6 +294,15 @@
     .nrg-timer-btn.start { background: #FECC00; color: #0f0f0f; }
     .nrg-timer-btn.stop { background: #E24B4A; color: #fff; }
     .nrg-timer-btn.reset { background: #2a2a2a; color: #888; border: 1px solid #444; }
+    .player-wod-timer { width:100%; margin:8px 0; padding:10px; border:1px solid #4A9EFF55; border-radius:9px; background:#0c1722; }
+    .player-wod-timer.is-running { border-color:#1D9E75aa; }
+    .player-wod-timer.is-done { border-color:#E24B4A99; }
+    .player-wod-timer-head { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#a8c9e8; font-size:11px; font-weight:700; }
+    .player-wod-timer-head strong { color:#fff; font-size:30px; font-variant-numeric:tabular-nums; letter-spacing:.04em; }
+    .player-wod-timer-meta { margin:3px 0 8px; color:#8291a0; font-size:10px; }
+    .player-wod-timer-actions { display:flex; gap:7px; }
+    .player-wod-timer-actions button { flex:1; padding:9px 12px; border:1px solid #2a3c4e; border-radius:8px; background:#142638; color:#d8e8f6; font-size:12px; font-weight:700; cursor:pointer; }
+    .player-wod-timer-actions button:first-child { border-color:#1D9E7566; color:#77d6ad; }
 
     /* ====== EXO TIMER ÉNERGÉTIQUE ====== */
     .nrg-exo-timer { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 12px; margin: 8px 0; }
@@ -1125,6 +1134,7 @@
     const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 
     let joueurs=[],blessures=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
+    let playerWodTimerListeners=[]
     let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
     let currentPerfTab='muscu',performancesData=null
     let recapVisible = localStorage.getItem('player_recap_visible') === 'true'
@@ -2554,6 +2564,216 @@
     function crossTrainingResultKeyP(seanceId,blocId,groupeId,joueurId,field){
       return `${seanceId}_${blocId}_${groupeId}_wod_${joueurId}_${field}`
     }
+    const playerWodTimerStates=new Map()
+    const playerWodTimerCues=new Map()
+    function playerWodTimerSpec(wod){
+      const format=wod?.format||'for-time'
+      const parseSeconds=value=>{
+        const text=String(value??'').trim()
+        const match=text.match(/^(\d+):([0-5]?\d)$/)
+        if(match)return Number(match[1])*60+Number(match[2])
+        return /^\d+$/.test(text)?Number(text)*60:0
+      }
+      const minutes=Math.max(1,Number(wod?.durationMinutes)||10)
+      if(format==='emom')return{kind:'emom',label:'EMOM',totalSec:minutes*60,cycleSec:Math.max(1,Number(wod?.cycleMinutes)||1)*60}
+      if(format==='tabata'||format==='intervals'){
+        const intervals=Math.max(1,Math.floor(Number(wod?.intervals)||8))
+        const workSec=Math.max(1,Number(wod?.workSeconds)||(format==='tabata'?20:40))
+        const savedRest=Number(wod?.restSeconds)
+        const restSec=Math.max(0,Number.isFinite(savedRest)?savedRest:(format==='tabata'?10:20))
+        return{kind:'interval',label:format==='tabata'?'TABATA':'INTERVALS',intervals,workSec,restSec,totalSec:intervals*workSec+Math.max(0,intervals-1)*restSec}
+      }
+      if(format==='amrap'||format==='for-reps')return{kind:'countdown',label:format==='amrap'?'AMRAP':'FOR REPS',totalSec:minutes*60}
+      if(format==='for-load'&&wod?.loadLimitType==='time')return{kind:'countdown',label:'FOR LOAD · TIME CAP',totalSec:parseSeconds(wod?.timeCap)||minutes*60}
+      if(['for-time','chipper','rft'].includes(format)){
+        const cap=parseSeconds(wod?.timeCap)
+        return cap?{kind:'countdown',label:'TIME CAP',totalSec:cap}:{kind:'stopwatch',label:format==='rft'?'ROUNDS FOR TIME':format.toUpperCase(),rounds:format==='rft'?Number(wod?.rounds)||3:0}
+      }
+      if(format==='death-by')return{kind:'death-by',label:'DEATH BY',cycleSec:60}
+      const labels={'for-load':'FOR LOAD','for-quality':'FOR QUALITY'}
+      return{kind:'stopwatch',label:labels[format]||format.toUpperCase()}
+    }
+    function playerWodTimerKey(seanceId,blocId,groupeId,scope,joueurId=''){
+      return JSON.stringify([seanceId,blocId,groupeId,scope,joueurId])
+    }
+    function readPlayerWodTimer(key,spec,remoteValue=''){
+      const signature=JSON.stringify(spec)
+      if(remoteValue){
+        try{
+          const remote=JSON.parse(remoteValue)
+          if(remote?.signature===signature&&['idle','running','paused','done'].includes(remote.status)){
+            playerWodTimerStates.set(key,remote)
+            return remote
+          }
+        }catch(e){}
+      }
+      let state=playerWodTimerStates.get(key)
+      if(!state){
+        try{state=JSON.parse(localStorage.getItem(`sca_wod_timer:${key}`)||'null')}catch(e){}
+      }
+      if(!state||state.signature!==signature)state={signature,status:'idle',elapsedMs:0,startedAt:0}
+      playerWodTimerStates.set(key,state)
+      return state
+    }
+    function savePlayerWodTimer(key,state){
+      playerWodTimerStates.set(key,state)
+      try{localStorage.setItem(`sca_wod_timer:${key}`,JSON.stringify(state))}catch(e){}
+    }
+    function formatPlayerWodTimer(seconds){
+      const safe=Math.max(0,Math.floor(seconds||0))
+      return`${String(Math.floor(safe/60)).padStart(2,'0')}:${String(safe%60).padStart(2,'0')}`
+    }
+    function playerWodTimerView(state,spec){
+      let elapsed=Math.floor((state.elapsedMs+(state.status==='running'?Date.now()-state.startedAt:0))/1000)
+      if(spec.totalSec&&elapsed>=spec.totalSec){
+        elapsed=spec.totalSec
+        if(state.status==='running'){state.status='done';state.elapsedMs=spec.totalSec*1000;state.startedAt=0}
+      }
+      let value,meta
+      if(spec.kind==='countdown'){
+        value=formatPlayerWodTimer(spec.totalSec-elapsed)
+        meta=state.status==='done'?'Terminé':`${spec.label} · temps restant`
+      }else if(spec.kind==='emom'){
+        value=formatPlayerWodTimer(spec.totalSec-elapsed)
+        const cycle=Math.max(1,spec.cycleSec||60)
+        const minute=Math.min(Math.floor(elapsed/cycle)+1,Math.ceil(spec.totalSec/cycle))
+        const toNext=cycle-(elapsed%cycle||0)
+        meta=state.status==='done'?'EMOM terminé':`Cycle ${minute} · prochain top dans ${formatPlayerWodTimer(toNext)}`
+      }else if(spec.kind==='death-by'){
+        value=formatPlayerWodTimer(elapsed)
+        const minute=Math.floor(elapsed/60)+1
+        const toNext=60-(elapsed%60||0)
+        meta=`Minute ${minute} · prochaine minute dans ${formatPlayerWodTimer(toNext)}`
+      }else if(spec.kind==='interval'){
+        const cycle=spec.workSec+spec.restSec
+        const interval=Math.min(Math.floor(elapsed/Math.max(1,cycle))+1,spec.intervals)
+        const inCycle=elapsed%Math.max(1,cycle)
+        const isRest=spec.restSec>0&&inCycle>=spec.workSec
+        const phaseRemaining=isRest?cycle-inCycle:spec.workSec-inCycle
+        value=formatPlayerWodTimer(state.status==='done'?0:phaseRemaining)
+        meta=state.status==='done'?'Intervalles terminés':`${isRest?'Repos':'Travail'} · intervalle ${interval}/${spec.intervals} · total restant ${formatPlayerWodTimer(spec.totalSec-elapsed)}`
+      }else{
+        value=formatPlayerWodTimer(elapsed)
+        meta=state.status==='done'?'Terminé':spec.rounds?`${spec.label} · ${spec.rounds} rounds`:`${spec.label} · chronomètre`
+      }
+      return{state,value,meta,elapsed}
+    }
+    function playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,scope='player'){
+      if(!groupe?.crossTraining?.enabled)return''
+      const key=playerWodTimerKey(seanceId,bloc.id,groupe.id,scope,scope==='player'?joueurId:'')
+      const spec=playerWodTimerSpec(groupe.crossTraining)
+      const field=scope==='group'?'timer_group':'timer'
+      const dbKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field)
+      const remoteValue=chargesReelles[dbKey]||''
+      const {state,value,meta}=playerWodTimerView(readPlayerWodTimer(key,spec,remoteValue),spec)
+      const title=scope==='group'?'Chrono du groupe':'Mon chrono'
+      const controls=scope==='group'?'':`<div class="player-wod-timer-actions">
+          <button type="button" data-timer-action="toggle" onclick="window.playerCrossTrainingTimerAction(this,'toggle',event)">${state.status==='running'?'⏸ Pause':state.status==='paused'?'▶ Reprendre':state.status==='done'?'▶ Recommencer':'▶ Démarrer'}</button>
+          <button type="button" data-timer-action="reset" onclick="window.playerCrossTrainingTimerAction(this,'reset',event)">↺ Reset</button>
+        </div>`
+      return`<div class="player-wod-timer${scope==='group'?' is-shared':''}" data-player-wod-timer data-timer-scope="${scope}" data-timer-key="${crossTextEscP(key)}" data-timer-spec="${crossTextEscP(JSON.stringify(spec))}" data-db-key="${crossTextEscP(dbKey)}" data-session-id="${crossTextEscP(seanceId)}" data-bloc-id="${crossTextEscP(bloc.id)}" data-group-id="${crossTextEscP(groupe.id)}" data-player-id="${crossTextEscP(joueurId)}">
+        <div class="player-wod-timer-head"><span>⏱ ${title} · ${crossTextEscP(groupe.nom||'WOD')}</span><strong data-timer-value>${value}</strong></div>
+        <div class="player-wod-timer-meta" data-timer-meta>${meta}</div>
+        ${controls}
+      </div>`
+    }
+    function refreshPlayerWodTimerDisplays(){
+      document.querySelectorAll('[data-player-wod-timer]').forEach(element=>{
+        let spec
+        try{spec=JSON.parse(element.dataset.timerSpec||'{}')}catch(e){return}
+        const key=element.dataset.timerKey
+        if(!key)return
+        const state=readPlayerWodTimer(key,spec)
+        const wasRunning=state.status==='running'
+        const view=playerWodTimerView(state,spec)
+        const cycleSeconds=Math.max(1,spec.workSec+spec.restSec)
+        const cue=spec.kind==='emom'?Math.floor(view.elapsed/Math.max(1,spec.cycleSec||60))
+          :spec.kind==='death-by'?Math.floor(view.elapsed/60)
+          :spec.kind==='interval'?Math.floor(view.elapsed/cycleSeconds)*2+(spec.restSec>0&&view.elapsed%cycleSeconds>=spec.workSec?1:0)
+          :null
+        if(cue!==null){
+          const previous=playerWodTimerCues.get(key)
+          if(previous===undefined||cue<previous)playerWodTimerCues.set(key,cue)
+          else if(wasRunning&&cue>previous){navigator.vibrate?.([70,70]);playerWodTimerCues.set(key,cue)}
+        }
+        if(wasRunning&&state.status==='done'){
+          savePlayerWodTimer(key,state)
+          navigator.vibrate?.([160,80,160])
+        }
+        const value=element.querySelector('[data-timer-value]')
+        const meta=element.querySelector('[data-timer-meta]')
+        const toggle=element.querySelector('[data-timer-action="toggle"]')
+        if(value)value.textContent=view.value
+        if(meta)meta.textContent=view.meta
+        if(toggle)toggle.textContent=state.status==='running'?'⏸ Pause':state.status==='paused'?'▶ Reprendre':state.status==='done'?'▶ Recommencer':'▶ Démarrer'
+        element.classList.toggle('is-running',state.status==='running')
+        element.classList.toggle('is-done',state.status==='done')
+      })
+    }
+    window.playerCrossTrainingTimerAction=function(button,action,event){
+      event?.stopPropagation()
+      const element=button?.closest('[data-player-wod-timer]')
+      if(!element)return
+      const key=element.dataset.timerKey
+      let spec
+      try{spec=JSON.parse(element.dataset.timerSpec||'{}')}catch(e){return}
+      let state=readPlayerWodTimer(key,spec)
+      if(action==='reset'){
+        state={signature:JSON.stringify(spec),status:'idle',elapsedMs:0,startedAt:0}
+        playerWodTimerCues.set(key,0)
+      }else if(state.status==='running'){
+        state.elapsedMs+=Date.now()-state.startedAt;state.startedAt=0;state.status='paused'
+      }else{
+        if(state.status==='done'||spec.totalSec&&state.elapsedMs>=spec.totalSec*1000)state={signature:JSON.stringify(spec),status:'idle',elapsedMs:0,startedAt:0}
+        if(state.status==='idle')playerWodTimerCues.set(key,0)
+        state.startedAt=Date.now();state.status='running'
+      }
+      savePlayerWodTimer(key,state)
+      const {sessionId,blocId,groupId,playerId}=element.dataset
+      const dbKey=crossTrainingResultKeyP(sessionId,blocId,groupId,playerId,'timer')
+      const serialized=JSON.stringify(state)
+      chargesReelles[dbKey]=serialized
+      setDoc(doc(db,'chargesReelles',`${sessionId}_${playerId}`),{[dbKey]:serialized,seance_id:sessionId,updatedAt:serverTimestamp()},{merge:true})
+        .then(()=>_notifyShellChange('chargesReelles',`${sessionId}_${playerId}`,'updateDoc','Chrono CrossTraining'))
+        .catch(error=>console.warn('[Joueur] Sauvegarde chrono WOD:',error))
+      refreshPlayerWodTimerDisplays()
+    }
+    setInterval(refreshPlayerWodTimerDisplays,250)
+    function stopPlayerWodTimerListeners(){
+      playerWodTimerListeners.forEach(unsubscribe=>{try{unsubscribe()}catch(e){}})
+      playerWodTimerListeners=[]
+    }
+    function startPlayerWodTimerListeners(seances,joueur){
+      stopPlayerWodTimerListeners()
+      const joueurId=String(typeof joueur==='object'?joueur?.id:joueur||'')
+      const timerSessions=(seances||[]).filter(seance=>
+        [...(seance.blocs||[]),...(seance.blocsBlesses||[])].some(bloc=>
+          (bloc.groupes||[]).some(groupe=>groupe.crossTraining?.enabled&&groupeAssigneJoueur(groupe,joueur))
+        )
+      )
+      timerSessions.forEach(seance=>{
+        const timerQuery=query(collection(db,'chargesReelles'),where('seance_id','==',seance.id),where('joueur_id','==',joueurId))
+        try{
+          const unsubscribe=onSnapshot(timerQuery,async()=>{
+            try{
+              const values=await chargerChargesReellesSeances([seance.id],joueurId)
+              const data=values.get(`${seance.id}_${joueurId}`)||{}
+              document.querySelectorAll('[data-player-wod-timer]').forEach(element=>{
+                if(element.dataset.sessionId!==seance.id)return
+                const remote=data[element.dataset.dbKey]
+                if(!remote)return
+                const key=element.dataset.timerKey
+                let spec,state
+                try{spec=JSON.parse(element.dataset.timerSpec||'{}');state=JSON.parse(remote)}catch(e){return}
+                if(state?.signature===JSON.stringify(spec))playerWodTimerStates.set(key,state)
+              })
+              refreshPlayerWodTimerDisplays()
+            }catch(error){console.warn('[Joueur] Synchronisation chrono CrossTraining:',error)}
+          })
+          playerWodTimerListeners.push(unsubscribe)
+        }catch(error){console.warn('[Joueur] Écoute chrono CrossTraining indisponible:',error)}
+      })
+    }
     function chargePrediteTopSetP(exo){
       if(!exo)return null
       const lastIndex=Math.max(0,(Number(exo.nbSets)||1)-1)
@@ -2649,6 +2869,11 @@
       title.textContent=`🏋️ ${groupe.nom} · ${groupe.crossTraining.format==='for-time'?'For Time':groupe.crossTraining.format==='for-load'?'For Load':String(groupe.crossTraining.format||'CrossTraining').toUpperCase()}`
       title.style.cssText='font-size:11px;font-weight:800;color:#79B8FF;margin-bottom:7px;'
       card.appendChild(title)
+      const timer=document.createElement('div')
+      timer.innerHTML=playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,'group')
+      if(timer.firstElementChild)card.appendChild(timer.firstElementChild)
+      timer.innerHTML=playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,'player')
+      if(timer.firstElementChild)card.appendChild(timer.firstElementChild)
       const row=document.createElement('div')
       row.style.cssText='display:flex;flex-wrap:wrap;gap:7px;'
       crossTrainingResultFieldsP(groupe).forEach(field=>{
@@ -3055,6 +3280,7 @@
     }
 
     async function chargerSeance(options = {}) {
+      stopPlayerWodTimerListeners()
       const realC = document.getElementById('seance-content');
       const silent = options._silent === true
       const c = silent ? document.createElement('div') : realC
@@ -3144,6 +3370,7 @@
         } catch(e) {
           console.warn('[Joueur] Chargement groupé des charges indisponible:', e)
         }
+        startPlayerWodTimerListeners(seancesJoueur,joueurActif)
         
         // Afficher toutes les séances de la semaine où le joueur est assigné
         c.innerHTML='<div style="font-size:11px;color:#555;margin-bottom:12px;">Séances de cette semaine</div>'
