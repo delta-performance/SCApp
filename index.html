@@ -550,20 +550,25 @@
           <button id="tab-signup" onclick="toggleLoginTab('signup')" style="flex: 1; background: none; border: none; color: #555; font-size: 15px; font-weight: 600; cursor: pointer; padding: 6px 0; border-bottom: 2px solid transparent;">Créer un compte</button>
         </div>
         
-        <div id="login-form">
+        <form id="login-form" autocomplete="on">
           <div style="margin-bottom: 14px;">
             <label style="display: block; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 6px;">Adresse Email</label>
-            <input type="email" id="login-email" placeholder="joueur@scaalbi.fr" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; font-size: 15px; outline: none; border: 1px solid #222;" />
+            <input type="email" id="login-email" name="username" autocomplete="username" placeholder="joueur@scaalbi.fr" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; font-size: 15px; outline: none; border: 1px solid #222;" />
           </div>
           
           <div style="margin-bottom: 18px;">
             <label style="display: block; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 6px;">Mot de passe</label>
-            <input type="password" id="login-password" placeholder="••••••••" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; font-size: 15px; outline: none; border: 1px solid #222;" />
+            <input type="password" id="login-password" name="password" autocomplete="current-password" placeholder="••••••••" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; font-size: 15px; outline: none; border: 1px solid #222;" />
           </div>
+
+          <label style="display: flex; align-items: center; gap: 8px; margin: -6px 0 16px; color: #888; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" id="remember-login" style="accent-color: #FECC00;">
+            Se souvenir de moi
+          </label>
           
-          <button class="submit-btn" id="btn-login-submit" onclick="handleEmailAuth()" style="margin-top: 0;">Se connecter</button>
-          <button id="btn-forgot-password" onclick="resetPassword()" style="background: none; border: none; color: #555; font-size: 11px; cursor: pointer; text-decoration: underline; display: block; margin: 12px auto 0; font-weight: 500;">Mot de passe oublié ?</button>
-        </div>
+          <button type="submit" class="submit-btn" id="btn-login-submit" style="margin-top: 0;">Se connecter</button>
+          <button type="button" id="btn-forgot-password" onclick="resetPassword()" style="background: none; border: none; color: #555; font-size: 11px; cursor: pointer; text-decoration: underline; display: block; margin: 12px auto 0; font-weight: 500;">Mot de passe oublié ?</button>
+        </form>
         
         <div style="margin: 20px 0; display: flex; align-items: center; justify-content: center; gap: 10px;">
           <div style="flex: 1; height: 1px; background: #2a2a2a;"></div>
@@ -968,6 +973,27 @@
     const db=getFirestore(app)
     try { enableIndexedDbPersistence(db).catch(() => {}) } catch(e) { console.warn('Persistence IndexedDB non disponible:', e) }
     const auth=getAuth(app)
+    const rememberedEmailKey = 'sca_player_remembered_email'
+    const loginEmailInput = document.getElementById('login-email')
+    const rememberLoginInput = document.getElementById('remember-login')
+    try {
+      const rememberedEmail = localStorage.getItem(rememberedEmailKey)
+      if (rememberedEmail) {
+        loginEmailInput.value = rememberedEmail
+        rememberLoginInput.checked = true
+      }
+    } catch (e) {
+      console.warn('[Player-app] Impossible de charger l’email mémorisé:', e)
+    }
+    rememberLoginInput.addEventListener('change', () => {
+      if (!rememberLoginInput.checked) {
+        try { localStorage.removeItem(rememberedEmailKey) } catch (e) {}
+      }
+    })
+    document.getElementById('login-form').addEventListener('submit', (event) => {
+      event.preventDefault()
+      window.handleEmailAuth()
+    })
 
     // ===== ACCÈS STAFF "VOIR TOUS LES JOUEURS" =====
     // Un membre du staff peut être autorisé (case "📱 Appli Joueur (voir tous les
@@ -1135,6 +1161,7 @@
 
     let joueurs=[],blessures=[],joueurActif=null,ratios={},maxTestes={},chargesReelles={},hooperScores={},exercicesList=[],poidsJoueur=null
     let playerWodTimerListeners=[]
+    let playerWodPartnerRefreshTimer=null
     let saisieUniqueMode = localStorage.getItem('player_saisie_unique_mode') !== 'false'
     let currentPerfTab='muscu',performancesData=null
     let recapVisible = localStorage.getItem('player_recap_visible') === 'true'
@@ -1490,6 +1517,8 @@
     let loginTab = 'login';
     window.toggleLoginTab = function(tab) {
       loginTab = tab;
+      document.getElementById('login-password').autocomplete =
+        tab === 'signup' ? 'new-password' : 'current-password';
       const loginBtn = document.getElementById('tab-login');
       const signupBtn = document.getElementById('tab-signup');
       const submitBtn = document.getElementById('btn-login-submit');
@@ -1551,6 +1580,12 @@
       try {
         if (loginTab === 'login') {
           await signInWithEmailAndPassword(auth, email, password);
+          try {
+            if (rememberLoginInput.checked) localStorage.setItem(rememberedEmailKey, email)
+            else localStorage.removeItem(rememberedEmailKey)
+          } catch (storageError) {
+            console.warn('[Player-app] Impossible de mémoriser l’email:', storageError)
+          }
         } else {
           await createUserWithEmailAndPassword(auth, email, password);
         }
@@ -2658,20 +2693,23 @@
       }
       return{state,value,meta,elapsed}
     }
-    function playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,scope='player'){
+    function playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,scope='player',pairId=''){
       if(!groupe?.crossTraining?.enabled)return''
-      const key=playerWodTimerKey(seanceId,bloc.id,groupe.id,scope,scope==='player'?joueurId:'')
+      const timerOwner=scope==='player'?joueurId:scope==='pair'?pairId:''
+      const key=playerWodTimerKey(seanceId,bloc.id,groupe.id,scope,timerOwner)
       const spec=playerWodTimerSpec(groupe.crossTraining)
-      const field=scope==='group'?'timer_group':'timer'
+      const field=scope==='group'?'timer_group':scope==='pair'?`timer_pair_${pairId}`:'timer'
       const dbKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field)
       const remoteValue=chargesReelles[dbKey]||''
       const {state,value,meta}=playerWodTimerView(readPlayerWodTimer(key,spec,remoteValue),spec)
-      const title=scope==='group'?'Chrono du groupe':'Mon chrono'
+      const title=scope==='group'?'Chrono du groupe':scope==='pair'?'Chrono du binôme':'Mon chrono'
+      const canValidateTime=scope==='pair'&&String(joueurId)===String(pairId.split('__')[0])&&['for-time','chipper','rft'].includes(groupe.crossTraining.format)
       const controls=scope==='group'?'':`<div class="player-wod-timer-actions">
           <button type="button" data-timer-action="toggle" onclick="window.playerCrossTrainingTimerAction(this,'toggle',event)">${state.status==='running'?'⏸ Pause':state.status==='paused'?'▶ Reprendre':state.status==='done'?'▶ Recommencer':'▶ Démarrer'}</button>
           <button type="button" data-timer-action="reset" onclick="window.playerCrossTrainingTimerAction(this,'reset',event)">↺ Reset</button>
+          ${canValidateTime?`<button type="button" data-timer-validate-time onclick="window.playerCrossTrainingValidatePairTime(this,event)">Confirmer et valider le temps</button>`:''}
         </div>`
-      return`<div class="player-wod-timer${scope==='group'?' is-shared':''}" data-player-wod-timer data-timer-scope="${scope}" data-timer-key="${crossTextEscP(key)}" data-timer-spec="${crossTextEscP(JSON.stringify(spec))}" data-db-key="${crossTextEscP(dbKey)}" data-session-id="${crossTextEscP(seanceId)}" data-bloc-id="${crossTextEscP(bloc.id)}" data-group-id="${crossTextEscP(groupe.id)}" data-player-id="${crossTextEscP(joueurId)}">
+      return`<div class="player-wod-timer${scope!=='player'?' is-shared':''}" data-player-wod-timer data-timer-scope="${scope}" data-timer-field="${crossTextEscP(field)}" data-pair-id="${crossTextEscP(pairId)}" data-timer-key="${crossTextEscP(key)}" data-timer-spec="${crossTextEscP(JSON.stringify(spec))}" data-db-key="${crossTextEscP(dbKey)}" data-session-id="${crossTextEscP(seanceId)}" data-bloc-id="${crossTextEscP(bloc.id)}" data-group-id="${crossTextEscP(groupe.id)}" data-player-id="${crossTextEscP(joueurId)}">
         <div class="player-wod-timer-head"><span>⏱ ${title} · ${crossTextEscP(groupe.nom||'WOD')}</span><strong data-timer-value>${value}</strong></div>
         <div class="player-wod-timer-meta" data-timer-meta>${meta}</div>
         ${controls}
@@ -2728,15 +2766,46 @@
         if(state.status==='idle')playerWodTimerCues.set(key,0)
         state.startedAt=Date.now();state.status='running'
       }
+      state.updatedAt=Date.now()
       savePlayerWodTimer(key,state)
       const {sessionId,blocId,groupId,playerId}=element.dataset
-      const dbKey=crossTrainingResultKeyP(sessionId,blocId,groupId,playerId,'timer')
+      const dbKey=element.dataset.dbKey||crossTrainingResultKeyP(sessionId,blocId,groupId,playerId,element.dataset.timerField||'timer')
       const serialized=JSON.stringify(state)
       chargesReelles[dbKey]=serialized
       setDoc(doc(db,'chargesReelles',`${sessionId}_${playerId}`),{[dbKey]:serialized,seance_id:sessionId,updatedAt:serverTimestamp()},{merge:true})
         .then(()=>_notifyShellChange('chargesReelles',`${sessionId}_${playerId}`,'updateDoc','Chrono CrossTraining'))
         .catch(error=>console.warn('[Joueur] Sauvegarde chrono WOD:',error))
       refreshPlayerWodTimerDisplays()
+    }
+    window.playerCrossTrainingValidatePairTime=async function(button,event){
+      event?.stopPropagation()
+      const element=button?.closest('[data-player-wod-timer]')
+      if(!element||element.dataset.timerScope!=='pair')return
+      const {sessionId,blocId,groupId,playerId}=element.dataset
+      const pairId=element.dataset.pairId||''
+      if(String(playerId)!==String(pairId.split('__')[0]))return
+      let spec,state
+      try{spec=JSON.parse(element.dataset.timerSpec||'{}');state=readPlayerWodTimer(element.dataset.timerKey,spec)}catch(error){return}
+      const elapsedMs=state.elapsedMs+(state.status==='running'?Date.now()-state.startedAt:0)
+      const elapsedSeconds=Math.floor(Math.min(spec.totalSec?spec.totalSec*1000:Infinity,elapsedMs)/1000)
+      if(!elapsedSeconds){alert('Démarre le chrono et termine le WOD avant de valider le temps.');return}
+      const time=formatPlayerWodTimer(elapsedSeconds)
+      if(!confirm(`Confirmer le temps de ${time} pour le binôme ?`))return
+      const timeKey=crossTrainingResultKeyP(sessionId,blocId,groupId,playerId,'time')
+      const pairKey=crossTrainingResultKeyP(sessionId,blocId,groupId,playerId,'pair_key')
+      const validatedKey=crossTrainingResultKeyP(sessionId,blocId,groupId,playerId,'validated')
+      const timerKey=element.dataset.dbKey
+      const timerDone=!!spec.totalSec&&elapsedSeconds>=spec.totalSec
+      state.elapsedMs=elapsedSeconds*1000;state.startedAt=0;state.status=timerDone?'done':'paused';state.updatedAt=Date.now()
+      const serialized=JSON.stringify(state)
+      const updates={seance_id:sessionId,updatedAt:serverTimestamp(),[timeKey]:time,[pairKey]:pairId,[validatedKey]:'true',[timerKey]:serialized}
+      chargesReelles[timeKey]=time;chargesReelles[pairKey]=pairId;chargesReelles[validatedKey]='true';chargesReelles[timerKey]=serialized
+      savePlayerWodTimer(element.dataset.timerKey,state)
+      try{
+        await setDoc(doc(db,'chargesReelles',`${sessionId}_${playerId}`),updates,{merge:true})
+        _notifyShellChange('chargesReelles',`${sessionId}_${playerId}`,'updateDoc','Validation du temps CrossTraining')
+        await chargerSeance({semaine:currentWeekStart})
+      }catch(error){console.error('[Joueur] validation du temps binôme:',error);alert('Le temps n’a pas pu être validé.')}
     }
     setInterval(refreshPlayerWodTimerDisplays,250)
     function stopPlayerWodTimerListeners(){
@@ -2758,6 +2827,18 @@
             try{
               const values=await chargerChargesReellesSeances([seance.id],joueurId)
               const data=values.get(`${seance.id}_${joueurId}`)||{}
+              let refreshTeamCards=false
+              document.querySelectorAll('[data-player-team-wod]').forEach(card=>{
+                if(card.dataset.teamSessionId!==seance.id)return
+                const choice=data[card.dataset.teamChoiceKey]||''
+                const invite=data[card.dataset.teamInviteKey]||''
+                let resultKeys=[]
+                try{resultKeys=JSON.parse(card.dataset.teamResultKeys||'[]')}catch(e){}
+                const signature=resultKeys.map(key=>data[key]??'').join('|')
+                if(choice!==card.dataset.currentTeamChoice||invite!==card.dataset.currentTeamInvite||signature!==card.dataset.currentTeamResultSignature){
+                  refreshTeamCards=true
+                }
+              })
               document.querySelectorAll('[data-player-wod-timer]').forEach(element=>{
                 if(element.dataset.sessionId!==seance.id)return
                 const remote=data[element.dataset.dbKey]
@@ -2768,6 +2849,12 @@
                 if(state?.signature===JSON.stringify(spec))playerWodTimerStates.set(key,state)
               })
               refreshPlayerWodTimerDisplays()
+              if(refreshTeamCards&&!playerWodPartnerRefreshTimer){
+                playerWodPartnerRefreshTimer=setTimeout(()=>{
+                  playerWodPartnerRefreshTimer=null
+                  if(joueurActif?.id===joueurId)chargerSeance({semaine:currentWeekStart})
+                },180)
+              }
             }catch(error){console.warn('[Joueur] Synchronisation chrono CrossTraining:',error)}
           })
           playerWodTimerListeners.push(unsubscribe)
@@ -2869,6 +2956,166 @@
       title.textContent=`🏋️ ${groupe.nom} · ${groupe.crossTraining.format==='for-time'?'For Time':groupe.crossTraining.format==='for-load'?'For Load':String(groupe.crossTraining.format||'CrossTraining').toUpperCase()}`
       title.style.cssText='font-size:11px;font-weight:800;color:#79B8FF;margin-bottom:7px;'
       card.appendChild(title)
+      const teamOfTwo=groupe.crossTraining.teamMode==='team'&&Math.max(2,Number(groupe.crossTraining.teamSize)||2)===2
+      if(teamOfTwo){
+        const partnerKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_partner')
+        const inviteKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_invited_by')
+        const selectedPartner=String(chargesReelles[partnerKey]||'')
+        const invitedPartner=String(chargesReelles[inviteKey]||'')
+        const effectivePartner=selectedPartner||invitedPartner
+        card.dataset.playerTeamWod='true'
+        card.dataset.teamSessionId=seanceId
+        card.dataset.teamChoiceKey=partnerKey
+        card.dataset.teamInviteKey=inviteKey
+        card.dataset.currentTeamChoice=selectedPartner
+        card.dataset.currentTeamInvite=invitedPartner
+        const teamResultKeys=[...crossTrainingResultFieldsP(groupe).map(field=>crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)),crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'validated'),crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'pair_key')]
+        const resultSignature=()=>teamResultKeys.map(key=>chargesReelles[key]??'').join('|')
+        card.dataset.teamResultKeys=JSON.stringify(teamResultKeys)
+        card.dataset.currentTeamResultSignature=resultSignature()
+        const partnerLabel=document.createElement('label')
+        partnerLabel.style.cssText='display:flex;flex-direction:column;gap:5px;margin:8px 0;font-size:11px;color:#79B8FF;'
+        partnerLabel.textContent='Choisis ton binôme'
+        const partnerSelect=document.createElement('select')
+        partnerSelect.style.cssText='width:100%;padding:10px;border:1px solid #4A9EFF55;border-radius:8px;background:#0f0f0f;color:#fff;font-size:14px;'
+        const empty=document.createElement('option')
+        empty.value='';empty.textContent='Choisir un joueur…';partnerSelect.appendChild(empty)
+        ;(groupe.joueurs||[]).filter(id=>String(id)!==String(joueurId)).forEach(id=>{
+          const teammate=joueurs.find(item=>String(item.id)===String(id))
+          if(!teammate)return
+          const option=document.createElement('option')
+          option.value=id
+          option.textContent=`${teammate.prenom||''} ${teammate.nom||''}`.trim()
+          option.selected=String(id)===selectedPartner
+          partnerSelect.appendChild(option)
+        })
+        partnerSelect.onchange=async()=>{
+          const choice=partnerSelect.value
+          const previousChoice=String(chargesReelles[partnerKey]||'')
+          chargesReelles[partnerKey]=choice
+          card.dataset.currentTeamChoice=choice
+          try{
+            await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[partnerKey]:choice,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+            const saved=await getDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`))
+            if(String(saved.data()?.[partnerKey]||'')!==choice)throw new Error('La base n’a pas confirmé le choix du partenaire.')
+            _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`Binôme CrossTraining ${groupe.nom}`)
+          }catch(error){
+            chargesReelles[partnerKey]=previousChoice
+            card.dataset.currentTeamChoice=previousChoice
+            partnerSelect.value=previousChoice
+            console.error('[Joueur] choix partenaire CrossTraining:',error)
+            alert(`Impossible d’enregistrer ton choix de binôme : ${error.message||error}`)
+            return
+          }
+          try{await chargerSeance({semaine:currentWeekStart})}
+          catch(error){console.warn('[Joueur] choix de binôme enregistré, rafraîchissement différé:',error)}
+        }
+        partnerLabel.appendChild(partnerSelect)
+        card.appendChild(partnerLabel)
+        const chosen=joueurs.find(item=>String(item.id)===selectedPartner)
+        const pairId=effectivePartner?[String(joueurId),effectivePartner].sort().join('__'):''
+        const status=document.createElement('div')
+        status.dataset.partnerStatus='true'
+        status.style.cssText='margin:4px 0 8px;font-size:10px;color:#9aa8b3;'
+        status.textContent=selectedPartner?`Choix envoyé : ${chosen?.prenom||''} ${chosen?.nom||''}. Le TV signale les conflits éventuels.`.trim():invitedPartner?`${joueurs.find(item=>String(item.id)===invitedPartner)?.prenom||''} ${joueurs.find(item=>String(item.id)===invitedPartner)?.nom||''} t’a choisi comme binôme.`.trim():'Choisis un partenaire pour ce WOD.'
+        card.appendChild(status)
+        const pairTimer=document.createElement('div')
+        pairTimer.dataset.pairTimerWrap='true'
+        pairTimer.innerHTML=pairId?playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,'pair',pairId):''
+        card.appendChild(pairTimer)
+        let scoreMatchesPair=pairId&&chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'pair_key')]===pairId
+        const isScoreOwner=!!pairId&&String(joueurId)===pairId.split('__')[0]
+        const validated=scoreMatchesPair&&chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'validated')]==='true'
+        const scoreStatus=document.createElement('div')
+        scoreStatus.style.cssText=`margin:6px 0;color:${validated?'#1D9E75':'#8291a0'};font-size:10px;font-weight:700;`
+        scoreStatus.textContent=!pairId?'Le score sera disponible quand un binôme sera formé.':validated?'✓ Score du binôme validé':isScoreOwner?'Saisis le résultat du binôme puis valide-le.':'Le score du binôme est géré par son référent et visible ici après validation.'
+        card.appendChild(scoreStatus)
+        if(isScoreOwner){
+          const fieldsWrap=document.createElement('div')
+          fieldsWrap.style.cssText='display:flex;flex-wrap:wrap;gap:8px;'
+          crossTrainingResultFieldsP(groupe).forEach(field=>{
+            const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)
+            const label=document.createElement('label')
+            label.style.cssText='display:flex;flex-direction:column;gap:4px;flex:1;min-width:100px;font-size:10px;color:#888;'
+            label.textContent=field.label
+            const input=document.createElement('input')
+            input.type=field.type;input.placeholder=field.placeholder
+            input.value=scoreMatchesPair?chargesReelles[key]||'':''
+            input.title=field.label
+            input.style.cssText='width:100%;padding:9px;border:1px solid #2a2a2a;border-radius:7px;background:#0f0f0f;color:#79B8FF;font-size:14px;font-weight:700;'
+            input.onchange=async()=>{
+              const value=input.value.trim()
+              if(validated&&!confirm(`Le score de ${pairId.replace('__',' + ')} est validé. Confirmer sa modification ?`)){
+                input.value=scoreMatchesPair?chargesReelles[key]||'':''
+                return
+              }
+              const updates={seance_id:seanceId,updatedAt:serverTimestamp()}
+              if(!scoreMatchesPair){
+                crossTrainingResultFieldsP(groupe).forEach(resultField=>{
+                  const resultKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,resultField.key)
+                  const resultValue=resultField.key===field.key?value:''
+                  chargesReelles[resultKey]=resultValue
+                  updates[resultKey]=resultValue
+                })
+                const validatedKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'validated')
+                chargesReelles[validatedKey]='';updates[validatedKey]=''
+                scoreMatchesPair=true
+              }else{
+                chargesReelles[key]=value;updates[key]=value
+              }
+              const pairKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'pair_key')
+              chargesReelles[pairKey]=pairId;updates[pairKey]=pairId
+              try{
+                await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})
+                _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`Score CrossTraining ${groupe.nom}`)
+              }catch(error){console.error('[Joueur] modification score binôme:',error);alert('Le score n’a pas pu être enregistré.')}
+            }
+            label.appendChild(input);fieldsWrap.appendChild(label)
+          })
+          card.appendChild(fieldsWrap)
+          const validate=document.createElement('button')
+          validate.type='button'
+          validate.textContent=validated?'Score validé ✓':'Valider le score'
+          validate.disabled=validated
+          validate.style.cssText='margin-top:8px;padding:10px 14px;border:0;border-radius:8px;background:#E9A23B;color:#17120a;font-size:12px;font-weight:800;'
+          validate.onclick=async()=>{
+            const updates={seance_id:seanceId,updatedAt:serverTimestamp()}
+            let hasValue=false
+            crossTrainingResultFieldsP(groupe).forEach(field=>{
+              const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)
+              const input=[...fieldsWrap.querySelectorAll('input')].find(item=>item.title===field.label)
+              const value=input?.value.trim()||(scoreMatchesPair?chargesReelles[key]:'')||''
+              if(value)hasValue=true
+              chargesReelles[key]=value;updates[key]=value
+            })
+            if(!hasValue){alert('Saisis au moins un résultat avant de valider le score.');return}
+            const pairKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'pair_key')
+            const validatedKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'validated')
+            chargesReelles[pairKey]=pairId;updates[pairKey]=pairId
+            chargesReelles[validatedKey]='true';updates[validatedKey]='true'
+            try{
+              await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})
+              _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`Validation CrossTraining ${groupe.nom}`)
+              await chargerSeance({semaine:currentWeekStart})
+            }catch(error){console.error('[Joueur] validation score binôme:',error);alert('Le score n’a pas pu être validé.')}
+          }
+          card.appendChild(validate)
+        }else{
+          const readOnlyResults=document.createElement('div')
+          readOnlyResults.style.cssText='display:flex;flex-wrap:wrap;gap:8px;'
+          crossTrainingResultFieldsP(groupe).forEach(field=>{
+            if(!scoreMatchesPair)return
+            const value=chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)]
+            if(value==null||value==='')return
+            const item=document.createElement('div')
+            item.style.cssText='padding:6px 8px;border:1px solid #2a2a2a;border-radius:7px;background:#111;font-size:10px;color:#ddd;'
+            item.textContent=`${field.shortLabel||field.label} : ${value}`
+            readOnlyResults.appendChild(item)
+          })
+          card.appendChild(readOnlyResults)
+        }
+        return card
+      }
       const timer=document.createElement('div')
       timer.innerHTML=playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,'group')
       if(timer.firstElementChild)card.appendChild(timer.firstElementChild)
