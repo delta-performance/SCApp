@@ -3696,6 +3696,7 @@
               if(!exoOrig.exercice && !exoOrig.isEnergetique)return
               const crossFormat=gJ.crossTraining?.format
               const isWod=!!gJ.crossTraining?.enabled
+              const isMaxReps=!!exoOrig.maxReps
               const crossPosition=(gJ.exercices||[]).findIndex(item=>item.id===exoOrig.id)+1||1
 
               // Résoudre l'option : exo principal OU option choisie/imposée
@@ -3734,10 +3735,10 @@
               const unit=exo.intensityUnit||exo.intensityType||'RPE'
               const broadJump=isBroadJump(exo.exercice)
               const keiser=isKeiserExercice(exo.exercice)
-              const reco=broadJump?'cm':labelChargeReco(exo)
+              const reco=isMaxReps?'Max reps':broadJump?'cm':labelChargeReco(exo)
               const traction=isTraction(exo.exercice)
               const unitLabel = broadJump ? 'cm' : (unit === 'PCT' || unit === '%' ? '%' : unit === 'Vitesse (m/s)' || unit === 'VITESSE' ? 'm/s' : unit === 'PDC' ? 'PDC' : unit === '% PDC' ? '% PDC' : unit === 'kg' ? 'kg' : unit === 'W' ? 'W' : 'RPE')
-              const hasInput=(unit!=='RPE'&&unit!=='kg'&&unit!=='W'&&unit!=='PDC')||traction||broadJump||keiser // RPE/kg/W/PDC = pas de saisie, sauf pour les tractions/dips/keiser
+              const hasInput=isMaxReps||(unit!=='RPE'&&unit!=='kg'&&unit!=='W'&&unit!=='PDC')||traction||broadJump||keiser // RPE/kg/W/PDC = pas de saisie, sauf pour les tractions/dips/keiser
               
               const eEl=document.createElement('div');eEl.className='seance-exo'
               eEl.style.display='flex'
@@ -3752,7 +3753,9 @@
               const repsDisplay = clusterRepsDisplay(exo)
               const clusterSuffix = exo.clusterSplit?.length > 1 ? ' (cluster)' : ''
               const repsSuffix = (repsDisplay && !exo.variableSeries && !(exo.clusterSplit?.length > 1) && !exo.repsIsTime && !exo.repsIsMeters) ? ' reps' : ''
-              const paramsText = unit === 'PDC'
+              const paramsText = isMaxReps
+                ? `${exo.nbSets} séries · max reps`
+                : unit === 'PDC'
                 ? `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix} · PDC`
                 : `${exo.nbSets} séries × ${repsDisplay}${clusterSuffix}${repsSuffix} · ${unitLabel} ${exo.rpe}${variableSeriesIntensityDisplay(exo)}`
               
@@ -3763,7 +3766,7 @@
                   : `<div style="flex:1;">
                   <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${exo.nrgNom||exo.exercice||'Mouvement'}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')}</div>
                   ${isWod?'':`<div class="seance-exo-params">${paramsText}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · récup='+exo.recup:''}</div>
-                  <div class="seance-charge">${reco}</div>
+                  ${isMaxReps?'':'<div class="seance-charge">'+reco+'</div>'}
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}`}
                 </div>`}
                 ${isWod?'':dropSetDisplayHTMLP(exo)}
@@ -3779,7 +3782,16 @@
                 const gr=document.createElement('div');gr.className='series-grid'
                 gr.style.marginTop='8px'
                 const clefBase=`${sa.id}_${bloc.id}_${gJ.id}_${exo.id}_${joueurActif.id}`
-                if(traction){
+                if(isMaxReps){
+                  for(let s=1;s<=(exo.nbSets||1);s++){
+                    const clef=`${clefBase}_s${s}`
+                    const value=chargesReelles[clef]??''
+                    const ckId='ck_'+Math.random().toString(36).slice(2)
+                    const box=document.createElement('div');box.className='serie-box'
+                    box.innerHTML=`<div class="serie-lbl">Série ${s} · max reps</div><input class="serie-inp" type="number" min="0" step="1" inputmode="numeric" placeholder="reps" value="${value}" style="${value!==''?'color:#1D9E75':''}" data-charge-key="${clef}" data-exo="${exo.exercice}" data-date="${sa.date||''}" data-max-reps="true" onchange="sauverSerie('${sa.id}','${clef}','${joueurActif.id}',this.value,this,'${ckId}',null)" /><div class="serie-ok" id="${ckId}">${value!==''?'✓':''}</div>`
+                    gr.appendChild(box)
+                  }
+                } else if(traction){
                   if(saisieUniqueMode){
                     // Traction + saisie unique → un seul bouton pour toutes les séries
                     const clefS1=clefBase+'_s1'
@@ -5586,7 +5598,9 @@
     }
 
     window.sauverSerie=async function(seanceId,clef,joueurId,val,inp,ckId,reps){
-      if(!val)return
+      const isMaxReps=inp?.dataset?.maxReps==='true'
+      if(!val&&!(isMaxReps&&String(val)==='0'))return
+      if(isMaxReps&&(!Number.isInteger(Number(val))||Number(val)<0))return
       chargesReelles[clef]=val;inp.style.color='#1D9E75'
       actualiserDropSetApercusP(clef.replace(/_s\d+$/,''))
       actualiserBackoffSetApercusP(clef.replace(/_s\d+$/,''))
@@ -5615,6 +5629,21 @@
             }
             _notifyShellChange('puissanceData',joueurId,'updateDoc',exoName||'Puissance')
           }catch(e){console.error('[broadJump] erreur:',e)}
+        }
+      } else if(isMaxReps){
+        const repCount=Number(val)
+        if(exoName&&exoDate&&Number.isInteger(repCount)&&repCount>=0){
+          const perfId=`${joueurId}_${exoName}_${exoDate}`
+          const seriesPrefix=clef.replace(/_s\d+$/,'_s')
+          const maxReps=Object.entries(chargesReelles)
+            .filter(([key])=>key.startsWith(seriesPrefix)&&/_s\d+$/.test(key))
+            .reduce((max,[,value])=>Math.max(max,parseInt(value,10)||0),0)
+          try{
+            await setDoc(doc(db,'dataPerf',perfId),{
+              joueurId,exercice:exoName,date:exoDate,reps:maxReps,unite:'reps'
+            })
+            _notifyShellChange('dataPerf',perfId,'updateDoc',exoName)
+          }catch(e){console.error('[dataPerf max reps] erreur écriture:',e)}
         }
       } else {
         const repsForMax = (reps != null && reps !== undefined) ? reps : (inp && inp.dataset && inp.dataset.reps ? parseFloat(inp.dataset.reps) : null)
@@ -7242,6 +7271,8 @@ async function chargerRapportMatch() {
     const sPerso = snapPerso.exists() ? snapPerso.data() : {}
     const sCol = snapCol.exists() ? snapCol.data() : {}
     window.__allJoueursData = sCol.joueurs || []
+    window.__rapportMatchNomGPS = sPerso.nomGPS || ''
+    window.__rapportMatchPosteGPS = sPerso.posteGPS || ''
 
     // Nouveau : stats communes par match calculées dans gps-match.html
     const rawMatchs = sCol.matchs || {}
@@ -7374,6 +7405,166 @@ async function loadFFRScoreReadOnly(matchKey) {
   }
 }
 
+function renderMatchClassement(c, match) {
+  const joueursGPS = window.__allJoueursData || []
+  const matchKey = normaliserLibelleGPS(match?.key || match?.matchKey)
+  const currentName = window.__rapportMatchNomGPS || ''
+  const currentPlayerName = normaliserLibelleGPS(currentName)
+  const currentPoste = String(window.__rapportMatchPosteGPS || '').trim()
+  const mode = window.__rapportMatchClassementMode || 'equipe'
+  const toNum = value => {
+    const n = Number(String(value ?? '').replace(',', '.'))
+    return Number.isFinite(n) ? n : 0
+  }
+  const normaliserLigne = poste => {
+    const p = normaliserLibelleGPS(poste)
+    if (p.includes('pilier') || p.includes('talonneur') || p.includes('ligne')) return 'Avants'
+    if (p.includes('demi') || p.includes('centre') || p.includes('ailier') || p.includes('arriere')) return '3/4'
+    return 'Autre'
+  }
+  const statsPourMatch = joueur => {
+    const h = (joueur.historique || []).find(item =>
+      normaliserLibelleGPS(item.seance || item.matchKey) === matchKey
+    )
+    if (!h) return null
+
+    const periodesQT = Object.entries(h.perPeriod || {}).filter(([period]) => isQTGPSPeriod(period))
+    const sommeQT = key => periodesQT.reduce((sum, [, period]) => sum + toNum(period?.[key]), 0)
+    const maxQT = key => Math.max(...periodesQT.map(([, period]) => toNum(period?.[key])), 0)
+    const distTot = periodesQT.length ? sommeQT('distTot') : toNum(h.distTot)
+    const distHI = periodesQT.length ? sommeQT('distHI') : toNum(h.distHI)
+    const duree = periodesQT.length ? sommeQT('duree') : toNum(h.duree)
+    const accB2 = periodesQT.length ? sommeQT('accB2') : toNum(h.accB2)
+    const accB3 = periodesQT.length ? sommeQT('accB3') : toNum(h.accB3)
+    const vmax = periodesQT.length ? maxQT('vmax') : toNum(h.vmax)
+    const volHI = periodesQT.length ? sommeQT('volHI') : toNum(h.volHI)
+    const vmaxRef = Math.max(toNum(joueur.vmax6m || joueur.vmaxSaison), vmax)
+
+    return {
+      distHI,
+      mMin: duree > 0 ? distTot / duree : toNum(h.mMin),
+      hiMin: duree > 0 ? distHI / duree : toNum(h.hiMin),
+      volHI: volHI || distHI + 4 * (accB2 + accB3),
+      vmax,
+      pctVmax: vmaxRef > 0 ? Math.round(vmax / vmaxRef * 100) : toNum(h.vmaxPct)
+    }
+  }
+
+  const joueursAvecStats = joueursGPS.map(joueur => ({
+    nomGPS: joueur.nomGPS || '',
+    posteGPS: joueur.posteGPS || '',
+    stats: statsPourMatch(joueur)
+  })).filter(joueur => joueur.nomGPS && joueur.stats)
+
+  const persoMatch = (window.__persoMatchs || {})[match?.key || match?.matchKey]
+  const joueurActifStats = statsPourMatch({
+    nomGPS: currentName,
+    posteGPS: currentPoste,
+    historique: window.__persoHist || []
+  })
+  const ownStats = persoMatch ? {
+    distHI: toNum(persoMatch.distHI),
+    mMin: toNum(persoMatch.mMin),
+    hiMin: toNum(persoMatch.hiMin),
+    volHI: toNum(persoMatch.volHI),
+    vmax: toNum(persoMatch.vmax),
+    pctVmax: joueurActifStats?.pctVmax || 0
+  } : joueurActifStats
+  if (currentPlayerName && ownStats) {
+    const existing = joueursAvecStats.find(j => normaliserLibelleGPS(j.nomGPS) === currentPlayerName)
+    if (existing) existing.stats = ownStats
+    else joueursAvecStats.push({ nomGPS: currentName, posteGPS: currentPoste, stats: ownStats })
+  }
+
+  const metriques = [
+    { key: 'distHI', label: 'Dist HSR >18 km/h', unit: 'm', color: '#E24B4A', decimals: 0 },
+    { key: 'mMin', label: 'm / min', unit: 'm/min', color: '#FECC00', decimals: 1 },
+    { key: 'hiMin', label: 'HI / min', unit: 'm/min', color: '#EF9F27', decimals: 2 },
+    { key: 'volHI', label: 'Volume HI', unit: 'UA', color: '#378ADD', decimals: 0 },
+    { key: 'vmax', label: 'Vmax', unit: 'km/h', color: '#1D9E75', decimals: 1 },
+    { key: 'pctVmax', label: '% Vmax', unit: '%', color: '#5DCAA5', decimals: 0 }
+  ]
+  const selector = document.createElement('div')
+  selector.style.cssText = 'display:flex;gap:6px;margin-bottom:12px;'
+  selector.innerHTML = `
+    <button class="match-rang-mode" data-mode="equipe">🏢 Équipe</button>
+    <button class="match-rang-mode" data-mode="ligne">🔄 Ligne</button>
+    <button class="match-rang-mode" data-mode="poste">👤 Poste</button>
+  `
+  selector.querySelectorAll('.match-rang-mode').forEach(button => {
+    const active = button.dataset.mode === mode
+    button.style.cssText = `flex:1;padding:8px 4px;border-radius:6px;border:1px solid ${active ? '#FECC00' : '#2a2a2a'};background:${active ? '#FECC00' : '#0f0f0f'};color:${active ? '#0f0f0f' : '#888'};font-size:10px;font-weight:${active ? '600' : '500'};cursor:pointer;`
+    button.onclick = () => {
+      window.__rapportMatchClassementMode = button.dataset.mode
+      renderRapportMatch(c, window.__allMatches || [], window.__persoHist || [], match?.key)
+    }
+  })
+  c.appendChild(selector)
+
+  const scope = mode === 'ligne'
+    ? `joueurs de la même ligne (${normaliserLigne(currentPoste)})`
+    : mode === 'poste'
+      ? `joueurs du même poste (${currentPoste || '?'})`
+      : 'joueurs de l’équipe'
+  const joueursDuGroupe = joueursAvecStats.filter(joueur => {
+    if (mode === 'ligne') return normaliserLigne(joueur.posteGPS) === normaliserLigne(currentPoste)
+    if (mode === 'poste') return normaliserLibelleGPS(joueur.posteGPS) === normaliserLibelleGPS(currentPoste)
+    return true
+  })
+  const info = document.createElement('div')
+  info.style.cssText = 'font-size:10px;color:#666;margin-bottom:10px;padding:8px;background:#0f0f0f;border-radius:6px;'
+  info.textContent = `Classement de ce match comparé aux ${scope} · ${joueursDuGroupe.length} joueur(s) classé(s)`
+  c.appendChild(info)
+
+  if (!joueursDuGroupe.length) {
+    c.insertAdjacentHTML('beforeend', '<div class="empty-msg"><div class="empty-icon">🏆</div>Classement indisponible pour ce match.</div>')
+    return
+  }
+
+  const nomAffiche = `${joueurActif?.prenom || ''} ${joueurActif?.nom || ''}`.trim() || 'Toi'
+  metriques.forEach(metric => {
+    const sorted = joueursDuGroupe
+      .filter(joueur => joueur.stats[metric.key] > 0)
+      .sort((a, b) => b.stats[metric.key] - a.stats[metric.key])
+    const rank = sorted.findIndex(joueur => normaliserLibelleGPS(joueur.nomGPS) === currentPlayerName) + 1
+    const ownValue = rank > 0 ? sorted[rank - 1].stats[metric.key] : 0
+    const card = document.createElement('div')
+    card.style.cssText = 'background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:12px;margin-bottom:10px;'
+    card.innerHTML = `
+      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;margin-bottom:10px;">
+        ${metric.label}<span style="float:right;color:${metric.color};">${rank ? `#${rank}` : '—'}/${sorted.length}</span>
+      </div>
+      <div style="font-size:10px;color:#666;margin-bottom:8px;padding:4px 8px;background:#FECC0011;border-radius:4px;">
+        Ton résultat : <b style="color:#FECC00;">${ownValue.toFixed(metric.decimals)} ${metric.unit}</b>
+      </div>
+    `
+    sorted.slice(0, 3).forEach((joueur, index) => {
+      const isMe = normaliserLibelleGPS(joueur.nomGPS) === currentPlayerName
+      const diff = ownValue - joueur.stats[metric.key]
+      const diffText = diff > 0 ? `(+${diff.toFixed(metric.decimals)})` : diff < 0 ? `(${diff.toFixed(metric.decimals)})` : ''
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #111;'
+      row.innerHTML = `
+        <div style="width:22px;text-align:center;font-size:16px;">${['🥇','🥈','🥉'][index]}</div>
+        <div style="flex:1;font-size:12px;color:${isMe ? '#FECC00' : '#888'};font-weight:${isMe ? '600' : 'normal'};">${isMe ? nomAffiche : '—'}</div>
+        <div style="font-size:11px;font-weight:600;color:${index === 0 ? metric.color : '#888'};text-align:right;">${joueur.stats[metric.key].toFixed(metric.decimals)} ${metric.unit}<br><span style="font-size:9px;font-weight:500;color:#666;">${diffText}</span></div>
+      `
+      card.appendChild(row)
+    })
+    if (rank > 3) {
+      const ownRow = document.createElement('div')
+      ownRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;background:#FECC0015;border-radius:6px;border:1px solid #FECC0033;'
+      ownRow.innerHTML = `
+        <div style="width:22px;text-align:center;font-size:11px;color:#FECC00;font-weight:600;">#${rank}</div>
+        <div style="flex:1;font-size:12px;color:#FECC00;font-weight:600;">${nomAffiche}</div>
+        <div style="font-size:11px;font-weight:600;color:#FECC00;">${ownValue.toFixed(metric.decimals)} ${metric.unit}</div>
+      `
+      card.appendChild(ownRow)
+    }
+    c.appendChild(card)
+  })
+}
+
 function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
   c.innerHTML = ''
   if (!allMatches.length) {
@@ -7399,12 +7590,14 @@ function renderRapportMatch(c, allMatches, persoHist, selectedKey) {
       <button class="tab-btn" id="tab-match-btn" onclick="setRapportMatchTab('match')" style="flex:1;padding:6px 8px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:transparent;color:#666;${tab === 'match' ? 'background:#FECC00;color:#0f0f0f;' : ''}">🏉 Stats Match</button>
       <button class="tab-btn" id="tab-post-btn" onclick="setRapportMatchTab('poste')" style="flex:1;padding:6px 8px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:transparent;color:#666;${tab === 'poste' ? 'background:#FECC00;color:#0f0f0f;' : ''}">👕 Par Poste</button>
       <button class="tab-btn" id="tab-ind-btn" onclick="setRapportMatchTab('individuel')" style="flex:1;padding:6px 8px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:transparent;color:#666;${tab === 'individuel' ? 'background:#FECC00;color:#0f0f0f;' : ''}">👤 Individuel</button>
+      <button class="tab-btn" id="tab-rang-btn" onclick="setRapportMatchTab('classement')" style="flex:1;padding:6px 4px;border-radius:6px;border:none;font-size:10px;font-weight:600;cursor:pointer;background:transparent;color:#666;${tab === 'classement' ? 'background:#FECC00;color:#0f0f0f;' : ''}">🏆 Classement</button>
     </div>
   `
   c.appendChild(header)
 
   if (tab === 'match') renderMatchTab(c, selectedMatch, persoHist)
   else if (tab === 'poste') renderPosteTab(c, selectedMatch)
+  else if (tab === 'classement') renderMatchClassement(c, selectedMatch)
   else renderIndividuelTab(c, persoHist, window.__persoMatchs || {})
 }
 
