@@ -2959,6 +2959,7 @@
       const teamOfTwo=groupe.crossTraining.teamMode==='team'&&Math.max(2,Number(groupe.crossTraining.teamSize)||2)===2
       if(teamOfTwo){
         const partnerKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_partner')
+        const partnerNameKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_partner_name')
         const inviteKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_invited_by')
         const selectedPartner=String(chargesReelles[partnerKey]||'')
         const invitedPartner=String(chargesReelles[inviteKey]||'')
@@ -2989,20 +2990,29 @@
           option.selected=String(id)===selectedPartner
           partnerSelect.appendChild(option)
         })
-        partnerSelect.onchange=async()=>{
-          const choice=partnerSelect.value
+        const otherOption=document.createElement('option')
+        otherOption.value='__other__';otherOption.textContent='Autre…'
+        otherOption.selected=selectedPartner.startsWith('other:')
+        partnerSelect.appendChild(otherOption)
+        const otherNameInput=document.createElement('input')
+        otherNameInput.type='text'
+        otherNameInput.placeholder='Nom de ton autre coéquipier'
+        otherNameInput.value=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||''):''
+        otherNameInput.style.cssText=`width:100%;padding:9px;border:1px solid #4A9EFF55;border-radius:8px;background:#0f0f0f;color:#fff;font-size:14px;${selectedPartner.startsWith('other:')?'':'display:none;'}`
+        const savePartnerChoice=async(choice,partnerName='')=>{
           const previousChoice=String(chargesReelles[partnerKey]||'')
+          const previousName=String(chargesReelles[partnerNameKey]||'')
           chargesReelles[partnerKey]=choice
+          chargesReelles[partnerNameKey]=partnerName
           card.dataset.currentTeamChoice=choice
           try{
-            await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[partnerKey]:choice,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
-            const saved=await getDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`))
-            if(String(saved.data()?.[partnerKey]||'')!==choice)throw new Error('La base n’a pas confirmé le choix du partenaire.')
+            await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[partnerKey]:choice,[partnerNameKey]:partnerName,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
             _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`Binôme CrossTraining ${groupe.nom}`)
           }catch(error){
             chargesReelles[partnerKey]=previousChoice
+            chargesReelles[partnerNameKey]=previousName
             card.dataset.currentTeamChoice=previousChoice
-            partnerSelect.value=previousChoice
+            partnerSelect.value=previousChoice.startsWith('other:')?'__other__':previousChoice
             console.error('[Joueur] choix partenaire CrossTraining:',error)
             alert(`Impossible d’enregistrer ton choix de binôme : ${error.message||error}`)
             return
@@ -3010,14 +3020,33 @@
           try{await chargerSeance({semaine:currentWeekStart})}
           catch(error){console.warn('[Joueur] choix de binôme enregistré, rafraîchissement différé:',error)}
         }
+        const confirmOtherButton=document.createElement('button')
+        confirmOtherButton.type='button'
+        confirmOtherButton.textContent='Ajouter ce coéquipier'
+        confirmOtherButton.style.cssText='padding:8px 12px;border:0;border-radius:7px;background:#4A9EFF;color:#fff;font-size:12px;font-weight:700;'
+        confirmOtherButton.style.display=selectedPartner.startsWith('other:')?'':'none'
+        confirmOtherButton.onclick=()=>{
+          const partnerName=otherNameInput.value.trim()
+          if(!partnerName){otherNameInput.focus();return}
+          savePartnerChoice(`other:${encodeURIComponent(partnerName.toLocaleLowerCase())}`,partnerName)
+        }
+        partnerSelect.onchange=()=>{
+          const isOther=partnerSelect.value==='__other__'
+          otherNameInput.style.display=isOther?'':'none'
+          confirmOtherButton.style.display=isOther?'':'none'
+          if(isOther){otherNameInput.value=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||''):'';otherNameInput.focus()}
+          else savePartnerChoice(partnerSelect.value,'')
+        }
         partnerLabel.appendChild(partnerSelect)
+        partnerLabel.append(otherNameInput,confirmOtherButton)
         card.appendChild(partnerLabel)
         const chosen=joueurs.find(item=>String(item.id)===selectedPartner)
-        const pairId=effectivePartner?[String(joueurId),effectivePartner].sort().join('__'):''
+        const chosenName=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||'Autre'):`${chosen?.prenom||''} ${chosen?.nom||''}`.trim()
+        const pairId=effectivePartner?(effectivePartner.startsWith('other:')?`${joueurId}__${effectivePartner}`:[String(joueurId),effectivePartner].sort().join('__')):''
         const status=document.createElement('div')
         status.dataset.partnerStatus='true'
         status.style.cssText='margin:4px 0 8px;font-size:10px;color:#9aa8b3;'
-        status.textContent=selectedPartner?`Choix envoyé : ${chosen?.prenom||''} ${chosen?.nom||''}. Le TV signale les conflits éventuels.`.trim():invitedPartner?`${joueurs.find(item=>String(item.id)===invitedPartner)?.prenom||''} ${joueurs.find(item=>String(item.id)===invitedPartner)?.nom||''} t’a choisi comme binôme.`.trim():'Choisis un partenaire pour ce WOD.'
+        status.textContent=selectedPartner?`Choix envoyé : ${chosenName}. Le TV signale les conflits éventuels.`.trim():invitedPartner?`${joueurs.find(item=>String(item.id)===invitedPartner)?.prenom||''} ${joueurs.find(item=>String(item.id)===invitedPartner)?.nom||''} t’a choisi comme binôme.`.trim():'Choisis un partenaire pour ce WOD.'
         card.appendChild(status)
         const pairTimer=document.createElement('div')
         pairTimer.dataset.pairTimerWrap='true'
