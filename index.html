@@ -2599,6 +2599,9 @@
     function crossTrainingResultKeyP(seanceId,blocId,groupeId,joueurId,field){
       return `${seanceId}_${blocId}_${groupeId}_wod_${joueurId}_${field}`
     }
+    function crossTrainingOtherNameFromChoice(choice){
+      try{return decodeURIComponent(String(choice||'').slice('other:'.length))}catch(e){return ''}
+    }
     const playerWodTimerStates=new Map()
     const playerWodTimerCues=new Map()
     function playerWodTimerSpec(wod){
@@ -2997,7 +3000,7 @@
         const otherNameInput=document.createElement('input')
         otherNameInput.type='text'
         otherNameInput.placeholder='Nom de ton autre coéquipier'
-        otherNameInput.value=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||''):''
+        otherNameInput.value=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||crossTrainingOtherNameFromChoice(selectedPartner)):''
         otherNameInput.style.cssText=`width:100%;padding:9px;border:1px solid #4A9EFF55;border-radius:8px;background:#0f0f0f;color:#fff;font-size:14px;${selectedPartner.startsWith('other:')?'':'display:none;'}`
         const savePartnerChoice=async(choice,partnerName='')=>{
           const previousChoice=String(chargesReelles[partnerKey]||'')
@@ -3028,20 +3031,20 @@
         confirmOtherButton.onclick=()=>{
           const partnerName=otherNameInput.value.trim()
           if(!partnerName){otherNameInput.focus();return}
-          savePartnerChoice(`other:${encodeURIComponent(partnerName.toLocaleLowerCase())}`,partnerName)
+          savePartnerChoice(`other:${encodeURIComponent(partnerName)}`,partnerName)
         }
         partnerSelect.onchange=()=>{
           const isOther=partnerSelect.value==='__other__'
           otherNameInput.style.display=isOther?'':'none'
           confirmOtherButton.style.display=isOther?'':'none'
-          if(isOther){otherNameInput.value=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||''):'';otherNameInput.focus()}
+          if(isOther){otherNameInput.value=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||crossTrainingOtherNameFromChoice(selectedPartner)):'';otherNameInput.focus()}
           else savePartnerChoice(partnerSelect.value,'')
         }
         partnerLabel.appendChild(partnerSelect)
         partnerLabel.append(otherNameInput,confirmOtherButton)
         card.appendChild(partnerLabel)
         const chosen=joueurs.find(item=>String(item.id)===selectedPartner)
-        const chosenName=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||'Autre'):`${chosen?.prenom||''} ${chosen?.nom||''}`.trim()
+        const chosenName=selectedPartner.startsWith('other:')?String(chargesReelles[partnerNameKey]||crossTrainingOtherNameFromChoice(selectedPartner)||'Autre'):`${chosen?.prenom||''} ${chosen?.nom||''}`.trim()
         const pairId=effectivePartner?(effectivePartner.startsWith('other:')?`${joueurId}__${effectivePartner}`:[String(joueurId),effectivePartner].sort().join('__')):''
         const status=document.createElement('div')
         status.dataset.partnerStatus='true'
