@@ -1592,7 +1592,12 @@
       } catch (e) {
         console.error(e);
         let errorMsg = 'Une erreur est survenue.';
-        if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+        const authErrorText = `${e.code || ''} ${e.message || ''}`.toLowerCase();
+        const serviceUnavailable = [402, 429, 500, 502, 503, 504].includes(Number(e.status)) ||
+          /service.?restricted|quota|billing|project.*paused|temporarily unavailable/.test(authErrorText);
+        if (serviceUnavailable) {
+          errorMsg = 'Le service de connexion Supabase est indisponible (quota ou facturation). Réessaie plus tard ou contacte l’administrateur.';
+        } else if (e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
           errorMsg = 'Email ou mot de passe incorrect.';
         } else if (e.code === 'auth/network-request-failed' || e.name === 'AuthRetryableFetchError' || e.name === 'TypeError') {
           errorMsg = 'Connexion impossible pour le moment. Vérifie internet puis réessaie.';
@@ -3714,10 +3719,11 @@
               .filter(groupe=>groupe.crossTraining?.enabled&&groupeAssigneJoueur(groupe,joueurActif))
               .map(groupe=>({bloc,groupe})))
             renderedLeaders.add(leaderId)
+            const blocFacultatif=mega.some(item=>item.facultatif)
             const bEl=document.createElement('div');bEl.className='seance-bloc'
             bEl.style.border='none';bEl.style.borderRadius='0';bEl.style.marginBottom='0'
             const groupBadges = playerGroupes.map(g => g.nom).join(' / ')
-            bEl.innerHTML=`<div class="seance-bloc-header">${leader.nom}<span class="seance-groupe-badge">${groupBadges}</span></div>${leader.comment?`<div class="seance-bloc-comment">📝 ${leader.comment}</div>`:''}${playerGroupes.map(gJ => gJ.comment ? `<div class="seance-bloc-comment" style="color:#666;">💬 ${gJ.comment}</div>` : '').join('')}`
+            bEl.innerHTML=`<div class="seance-bloc-header">${leader.nom}${blocFacultatif?'<span class="seance-bonus-badge">⭐ BONUS FACULTATIF · NON OBLIGATOIRE</span>':''}<span class="seance-groupe-badge">${groupBadges}</span></div>${leader.comment?`<div class="seance-bloc-comment">📝 ${leader.comment}</div>`:''}${playerGroupes.map(gJ => gJ.comment ? `<div class="seance-bloc-comment" style="color:#666;">💬 ${gJ.comment}</div>` : '').join('')}`
             playerCrossGroups.forEach(({bloc:crossBloc,groupe:crossGroupe})=>{
               const summary=document.createElement('div')
               summary.innerHTML=crossTrainingGroupSummaryP(crossGroupe)
@@ -5453,7 +5459,7 @@
             const bEl = document.createElement('div')
             bEl.className = 'seance-bloc'
             bEl.style.border = 'none'; bEl.style.borderRadius = '0'; bEl.style.marginBottom = '0'
-            bEl.innerHTML = `<div class="seance-bloc-header">${bloc.nom}<span class="seance-groupe-badge">${g.nom}</span></div>${bloc.comment?`<div class="seance-bloc-comment">📝 ${bloc.comment}</div>`:''}`
+            bEl.innerHTML = `<div class="seance-bloc-header">${bloc.nom}${bloc.facultatif?'<span class="seance-bonus-badge">⭐ BONUS FACULTATIF · NON OBLIGATOIRE</span>':''}<span class="seance-groupe-badge">${g.nom}</span></div>${bloc.comment?`<div class="seance-bloc-comment">📝 ${bloc.comment}</div>`:''}`
             g.exercices?.forEach((exo, exoIdx) => {
               if(!exo.nom) return
               const repsIndividuelles=exo.nbRepsParJoueur?.[String(joueurActif.id)]
