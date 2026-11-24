@@ -2473,7 +2473,12 @@
         :''
       const exerciseTimeRange=format==='for-load'?playerExerciseTimeRange(groupe,exo):''
       let prescription=''
-      if(format==='death-by'){
+      if(exo?.maxReps){
+        prescription=format==='for-load'?'MAX REPS / tentative':'MAX REPS'
+        if(exo?.crossTeamRole==='amrap')prescription+=' pendant le relais'
+      }else if(exo?.crossTeamRole==='amrap'){
+        prescription='AMRAP pendant le relais'
+      }else if(format==='death-by'){
         const start=quantity==null||quantity===''?1:quantity
         prescription=`Départ ${crossTextEscP(start)} ${unit} · +${crossTextEscP(exo.crossIncrement??1)} ${unit}/min`
       }else if(format==='emom'){
@@ -2553,7 +2558,7 @@
       const exos=groupe?.exercices||[]
       const unit=exo=>crossTextEscP(exo.crossUnit||'reps')
       const movement=exo=>crossTextEscP(exo.nrgNom||exo.exercice||'Mouvement')
-      const amount=exo=>exo.crossQuantity==null||exo.crossQuantity===''?'quantité à définir':`${crossTextEscP(exo.crossQuantity)} ${unit(exo)}`
+      const amount=exo=>exo.maxReps?`MAX REPS${wod.format==='for-load'?' / tentative':''}`:exo.crossQuantity==null||exo.crossQuantity===''?'quantité à définir':`${crossTextEscP(exo.crossQuantity)} ${unit(exo)}`
       const movementPlan=exos.map(exo=>`${movement(exo)}: ${amount(exo)}${exo.crossLoad?` · ${wod.format==='for-load'?'repère':'charge'} ${crossTextEscP(exo.crossLoad)} ${exo.crossLoadUnit==='pct'?'% 1RM':'kg'}`:''}${exo.crossNote?` (${crossTextEscP(exo.crossNote)})`:''}`).join(' → ')||'aucun mouvement configuré'
       if(wod.format==='emom'){
         const cycle=Math.max(1,Number(wod.cycleMinutes)||1)
@@ -2637,6 +2642,41 @@
     }
     function crossTrainingResultKeyP(seanceId,blocId,groupeId,joueurId,field){
       return `${seanceId}_${blocId}_${groupeId}_wod_${joueurId}_${field}`
+    }
+    function crossTrainingLoadExerciseP(groupe,fieldKey){
+      const exos=groupe?.exercices||[]
+      if(fieldKey==='load')return exos.length===1?exos[0]:null
+      if(!String(fieldKey||'').startsWith('load_'))return null
+      const exerciseId=String(fieldKey).slice(5)
+      return exos.find(exo=>String(exo.id)===exerciseId)||null
+    }
+    async function saveCrossTrainingLoadPerformanceP(groupe,seanceId,joueurId,fieldKey,value,date){
+      if(groupe?.crossTraining?.format!=='for-load')return
+      const exo=crossTrainingLoadExerciseP(groupe,fieldKey)
+      const exerciseName=String(exo?.exercice||exo?.nrgNom||'').trim()
+      const charge=Number(String(value??'').replace(',','.'))
+      if(!exerciseName||!Number.isFinite(charge)||charge<=0)return
+      const plannedReps=String(exo.crossQuantity??'').trim()
+      const reps=/^\d+$/.test(plannedReps)?Math.max(1,Number(plannedReps)):1
+      const oneRM=reps===1?charge:(Number(calcOneRM?.(charge,reps))||charge)
+      const exerciseId=exerciseName.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'')
+      const perfId=`${joueurId}_${exerciseId}_${seanceId}`
+      const perfDate=date||new Date().toISOString().split('T')[0]
+      const athlete=joueurs.find(item=>String(item.id)===String(joueurId))
+      const ratioPDC=athlete?.poids?Number((oneRM/Number(athlete.poids)).toFixed(2)):null
+      const performance={joueurId,exercice:exerciseName,date:perfDate,charge,reps,unite:'kg',oneRM,ratioPDC,seanceId,createdAt:serverTimestamp()}
+      await setDoc(doc(db,'dataPerf',perfId),performance,{merge:true})
+      if(reps===1){
+        const current=Number(maxTestes[exerciseName])||0
+        if(charge>current){
+          maxTestes[exerciseName]=charge
+          await setDoc(doc(db,'maxTestes',joueurId),{[exerciseName]:charge},{merge:true})
+          _notifyShellChange('maxTestes',joueurId,'updateDoc',exerciseName)
+        }
+      }else await updateMaxTestesIfNeeded(joueurId,exerciseName,charge,reps)
+      delete playerCache[`performances_v2_${joueurId}`]
+      if(String(joueurActif?.id)===String(joueurId))performancesData=null
+      _notifyShellChange('dataPerf',perfId,'updateDoc',exerciseName)
     }
     function crossTrainingOtherNameFromChoice(choice){
       try{return decodeURIComponent(String(choice||'').slice('other:'.length))}catch(e){return ''}
@@ -3014,7 +3054,7 @@
       }
       return wrap
     }
-    function renderPlayerCrossTrainingScore(bloc,groupe,seanceId,joueurId){
+    function renderPlayerCrossTrainingScore(bloc,groupe,seanceId,joueurId,date){
       if(!groupe.crossTraining?.enabled)return null
       const card=document.createElement('div')
       card.style.cssText='margin:8px 0;padding:10px;border:1px solid #4A9EFF55;border-radius:9px;background:#4A9EFF0b;'
@@ -3162,6 +3202,7 @@
               chargesReelles[pairKey]=pairId;updates[pairKey]=pairId
               try{
                 await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})
+                await saveCrossTrainingLoadPerformanceP(groupe,seanceId,joueurId,field.key,value,date)
                 _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`Score CrossTraining ${groupe.nom}`)
               }catch(error){console.error('[Joueur] modification score binôme:',error);alert('Le score n’a pas pu être enregistré.')}
             }
@@ -3234,6 +3275,7 @@
           chargesReelles[key]=value
           try{
             await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[key]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+            await saveCrossTrainingLoadPerformanceP(groupe,seanceId,joueurId,field.key,value,date)
             clearPlayerWorkDraft(key)
             _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`CrossTraining ${groupe.nom}`)
           }catch(error){console.error('[Joueur] résultat CrossTraining:',error)}
@@ -3792,7 +3834,6 @@
               if(!exoOrig.exercice && !exoOrig.isEnergetique)return
               const crossFormat=gJ.crossTraining?.format
               const isWod=!!gJ.crossTraining?.enabled
-              const isMaxReps=!!exoOrig.maxReps
               const crossPosition=(gJ.exercices||[]).findIndex(item=>item.id===exoOrig.id)+1||1
 
               // Résoudre l'option : exo principal OU option choisie/imposée
@@ -3813,6 +3854,7 @@
                 return
               }
               const exo = optRes.exo
+              const isMaxReps=!!(exoOrig.maxReps||exo.maxReps)
               if(isWod){
                 const exoCard=document.createElement('div')
                 exoCard.className='seance-exo'
@@ -4001,7 +4043,7 @@
               bEl.appendChild(eEl)
             })
             playerCrossGroups.forEach(({bloc:crossBloc,groupe:crossGroupe})=>{
-              const resultCard=renderPlayerCrossTrainingScore(crossBloc,crossGroupe,sa.id,joueurActif.id)
+              const resultCard=renderPlayerCrossTrainingScore(crossBloc,crossGroupe,sa.id,joueurActif.id,sa.date)
               if(resultCard)bEl.appendChild(resultCard)
             })
             body.appendChild(bEl)
