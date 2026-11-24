@@ -2452,7 +2452,17 @@
       const clusterInfo=backoff.variableSeries&&clusterParts?` · cluster ${clusterParts}`:''
       return `<div class="seance-exo-params" style="color:#79B8FF;"><b style="display:inline-block;padding:1px 5px;border:1px solid #79B8FF;border-radius:4px;">B</b> ${plan}${clusterInfo}${backoff.clusterRest?' · cluster repos '+crossTextEscP(backoff.clusterRest):''}</div>`
     }
-    function crossTrainingExerciseDisplayHTMLP(exo,format='for-time',position=1){
+    function playerExerciseTimeRange(groupe,exo){
+      const exercises=groupe?.exercices||[]
+      const index=exercises.findIndex(item=>item.id===exo?.id)
+      if(index<0)return ''
+      const duration=playerExerciseTimeSeconds(exercises[index].crossTimeAvailable)
+      if(!duration)return ''
+      const start=exercises.slice(0,index).reduce((total,item)=>total+playerExerciseTimeSeconds(item.crossTimeAvailable),0)
+      const mark=seconds=>seconds%60===0?String(seconds/60):formatPlayerWodTimer(seconds)
+      return ` · MIN ${mark(start)} à ${mark(start+duration)}`
+    }
+    function crossTrainingExerciseDisplayHTMLP(exo,format='for-time',position=1,groupe=null){
       const quantity=exo?.crossQuantity
       const unit=crossTextEscP(exo?.crossUnit||'reps')
       const load=exo?.crossLoad
@@ -2461,6 +2471,7 @@
       const exerciseTime=format==='for-load'&&exo?.crossTimeAvailable
         ?` · temps ${crossTextEscP(exo.crossTimeAvailable)}`
         :''
+      const exerciseTimeRange=format==='for-load'?playerExerciseTimeRange(groupe,exo):''
       let prescription=''
       if(format==='death-by'){
         const start=quantity==null||quantity===''?1:quantity
@@ -2478,8 +2489,8 @@
       }else if(format){
         prescription='Prescription à définir'
       }
-      if(!prescription&&!load&&!exerciseTime&&!exo?.crossNote)return ''
-      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${prescription}${load}${exerciseTime}${exo?.crossNote?` · ${crossTextEscP(exo.crossNote)}`:''}</div>`
+      if(!prescription&&!load&&!exerciseTime&&!exerciseTimeRange&&!exo?.crossNote)return ''
+      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${prescription}${load}${exerciseTime}${crossTextEscP(exerciseTimeRange)}${exo?.crossNote?` · ${crossTextEscP(exo.crossNote)}`:''}</div>`
     }
     function playerExerciseTimeSeconds(value){
       const text=String(value??'').trim()
@@ -3808,7 +3819,7 @@
                 const wodName=exo.nrgNom||exo.exercice||'Mouvement'
                 const wodPhoto=exoPhotoUrl(wodName)
                 const wodPhotoHtml=wodPhoto?`<img src="${wodPhoto}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"/>`:''
-                exoCard.innerHTML=`${wodPhotoHtml}<div style="flex:1;"><div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${wodName}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':''}</div>${crossTrainingExerciseDisplayHTMLP(exo,crossFormat,crossPosition)}</div>`
+                exoCard.innerHTML=`${wodPhotoHtml}<div style="flex:1;"><div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${wodName}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':''}</div>${crossTrainingExerciseDisplayHTMLP(exo,crossFormat,crossPosition,gJ)}</div>`
                 bEl.appendChild(exoCard)
                 return
               }
