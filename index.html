@@ -2487,10 +2487,16 @@
       if(match)return Number(match[1])*60+Number(match[2])
       return /^\d+$/.test(text)?Number(text)*60:0
     }
-    function playerExerciseTimeTotal(groupe){
+    function playerExerciseSegments(groupe){
       const wod=groupe?.crossTraining
-      if(wod?.format!=='for-load'||wod.loadLimitType!=='time'||wod.loadTimeScope!=='exercise')return 0
-      return (groupe?.exercices||[]).reduce((total,exo)=>total+playerExerciseTimeSeconds(exo.crossTimeAvailable),0)
+      if(wod?.format!=='for-load'||wod.loadLimitType!=='time'||wod.loadTimeScope!=='exercise')return []
+      return (groupe?.exercices||[]).map((exo,index)=>({
+        name:exo.nrgNom||exo.exercice||`Exercice ${index+1}`,
+        totalSec:playerExerciseTimeSeconds(exo.crossTimeAvailable)
+      })).filter(exercise=>exercise.totalSec>0)
+    }
+    function playerExerciseTimeTotal(groupe){
+      return playerExerciseSegments(groupe).reduce((total,exercise)=>total+exercise.totalSec,0)
     }
     function crossTrainingGroupSummaryP(groupe){
       const wod=groupe?.crossTraining
@@ -2626,7 +2632,7 @@
     }
     const playerWodTimerStates=new Map()
     const playerWodTimerCues=new Map()
-    function playerWodTimerSpec(wod,exerciseTimeTotal=0){
+    function playerWodTimerSpec(wod,exerciseSegments=[]){
       const format=wod?.format||'for-time'
       const parseSeconds=value=>{
         const text=String(value??'').trim()
@@ -2645,7 +2651,8 @@
       }
       if(format==='amrap'||format==='for-reps')return{kind:'countdown',label:format==='amrap'?'AMRAP':'FOR REPS',totalSec:minutes*60}
       if(format==='for-load'&&wod?.loadLimitType==='time'){
-        if(wod?.loadTimeScope==='exercise'&&exerciseTimeTotal>0)return{kind:'countdown',label:'FOR LOAD · TEMPS PAR EXERCICE',totalSec:exerciseTimeTotal}
+        const exerciseTimeTotal=exerciseSegments.reduce((total,exercise)=>total+exercise.totalSec,0)
+        if(wod?.loadTimeScope==='exercise'&&exerciseTimeTotal>0)return{kind:'countdown',label:'FOR LOAD · TEMPS PAR EXERCICE',totalSec:exerciseTimeTotal,exerciseSegments}
         return{kind:'countdown',label:'FOR LOAD · TIME CAP',totalSec:parseSeconds(wod?.timeCap)||minutes*60}
       }
       if(['for-time','chipper','rft'].includes(format)){
@@ -2719,13 +2726,33 @@
         value=formatPlayerWodTimer(elapsed)
         meta=state.status==='done'?'Terminé':spec.rounds?`${spec.label} · ${spec.rounds} rounds`:`${spec.label} · chronomètre`
       }
+      if(spec.exerciseSegments?.length){
+        if(state.status==='done'||elapsed>=spec.totalSec){
+          meta='Séance terminée · tous les exercices sont passés'
+        }else if(state.status==='idle'){
+          meta=`Prêt · ${spec.exerciseSegments.length} exercices`
+        }else{
+          let segmentStart=0
+          const segmentIndex=spec.exerciseSegments.findIndex(segment=>{
+            const segmentEnd=segmentStart+segment.totalSec
+            if(elapsed<segmentEnd)return true
+            segmentStart=segmentEnd
+            return false
+          })
+          const segment=spec.exerciseSegments[segmentIndex]
+          if(segment){
+            const exerciseRemaining=segmentStart+segment.totalSec-elapsed
+            meta=`Exercice ${segmentIndex+1}/${spec.exerciseSegments.length} · ${segment.name} · suivant dans ${formatPlayerWodTimer(exerciseRemaining)} · total restant ${formatPlayerWodTimer(spec.totalSec-elapsed)}`
+          }
+        }
+      }
       return{state,value,meta,elapsed}
     }
     function playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,scope='player',pairId=''){
       if(!groupe?.crossTraining?.enabled)return''
       const timerOwner=scope==='player'?joueurId:scope==='pair'?pairId:''
       const key=playerWodTimerKey(seanceId,bloc.id,groupe.id,scope,timerOwner)
-      const spec=playerWodTimerSpec(groupe.crossTraining,playerExerciseTimeTotal(groupe))
+      const spec=playerWodTimerSpec(groupe.crossTraining,playerExerciseSegments(groupe))
       const field=scope==='group'?'timer_group':scope==='pair'?`timer_pair_${pairId}`:'timer'
       const dbKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field)
       const remoteValue=chargesReelles[dbKey]||''
@@ -2739,7 +2766,7 @@
         </div>`
       return`<div class="player-wod-timer${scope!=='player'?' is-shared':''}" data-player-wod-timer data-timer-scope="${scope}" data-timer-field="${crossTextEscP(field)}" data-pair-id="${crossTextEscP(pairId)}" data-timer-key="${crossTextEscP(key)}" data-timer-spec="${crossTextEscP(JSON.stringify(spec))}" data-db-key="${crossTextEscP(dbKey)}" data-session-id="${crossTextEscP(seanceId)}" data-bloc-id="${crossTextEscP(bloc.id)}" data-group-id="${crossTextEscP(groupe.id)}" data-player-id="${crossTextEscP(joueurId)}">
         <div class="player-wod-timer-head"><span>⏱ ${title} · ${crossTextEscP(groupe.nom||'WOD')}</span><strong data-timer-value>${value}</strong></div>
-        <div class="player-wod-timer-meta" data-timer-meta>${meta}</div>
+        <div class="player-wod-timer-meta" data-timer-meta>${crossTextEscP(meta)}</div>
         ${controls}
       </div>`
     }
