@@ -2458,6 +2458,9 @@
       const load=exo?.crossLoad
         ?` · ${format==='for-load'?'repère':'charge prescrite'} ${crossTextEscP(exo.crossLoad)} ${exo.crossLoadUnit==='pct'?'% 1RM':'kg'}`
         :''
+      const exerciseTime=format==='for-load'&&exo?.crossTimeAvailable
+        ?` · temps ${crossTextEscP(exo.crossTimeAvailable)}`
+        :''
       let prescription=''
       if(format==='death-by'){
         const start=quantity==null||quantity===''?1:quantity
@@ -2475,8 +2478,19 @@
       }else if(format){
         prescription='Prescription à définir'
       }
-      if(!prescription&&!load&&!exo?.crossNote)return ''
-      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${prescription}${load}${exo?.crossNote?` · ${crossTextEscP(exo.crossNote)}`:''}</div>`
+      if(!prescription&&!load&&!exerciseTime&&!exo?.crossNote)return ''
+      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${prescription}${load}${exerciseTime}${exo?.crossNote?` · ${crossTextEscP(exo.crossNote)}`:''}</div>`
+    }
+    function playerExerciseTimeSeconds(value){
+      const text=String(value??'').trim()
+      const match=text.match(/^(\d+):([0-5]?\d)$/)
+      if(match)return Number(match[1])*60+Number(match[2])
+      return /^\d+$/.test(text)?Number(text)*60:0
+    }
+    function playerExerciseTimeTotal(groupe){
+      const wod=groupe?.crossTraining
+      if(wod?.format!=='for-load'||wod.loadLimitType!=='time'||wod.loadTimeScope!=='exercise')return 0
+      return (groupe?.exercices||[]).reduce((total,exo)=>total+playerExerciseTimeSeconds(exo.crossTimeAvailable),0)
     }
     function crossTrainingGroupSummaryP(groupe){
       const wod=groupe?.crossTraining
@@ -2499,7 +2513,10 @@
       }else if(wod.format==='death-by'){
         bits.push('incrément par mouvement / minute')
       }else if(wod.format==='for-load'){
-        if(wod.loadLimitType==='time')bits.push(`temps disponible ${crossTextEscP(wod.timeCap||'—')}`)
+        if(wod.loadLimitType==='time'&&wod.loadTimeScope==='exercise'){
+          const exerciseTotal=playerExerciseTimeTotal(groupe)
+          bits.push(exerciseTotal?`temps par exercice · total ${formatPlayerWodTimer(exerciseTotal)}`:'temps par exercice · à définir')
+        }else if(wod.loadLimitType==='time')bits.push(`temps disponible ${crossTextEscP(wod.timeCap||'—')}`)
         else bits.push(`${crossTextEscP(wod.attempts??wod.rounds??3)} tentatives / mouvement`)
       }else if(wod.format==='tabata'){
         bits.push(`${crossTextEscP(wod.intervals??8)} × ${crossTextEscP(wod.workSeconds??20)}s / ${crossTextEscP(wod.restSeconds??10)}s`)
@@ -2609,7 +2626,7 @@
     }
     const playerWodTimerStates=new Map()
     const playerWodTimerCues=new Map()
-    function playerWodTimerSpec(wod){
+    function playerWodTimerSpec(wod,exerciseTimeTotal=0){
       const format=wod?.format||'for-time'
       const parseSeconds=value=>{
         const text=String(value??'').trim()
@@ -2627,7 +2644,10 @@
         return{kind:'interval',label:format==='tabata'?'TABATA':'INTERVALS',intervals,workSec,restSec,totalSec:intervals*workSec+Math.max(0,intervals-1)*restSec}
       }
       if(format==='amrap'||format==='for-reps')return{kind:'countdown',label:format==='amrap'?'AMRAP':'FOR REPS',totalSec:minutes*60}
-      if(format==='for-load'&&wod?.loadLimitType==='time')return{kind:'countdown',label:'FOR LOAD · TIME CAP',totalSec:parseSeconds(wod?.timeCap)||minutes*60}
+      if(format==='for-load'&&wod?.loadLimitType==='time'){
+        if(wod?.loadTimeScope==='exercise'&&exerciseTimeTotal>0)return{kind:'countdown',label:'FOR LOAD · TEMPS PAR EXERCICE',totalSec:exerciseTimeTotal}
+        return{kind:'countdown',label:'FOR LOAD · TIME CAP',totalSec:parseSeconds(wod?.timeCap)||minutes*60}
+      }
       if(['for-time','chipper','rft'].includes(format)){
         const cap=parseSeconds(wod?.timeCap)
         return cap?{kind:'countdown',label:'TIME CAP',totalSec:cap}:{kind:'stopwatch',label:format==='rft'?'ROUNDS FOR TIME':format.toUpperCase(),rounds:format==='rft'?Number(wod?.rounds)||3:0}
@@ -2705,7 +2725,7 @@
       if(!groupe?.crossTraining?.enabled)return''
       const timerOwner=scope==='player'?joueurId:scope==='pair'?pairId:''
       const key=playerWodTimerKey(seanceId,bloc.id,groupe.id,scope,timerOwner)
-      const spec=playerWodTimerSpec(groupe.crossTraining)
+      const spec=playerWodTimerSpec(groupe.crossTraining,playerExerciseTimeTotal(groupe))
       const field=scope==='group'?'timer_group':scope==='pair'?`timer_pair_${pairId}`:'timer'
       const dbKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field)
       const remoteValue=chargesReelles[dbKey]||''
