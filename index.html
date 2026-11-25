@@ -2462,6 +2462,15 @@
       const mark=seconds=>seconds%60===0?String(seconds/60):formatPlayerWodTimer(seconds)
       return ` · MIN ${mark(start)} à ${mark(start+duration)}`
     }
+    function halteroComplexDisplayHTMLP(exo){
+      const steps=(exo?.haltereoComplex||[]).filter(step=>String(step.movement||step.name||'').trim())
+      if(!steps.length)return ''
+      const sequence=steps.map(step=>`${crossTextEscP(step.reps||1)}× ${crossTextEscP(step.movement||step.name)}`).join(' → ')
+      return `<div style="margin-top:3px;color:#E9A23B;font-size:10px;font-weight:700;">🏋️ Complexe haltéro · ${sequence}</div>`
+    }
+    function playerExerciseDisplayNameP(exo){
+      return exo?.haltereoComplex?.length?exo.exercice||'Complexe haltéro':exo?.nrgNom||exo?.exercice||'—'
+    }
     function crossTrainingExerciseDisplayHTMLP(exo,format='for-time',position=1,groupe=null){
       const quantity=exo?.crossQuantity
       const unit=crossTextEscP(exo?.crossUnit||'reps')
@@ -2473,7 +2482,10 @@
         :''
       const exerciseTimeRange=format==='for-load'?playerExerciseTimeRange(groupe,exo):''
       let prescription=''
-      if(exo?.maxReps){
+      if(exo?.crossMemberMax){
+        const reps=quantity==null||quantity===''?1:quantity
+        prescription=`Charge max · ${crossTextEscP(reps)} ${unit} par membre · moyenne équipe`
+      }else if(exo?.maxReps){
         prescription=format==='for-load'?'MAX REPS / tentative':'MAX REPS'
         if(exo?.crossTeamRole==='amrap')prescription+=' pendant le relais'
       }else if(exo?.crossTeamRole==='amrap'){
@@ -2495,7 +2507,7 @@
         prescription='Prescription à définir'
       }
       if(!prescription&&!load&&!exerciseTime&&!exerciseTimeRange&&!exo?.crossNote)return ''
-      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${prescription}${load}${exerciseTime}${crossTextEscP(exerciseTimeRange)}${exo?.crossNote?` · ${crossTextEscP(exo.crossNote)}`:''}</div>`
+      return `<div class="seance-exo-params" style="color:#79B8FF;">🏋️ ${prescription}${load}${exerciseTime}${crossTextEscP(exerciseTimeRange)}${exo?.crossNote?` · ${crossTextEscP(exo.crossNote)}`:''}</div>${halteroComplexDisplayHTMLP(exo)}`
     }
     function playerExerciseTimeSeconds(value){
       const text=String(value??'').trim()
@@ -2507,7 +2519,7 @@
       const wod=groupe?.crossTraining
       if(wod?.format!=='for-load'||wod.loadLimitType!=='time'||wod.loadTimeScope!=='exercise')return []
       return (groupe?.exercices||[]).map((exo,index)=>({
-        name:exo.nrgNom||exo.exercice||`Exercice ${index+1}`,
+        name:playerExerciseDisplayNameP(exo)||`Exercice ${index+1}`,
         totalSec:playerExerciseTimeSeconds(exo.crossTimeAvailable)
       })).filter(exercise=>exercise.totalSec>0)
     }
@@ -2551,13 +2563,15 @@
         bits.push(`${crossTextEscP(wod.rounds)} passages`)
       }
       const procedure=crossTrainingProcedureTextP(groupe)
-      return `<div><div class="seance-bloc-comment" style="color:#79B8FF;">🏋️ ${crossTextEscP(groupe.nom||'Groupe')} · Crosstraining · ${bits.join(' · ')}</div><div class="seance-bloc-comment" style="color:#77899a;font-size:10px;">${procedure}</div></div>`
+      const notes=String(wod.scoreNotes||'').trim()
+      const formula=wod.scoreFormula?.enabled?`Score personnalisé · ${wod.scoreFormula.direction==='higher'?'plus grand':'plus petit'} gagnant`:''
+      return `<div><div class="seance-bloc-comment" style="color:#79B8FF;">🏋️ ${crossTextEscP(groupe.nom||'Groupe')} · Crosstraining · ${bits.join(' · ')}</div><div class="seance-bloc-comment" style="color:#77899a;font-size:10px;">${procedure}</div>${formula?`<div class="seance-bloc-comment" style="color:#E9A23B;font-size:10px;">${crossTextEscP(formula)}</div>`:''}${notes?`<div class="seance-bloc-comment" style="color:#b8c5d0;font-size:10px;">📝 ${crossTextEscP(notes)}</div>`:''}</div>`
     }
     function crossTrainingProcedureTextP(groupe){
       const wod=groupe?.crossTraining||{}
       const exos=groupe?.exercices||[]
       const unit=exo=>crossTextEscP(exo.crossUnit||'reps')
-      const movement=exo=>crossTextEscP(exo.nrgNom||exo.exercice||'Mouvement')
+      const movement=exo=>crossTextEscP(playerExerciseDisplayNameP(exo))
       const amount=exo=>exo.maxReps?`MAX REPS${wod.format==='for-load'?' / tentative':''}`:exo.crossQuantity==null||exo.crossQuantity===''?'quantité à définir':`${crossTextEscP(exo.crossQuantity)} ${unit(exo)}`
       const movementPlan=exos.map(exo=>`${movement(exo)}: ${amount(exo)}${exo.crossLoad?` · ${wod.format==='for-load'?'repère':'charge'} ${crossTextEscP(exo.crossLoad)} ${exo.crossLoadUnit==='pct'?'% 1RM':'kg'}`:''}${exo.crossNote?` (${crossTextEscP(exo.crossNote)})`:''}`).join(' → ')||'aucun mouvement configuré'
       if(wod.format==='emom'){
@@ -2640,18 +2654,141 @@
       if(format==='for-quality')return [{key:'note',label:'Note qualité',shortLabel:'Qualité',type:'text',placeholder:'Validé / remarque'}]
       return [{key:'reps',label:'Total reps',type:'number',placeholder:'0'}]
     }
+    function crossTrainingScoreFormulaFieldsP(groupe){
+      const formula=groupe?.crossTraining?.scoreFormula
+      if(!formula?.enabled)return []
+      const defaults={time:{enabled:true,operator:'+',weight:1},reps:{enabled:true,operator:'-',weight:1},rounds:{enabled:false,operator:'+',weight:1},load:{enabled:false,operator:'+',weight:1}}
+      const labels={time:['Temps (secondes)','Temps s'],reps:['Reps cumulées tous exercices','Reps'],rounds:['Rounds','Rounds'],load:['Charges cumulées (kg)','Charge kg']}
+      return Object.entries(labels).filter(([key])=>({...defaults[key],...(formula.terms?.[key]||{})}).enabled).map(([key,[label,shortLabel]])=>({key:key==='reps'?'reps_total':`score_${key}`,label,shortLabel,type:'number',placeholder:'0'}))
+    }
+    function crossTrainingMemberMaxExosP(groupe){
+      return groupe?.crossTraining?.teamMode==='team'&&groupe.crossTraining.teamAssignmentMode==='team-count'
+        ?(groupe.exercices||[]).filter(exo=>exo.crossMemberMax)
+        :[]
+    }
+    function crossTrainingScoreInputFieldsP(groupe){
+      const memberMaxExos=crossTrainingMemberMaxExosP(groupe)
+      const memberMaxKeys=new Set(memberMaxExos.map(exo=>(groupe.exercices||[]).length===1?'load':`load_${exo.id}`))
+      const fields=crossTrainingResultFieldsP(groupe).filter(field=>!memberMaxKeys.has(field.key))
+      if(groupe?.crossTraining?.teamMode!=='team'){
+        ;(groupe?.exercices||[]).filter(exo=>exo.crossLoadUnit==='pct'&&Number(exo.crossLoad)>0).forEach(exo=>{
+          if(fields.some(field=>crossTrainingLoadExerciseP(groupe,field.key)?.id===exo.id))return
+          const name=playerExerciseDisplayNameP(exo)
+          fields.push({key:`load_${exo.id}`,label:`${name} · charge à confirmer/modifier (kg)`,shortLabel:`Charge ${name.slice(0,8)}`,type:'number',placeholder:'kg'})
+        })
+      }
+      fields.push({key:'reps_total',label:'Total reps réalisées',shortLabel:'Total reps',type:'number',placeholder:'0'})
+      crossTrainingScoreFormulaFieldsP(groupe).forEach(field=>{
+        if(memberMaxExos.length&&field.key==='score_load')return
+        if(!fields.some(existing=>existing.key===field.key))fields.push(field)
+      })
+      return fields
+    }
+    function crossTrainingNumberedTeamIdP(groupe,index){
+      return `team_${groupe?.crossTraining?.teamKey||groupe?.id}_${index+1}`
+    }
+    function crossTrainingNumberedTeamAverageLoadP(bloc,groupe,seanceId,teamId){
+      if(!crossTrainingMemberMaxExosP(groupe).length)return null
+      const members=(groupe.joueurs||[]).map(String).filter(id=>
+        String(chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,id,'team_id')]||'')===String(teamId)
+      )
+      if(!members.length)return null
+      let total=0
+      for(const exo of groupe.exercices||[]){
+        if(exo.crossMemberMax){
+          const values=members.map(id=>Number(chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,id,`member_load_${exo.id}`)]))
+          if(values.some(value=>!Number.isFinite(value)||value<=0))return null
+          total+=values.reduce((sum,value)=>sum+value,0)/values.length
+        }else{
+          const fieldKey=groupe.exercices.length===1?'load':`load_${exo.id}`
+          const value=Number(chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,teamId,fieldKey)])
+          if(!Number.isFinite(value)||value<=0)return null
+          total+=value
+        }
+      }
+      return total
+    }
     function crossTrainingResultKeyP(seanceId,blocId,groupeId,joueurId,field){
       return `${seanceId}_${blocId}_${groupeId}_wod_${joueurId}_${field}`
+    }
+    function crossTrainingPartnerAlreadyAssignedP(seanceId,bloc,groupe,currentId,candidateId){
+      currentId=String(currentId);candidateId=String(candidateId)
+      const currentChoice=String(chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,currentId,'team_partner')]||'')
+      if(candidateId===currentChoice)return false
+      const candidateChoice=String(chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,candidateId,'team_partner')]||'')
+      if(candidateChoice&&candidateChoice!==currentId)return true
+      return (groupe.joueurs||[]).some(id=>{
+        id=String(id)
+        if(id===currentId||id===candidateId)return false
+        return String(chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,id,'team_partner')]||'')===candidateId
+      })
     }
     function crossTrainingLoadExerciseP(groupe,fieldKey){
       const exos=groupe?.exercices||[]
       if(fieldKey==='load')return exos.length===1?exos[0]:null
       if(!String(fieldKey||'').startsWith('load_'))return null
-      const exerciseId=String(fieldKey).slice(5)
+      const exerciseId=String(fieldKey).startsWith('load_member_')?String(fieldKey).slice(12):String(fieldKey).slice(5)
       return exos.find(exo=>String(exo.id)===exerciseId)||null
     }
+    function crossTrainingTargetLoadP(exo){
+      const pct=Number(String(exo?.crossLoad??'').replace(',','.'))
+      if(exo?.crossLoadUnit!=='pct'||!(pct>0))return null
+      const normalize=value=>String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim()
+      const names=[exo.exercice,exo.nrgNom].filter(Boolean)
+      let oneRM=null
+      for(const [key,value] of Object.entries(maxTestes||{})){
+        if(names.some(name=>normalize(name)===normalize(key))&&Number(value)>0){oneRM=Number(value);break}
+      }
+      if(!oneRM){
+        for(const [ratioKey,ratioValue] of Object.entries(ratios||{})){
+          const match=ratioKey.match(/^(.+)_vs_(.+)$/)
+          if(!match||!names.some(name=>normalize(name)===normalize(match[1])))continue
+          const tested=Object.entries(maxTestes||{}).find(([key,value])=>normalize(key)===normalize(match[2])&&Number(value)>0)
+          const ratio=Number(ratioValue)
+          if(tested&&ratio>0){oneRM=Number(tested[1])*ratio;break}
+        }
+      }
+      if(!(oneRM>0))return null
+      return{pct,oneRM,kg:Math.round((oneRM*pct/100)/2.5)*2.5}
+    }
+    function appendPlayerCrossTrainingLoadTargets(container,bloc,groupe,seanceId,joueurId){
+      ;(groupe?.exercices||[]).filter(exo=>exo.crossLoadUnit==='pct'&&Number(exo.crossLoad)>0).forEach(exo=>{
+        const fieldKey=`load_member_${exo.id}`
+        const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,fieldKey)
+        const target=crossTrainingTargetLoadP(exo)
+        const savedValue=chargesReelles[key]
+        const label=document.createElement('label')
+        label.style.cssText='display:flex;flex-direction:column;gap:4px;flex:1;min-width:130px;margin-top:8px;font-size:10px;color:#79B8FF;'
+        label.textContent=`Ma charge · ${playerExerciseDisplayNameP(exo)}`
+        const input=document.createElement('input')
+        input.type='number';input.min='0';input.step='0.5';input.placeholder='kg'
+        input.value=savedValue!=null&&savedValue!==''?String(savedValue):target?String(target.kg):''
+        input.style.cssText='width:100%;padding:9px;border:1px solid #4A9EFF55;border-radius:7px;background:#0f0f0f;color:#79B8FF;font-size:14px;font-weight:700;'
+        const hint=document.createElement('span')
+        hint.textContent=target?`Cible ${target.pct}% de ton 1RM (${target.oneRM} kg) : ${target.kg} kg`:'1RM introuvable pour cet exercice'
+        hint.style.cssText='font-size:10px;color:#FECC00;'
+        const save=async()=>{
+          const value=input.value.trim()
+          chargesReelles[key]=value
+          try{
+            await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[key]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
+            _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`Charge CrossTraining ${groupe.nom}`)
+          }catch(error){console.error('[Joueur] charge cible CrossTraining:',error);alert('La charge n’a pas pu être enregistrée.')}
+        }
+        input.onchange=save
+        label.append(input,hint)
+        if(target&&(savedValue==null||savedValue==='')){
+          const confirm=document.createElement('button')
+          confirm.type='button';confirm.textContent=`Confirmer ${target.kg} kg`
+          confirm.style.cssText='align-self:flex-start;padding:6px 9px;border:1px solid #FECC0066;border-radius:6px;background:#FECC0011;color:#FECC00;font-size:10px;font-weight:700;cursor:pointer;'
+          confirm.onclick=event=>{event.preventDefault();input.value=String(target.kg);save().then(()=>confirm.remove())}
+          label.appendChild(confirm)
+        }
+        container.appendChild(label)
+      })
+    }
     async function saveCrossTrainingLoadPerformanceP(groupe,seanceId,joueurId,fieldKey,value,date){
-      if(groupe?.crossTraining?.format!=='for-load')return
+      if(groupe?.crossTraining?.format!=='for-load'||groupe.crossTraining.teamMode==='team'||String(fieldKey).startsWith('score_')||fieldKey==='reps_total')return
       const exo=crossTrainingLoadExerciseP(groupe,fieldKey)
       const exerciseName=String(exo?.exercice||exo?.nrgNom||'').trim()
       const charge=Number(String(value??'').replace(',','.'))
@@ -3062,6 +3199,119 @@
       title.textContent=`🏋️ ${groupe.nom} · ${groupe.crossTraining.format==='for-time'?'For Time':groupe.crossTraining.format==='for-load'?'For Load':String(groupe.crossTraining.format||'CrossTraining').toUpperCase()}`
       title.style.cssText='font-size:11px;font-weight:800;color:#79B8FF;margin-bottom:7px;'
       card.appendChild(title)
+      if(groupe.crossTraining.teamMode==='team'&&groupe.crossTraining.teamAssignmentMode==='team-count'){
+        const count=Math.max(2,Math.floor(Number(groupe.crossTraining.teamCount)||2))
+        const assignmentKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_id')
+        let selectedTeam=String(chargesReelles[assignmentKey]||'')
+        const label=document.createElement('label')
+        label.style.cssText='display:flex;flex-direction:column;gap:5px;margin:8px 0;color:#79B8FF;font-size:11px;'
+        label.textContent='Choisis ton équipe'
+        const select=document.createElement('select')
+        select.style.cssText='width:100%;padding:10px;border:1px solid #4A9EFF55;border-radius:8px;background:#0f0f0f;color:#fff;font-size:14px;'
+        const empty=document.createElement('option');empty.value='';empty.textContent='Choisir une équipe…';select.appendChild(empty)
+        const teamIds=Array.from({length:count},(_,index)=>crossTrainingNumberedTeamIdP(groupe,index))
+        teamIds.forEach((teamId,index)=>{const option=document.createElement('option');option.value=teamId;option.textContent=`Équipe ${index+1}`;option.selected=teamId===selectedTeam;select.appendChild(option)})
+        label.appendChild(select);card.appendChild(label)
+        const teamContent=document.createElement('div');card.appendChild(teamContent)
+        const redraw=()=>{
+          teamContent.replaceChildren()
+          if(!selectedTeam){const status=document.createElement('div');status.style.cssText='color:#888;font-size:10px;';status.textContent='Choisis une équipe pour voir son chrono et saisir son résultat.';teamContent.appendChild(status);return}
+          const timer=document.createElement('div')
+          timer.innerHTML=playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,'pair',selectedTeam)
+          if(timer.firstElementChild)teamContent.appendChild(timer.firstElementChild)
+          const fieldsWrap=document.createElement('div');fieldsWrap.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;'
+          const scoreMatches=chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,'pair_key')]===selectedTeam
+          const resultFields=crossTrainingScoreInputFieldsP(groupe)
+          const personalMaxInputs=[]
+          const averageStatus=document.createElement('div')
+          averageStatus.style.cssText='margin-top:8px;padding:8px;border:1px solid #FECC0044;border-radius:7px;color:#FECC00;font-size:11px;font-weight:800;'
+          const updateTeamAverage=()=>{
+            const average=crossTrainingNumberedTeamAverageLoadP(bloc,groupe,seanceId,selectedTeam)
+            averageStatus.textContent=average==null
+              ?'Moyenne équipe : en attente des max de tous les membres'
+              :`Moyenne équipe : ${Number(average.toFixed(2))} kg`
+          }
+          resultFields.forEach(field=>{
+            const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,field.key)
+            const input=document.createElement('input');input.type=field.type;input.placeholder=field.placeholder
+            input.dataset.crossField=field.key
+            input.value=scoreMatches?chargesReelles[key]||'':''
+            input.style.cssText='width:100%;padding:9px;border:1px solid #2a2a2a;border-radius:7px;background:#0f0f0f;color:#79B8FF;font-size:14px;font-weight:700;'
+            const fieldLabel=document.createElement('label');fieldLabel.style.cssText='display:flex;flex-direction:column;gap:4px;flex:1;min-width:100px;font-size:10px;color:#888;';fieldLabel.textContent=field.label;fieldLabel.appendChild(input)
+            input.onchange=async()=>{
+              const pairKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,'pair_key')
+              const validatedKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,'validated')
+              const value=input.value.trim(),updates={seance_id:seanceId,updatedAt:serverTimestamp(),[key]:value,[pairKey]:selectedTeam,[validatedKey]:''}
+              chargesReelles[key]=value;chargesReelles[pairKey]=selectedTeam;chargesReelles[validatedKey]=''
+              try{await Promise.all((groupe.joueurs||[joueurId]).map(id=>setDoc(doc(db,'chargesReelles',`${seanceId}_${id}`),updates,{merge:true})))}
+              catch(error){console.error('[Joueur] score équipe CrossTraining:',error);alert('Le résultat de l’équipe n’a pas pu être enregistré.')}
+              updateTeamAverage()
+            }
+            fieldsWrap.appendChild(fieldLabel)
+          })
+          teamContent.appendChild(fieldsWrap)
+          crossTrainingMemberMaxExosP(groupe).forEach(exo=>{
+            const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,`member_load_${exo.id}`)
+            const label=document.createElement('label');label.style.cssText='display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;margin-top:8px;font-size:10px;color:#FECC00;'
+            label.textContent=`Mon max · ${exo.nrgNom||exo.exercice||'Mouvement'} (kg)`
+            const input=document.createElement('input');input.type='number';input.min='0';input.step='0.5';input.placeholder='kg'
+            input.value=chargesReelles[key]||''
+            input.style.cssText='width:100%;padding:9px;border:1px solid #FECC0055;border-radius:7px;background:#0f0f0f;color:#FECC00;font-size:14px;font-weight:700;'
+            input.onchange=async()=>{
+              const value=input.value.trim(),validatedKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,'validated')
+              chargesReelles[key]=value;chargesReelles[validatedKey]=''
+              try{await Promise.all((groupe.joueurs||[joueurId]).map(id=>setDoc(doc(db,'chargesReelles',`${seanceId}_${id}`),{[key]:value,[validatedKey]:'',seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})))}
+              catch(error){console.error('[Joueur] max personnel CrossTraining:',error);alert('Ton max n’a pas pu être enregistré.')}
+              updateTeamAverage()
+            }
+            personalMaxInputs.push(input);label.appendChild(input);teamContent.appendChild(label)
+          })
+          appendPlayerCrossTrainingLoadTargets(teamContent,bloc,groupe,seanceId,joueurId)
+          if(personalMaxInputs.length){teamContent.appendChild(averageStatus);updateTeamAverage()}
+          const validate=document.createElement('button');validate.type='button';validate.textContent='Valider le résultat de l’équipe'
+          validate.style.cssText='margin-top:8px;padding:10px 14px;border:0;border-radius:8px;background:#E9A23B;color:#17120a;font-size:12px;font-weight:800;'
+          validate.onclick=async()=>{
+            const updates={seance_id:seanceId,updatedAt:serverTimestamp(),[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,'pair_key')]:selectedTeam,[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,'validated')]:'true'}
+            let hasValue=false
+            resultFields.forEach(field=>{
+              const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,selectedTeam,field.key)
+              const input=fieldsWrap.querySelector(`[data-cross-field="${field.key}"]`)
+              const value=input?.value.trim()||chargesReelles[key]||''
+              if(value)hasValue=true
+              updates[key]=value;chargesReelles[key]=value
+            })
+            const missingOwnMax=personalMaxInputs.some(input=>!input.value.trim())
+            if(missingOwnMax){alert('Saisis ton max sur chaque mouvement avant de valider le résultat de l’équipe.');return}
+            if(!hasValue&&!personalMaxInputs.some(input=>input.value.trim())){alert('Saisis le résultat, notamment le total de reps, avant de valider.');return}
+            try{await Promise.all((groupe.joueurs||[joueurId]).map(id=>setDoc(doc(db,'chargesReelles',`${seanceId}_${id}`),updates,{merge:true})));await chargerSeance({semaine:currentWeekStart})}
+            catch(error){console.error('[Joueur] validation équipe CrossTraining:',error);alert('Le résultat de l’équipe n’a pas pu être validé.')}
+          }
+          teamContent.appendChild(validate)
+        }
+        select.onchange=async()=>{
+          const nextTeam=select.value,previousTeam=selectedTeam
+          if(nextTeam===previousTeam)return
+          const updates={seance_id:seanceId,updatedAt:serverTimestamp(),[assignmentKey]:nextTeam}
+          chargesReelles[assignmentKey]=nextTeam;selectedTeam=nextTeam
+          for(const teamId of [...new Set([previousTeam,nextTeam].filter(Boolean))]){
+            ;[...crossTrainingScoreInputFieldsP(groupe).map(field=>field.key),'validated','pair_key',`timer_pair_${teamId}`].forEach(field=>{
+              const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,teamId,field)
+              updates[key]='';chargesReelles[key]=''
+            })
+          }
+          const personalMaxKeys=[]
+          crossTrainingMemberMaxExosP(groupe).forEach(exo=>{
+            const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,`member_load_${exo.id}`)
+            updates[key]='';chargesReelles[key]='';personalMaxKeys.push(key)
+          })
+          const resetUpdates={...updates}
+          personalMaxKeys.forEach(key=>delete resetUpdates[key])
+          try{await Promise.all((groupe.joueurs||[joueurId]).map(id=>setDoc(doc(db,'chargesReelles',`${seanceId}_${id}`),String(id)===String(joueurId)?updates:resetUpdates,{merge:true})));redraw()}
+          catch(error){console.error('[Joueur] choix équipe CrossTraining:',error);alert('Le choix d’équipe n’a pas pu être enregistré.')}
+        }
+        redraw()
+        return card
+      }
       const teamOfTwo=groupe.crossTraining.teamMode==='team'&&Math.max(2,Number(groupe.crossTraining.teamSize)||2)===2
       if(teamOfTwo){
         const partnerKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_partner')
@@ -3076,7 +3326,7 @@
         card.dataset.teamInviteKey=inviteKey
         card.dataset.currentTeamChoice=selectedPartner
         card.dataset.currentTeamInvite=invitedPartner
-        const teamResultKeys=[...crossTrainingResultFieldsP(groupe).map(field=>crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)),crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'validated'),crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'pair_key')]
+        const teamResultKeys=[...crossTrainingScoreInputFieldsP(groupe).map(field=>crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)),crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'validated'),crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'pair_key')]
         const resultSignature=()=>teamResultKeys.map(key=>chargesReelles[key]??'').join('|')
         card.dataset.teamResultKeys=JSON.stringify(teamResultKeys)
         card.dataset.currentTeamResultSignature=resultSignature()
@@ -3087,7 +3337,7 @@
         partnerSelect.style.cssText='width:100%;padding:10px;border:1px solid #4A9EFF55;border-radius:8px;background:#0f0f0f;color:#fff;font-size:14px;'
         const empty=document.createElement('option')
         empty.value='';empty.textContent='Choisir un joueur…';partnerSelect.appendChild(empty)
-        ;(groupe.joueurs||[]).filter(id=>String(id)!==String(joueurId)).forEach(id=>{
+        ;(groupe.joueurs||[]).filter(id=>String(id)!==String(joueurId)&&!crossTrainingPartnerAlreadyAssignedP(seanceId,bloc,groupe,joueurId,id)).forEach(id=>{
           const teammate=joueurs.find(item=>String(item.id)===String(id))
           if(!teammate)return
           const option=document.createElement('option')
@@ -3108,6 +3358,11 @@
         const savePartnerChoice=async(choice,partnerName='')=>{
           const previousChoice=String(chargesReelles[partnerKey]||'')
           const previousName=String(chargesReelles[partnerNameKey]||'')
+          if(choice&&!choice.startsWith('other:')&&crossTrainingPartnerAlreadyAssignedP(seanceId,bloc,groupe,joueurId,choice)){
+            alert('Ce joueur est déjà engagé dans une autre équipe.')
+            partnerSelect.value=previousChoice.startsWith('other:')?'__other__':previousChoice
+            return
+          }
           chargesReelles[partnerKey]=choice
           chargesReelles[partnerNameKey]=partnerName
           card.dataset.currentTeamChoice=choice
@@ -3154,6 +3409,7 @@
         status.style.cssText='margin:4px 0 8px;font-size:10px;color:#9aa8b3;'
         status.textContent=selectedPartner?`Choix envoyé : ${chosenName}. Le TV signale les conflits éventuels.`.trim():invitedPartner?`${joueurs.find(item=>String(item.id)===invitedPartner)?.prenom||''} ${joueurs.find(item=>String(item.id)===invitedPartner)?.nom||''} t’a choisi comme binôme.`.trim():'Choisis un partenaire pour ce WOD.'
         card.appendChild(status)
+        appendPlayerCrossTrainingLoadTargets(card,bloc,groupe,seanceId,joueurId)
         const pairTimer=document.createElement('div')
         pairTimer.dataset.pairTimerWrap='true'
         pairTimer.innerHTML=pairId?playerWodTimerMarkup(bloc,groupe,seanceId,joueurId,'pair',pairId):''
@@ -3163,12 +3419,13 @@
         const validated=scoreMatchesPair&&chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'validated')]==='true'
         const scoreStatus=document.createElement('div')
         scoreStatus.style.cssText=`margin:6px 0;color:${validated?'#1D9E75':'#8291a0'};font-size:10px;font-weight:700;`
-        scoreStatus.textContent=!pairId?'Le score sera disponible quand un binôme sera formé.':validated?'✓ Score du binôme validé':isScoreOwner?'Saisis le résultat du binôme puis valide-le.':'Le score du binôme est géré par son référent et visible ici après validation.'
+        const teamName=String(chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,'team_name')]||'').trim()
+        scoreStatus.textContent=!pairId?'Le score sera disponible quand un binôme sera formé.':validated?`✓ ${teamName||'Score du binôme'} validé`:isScoreOwner?`${teamName||'Équipe'} · Saisis le résultat puis valide-le.`:`${teamName||'Le score du binôme'} est géré par son référent et visible ici après validation.`
         card.appendChild(scoreStatus)
         if(isScoreOwner){
           const fieldsWrap=document.createElement('div')
           fieldsWrap.style.cssText='display:flex;flex-wrap:wrap;gap:8px;'
-          crossTrainingResultFieldsP(groupe).forEach(field=>{
+          crossTrainingScoreInputFieldsP(groupe).forEach(field=>{
             const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)
             const label=document.createElement('label')
             label.style.cssText='display:flex;flex-direction:column;gap:4px;flex:1;min-width:100px;font-size:10px;color:#888;'
@@ -3186,7 +3443,7 @@
               }
               const updates={seance_id:seanceId,updatedAt:serverTimestamp()}
               if(!scoreMatchesPair){
-                crossTrainingResultFieldsP(groupe).forEach(resultField=>{
+                crossTrainingScoreInputFieldsP(groupe).forEach(resultField=>{
                   const resultKey=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,resultField.key)
                   const resultValue=resultField.key===field.key?value:''
                   chargesReelles[resultKey]=resultValue
@@ -3202,7 +3459,6 @@
               chargesReelles[pairKey]=pairId;updates[pairKey]=pairId
               try{
                 await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),updates,{merge:true})
-                await saveCrossTrainingLoadPerformanceP(groupe,seanceId,joueurId,field.key,value,date)
                 _notifyShellChange('chargesReelles',`${seanceId}_${joueurId}`,'updateDoc',`Score CrossTraining ${groupe.nom}`)
               }catch(error){console.error('[Joueur] modification score binôme:',error);alert('Le score n’a pas pu être enregistré.')}
             }
@@ -3217,7 +3473,7 @@
           validate.onclick=async()=>{
             const updates={seance_id:seanceId,updatedAt:serverTimestamp()}
             let hasValue=false
-            crossTrainingResultFieldsP(groupe).forEach(field=>{
+            crossTrainingScoreInputFieldsP(groupe).forEach(field=>{
               const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)
               const input=[...fieldsWrap.querySelectorAll('input')].find(item=>item.title===field.label)
               const value=input?.value.trim()||(scoreMatchesPair?chargesReelles[key]:'')||''
@@ -3239,7 +3495,7 @@
         }else{
           const readOnlyResults=document.createElement('div')
           readOnlyResults.style.cssText='display:flex;flex-wrap:wrap;gap:8px;'
-          crossTrainingResultFieldsP(groupe).forEach(field=>{
+          crossTrainingScoreInputFieldsP(groupe).forEach(field=>{
             if(!scoreMatchesPair)return
             const value=chargesReelles[crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)]
             if(value==null||value==='')return
@@ -3259,20 +3515,37 @@
       if(timer.firstElementChild)card.appendChild(timer.firstElementChild)
       const row=document.createElement('div')
       row.style.cssText='display:flex;flex-wrap:wrap;gap:7px;'
-      crossTrainingResultFieldsP(groupe).forEach(field=>{
+      crossTrainingScoreInputFieldsP(groupe).forEach(field=>{
         const key=crossTrainingResultKeyP(seanceId,bloc.id,groupe.id,joueurId,field.key)
+        const loadExo=crossTrainingLoadExerciseP(groupe,field.key)
+        const target=loadExo?crossTrainingTargetLoadP(loadExo):null
+        const savedValue=chargesReelles[key]
         const label=document.createElement('label')
         label.style.cssText='display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px;font-size:10px;color:#888;'
         label.textContent=field.label
         const input=document.createElement('input')
         input.type=field.type
         input.placeholder=field.placeholder
-        input.value=chargesReelles[key]||''
+        input.value=savedValue!=null&&savedValue!==''?String(savedValue):target?String(target.kg):''
         input.dataset.chargeKey=key
         input.style.cssText='width:100%;padding:9px;border:1px solid #2a2a2a;border-radius:7px;background:#0f0f0f;color:#79B8FF;font-size:15px;font-weight:700;'
+        let confirmTarget=null
+        if(target||loadExo?.crossLoadUnit==='pct'){
+          const hint=document.createElement('span')
+          hint.textContent=target?`Cible ${target.pct}% de ton 1RM (${target.oneRM} kg) : ${target.kg} kg`:'1RM introuvable pour cet exercice'
+          hint.style.cssText='font-size:10px;color:#FECC00;'
+          label.appendChild(hint)
+          if(target&&(savedValue==null||savedValue==='')){
+            confirmTarget=document.createElement('button')
+            confirmTarget.type='button';confirmTarget.textContent=`Confirmer ${target.kg} kg`
+            confirmTarget.style.cssText='align-self:flex-start;padding:6px 9px;border:1px solid #FECC0066;border-radius:6px;background:#FECC0011;color:#FECC00;font-size:10px;font-weight:700;cursor:pointer;'
+            confirmTarget.onclick=event=>{event.preventDefault();input.value=String(target.kg);input.dispatchEvent(new Event('change',{bubbles:true}))}
+          }
+        }
         input.onchange=async()=>{
           const value=input.value.trim()
           chargesReelles[key]=value
+          confirmTarget?.remove()
           try{
             await setDoc(doc(db,'chargesReelles',`${seanceId}_${joueurId}`),{[key]:value,seance_id:seanceId,updatedAt:serverTimestamp()},{merge:true})
             await saveCrossTrainingLoadPerformanceP(groupe,seanceId,joueurId,field.key,value,date)
@@ -3281,6 +3554,7 @@
           }catch(error){console.error('[Joueur] résultat CrossTraining:',error)}
         }
         label.appendChild(input)
+        if(confirmTarget)label.appendChild(confirmTarget)
         row.appendChild(label)
       })
       card.appendChild(row)
@@ -3858,7 +4132,7 @@
               if(isWod){
                 const exoCard=document.createElement('div')
                 exoCard.className='seance-exo'
-                const wodName=exo.nrgNom||exo.exercice||'Mouvement'
+                const wodName=playerExerciseDisplayNameP(exo)
                 const wodPhoto=exoPhotoUrl(wodName)
                 const wodPhotoHtml=wodPhoto?`<img src="${wodPhoto}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"/>`:''
                 exoCard.innerHTML=`${wodPhotoHtml}<div style="flex:1;"><div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${wodName}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':''}</div>${crossTrainingExerciseDisplayHTMLP(exo,crossFormat,crossPosition,gJ)}</div>`
@@ -3902,8 +4176,9 @@
                 ${exo.isEnergetique&&!isWod
                   ? energetiqueMuscuDisplayHTML(exo,exoOrig,optRes)
                   : `<div style="flex:1;">
-                  <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${exo.nrgNom||exo.exercice||'Mouvement'}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')}</div>
+                  <div class="seance-exo-nom">${exo.isSuperset?'↳ ':''}${megaLabel||''}. ${playerExerciseDisplayNameP(exo)}${optRes.isOption?' <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀 option</span>':(exoOrig.options?.length?` <span style="color:#4A9EFF;font-size:11px;font-weight:600;">🔀${exoOrig.options.length}</span>`:'')}</div>
                   ${isWod?'':`<div class="seance-exo-params">${paramsText}${exo.tempo?' · Tempo '+exo.tempo:''}${exo.recup?' · récup='+exo.recup:''}</div>
+                  ${halteroComplexDisplayHTMLP(exo)}
                   ${isMaxReps?'':'<div class="seance-charge">'+reco+'</div>'}
                   ${exo.comment?`<div class="seance-exo-comment">💬 ${exo.comment}</div>`:''}`}
                 </div>`}
